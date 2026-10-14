@@ -210,3 +210,35 @@ func TestListSensors(t *testing.T) {
 		t.Fatalf("sensors = %+v, %v", sensors, err)
 	}
 }
+
+func TestCountries(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		seed(t, db)
+		ctx := context.Background()
+		// Locate the seeded sessions by hand: 1 and 3 in Iran, 2 in France.
+		for sess, c := range map[string]string{"1": "IR", "2": "FR", "3": "IR"} {
+			sensor := "hp-01"
+			if sess == "3" {
+				sensor = "hp-02"
+			}
+			if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("geo_country = ?", c).
+				Where("id = ?", store.SessionID(sensor, sess)).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, got := sessions(t, db, store.SessionFilter{Country: "IR"}); got != "31" {
+			t.Errorf("sessions from IR = %q", got)
+		}
+		countries, err := store.ListCountries(ctx, db, "")
+		if err != nil || len(countries) != 2 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 2}) {
+			t.Errorf("countries = %+v, %v", countries, err)
+		}
+		if c, _ := store.ListCountries(ctx, db, "hp-02"); len(c) != 1 || c[0].Country != "IR" {
+			t.Errorf("countries of hp-02 = %+v", c)
+		}
+		rows, _, err := store.ListLoginAttempts(ctx, db, store.LoginAttemptFilter{Country: "FR"})
+		if err != nil || len(rows) != 1 || *rows[0].Country != "FR" {
+			t.Errorf("attempts from FR = %+v, %v", rows, err)
+		}
+	})
+}

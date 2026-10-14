@@ -49,6 +49,7 @@ type SessionFilter struct {
 	Password string
 	// Client matches a substring of the client version, ignoring case.
 	Client      string
+	Country     string     // ISO 3166-1 alpha-2 code of the source address
 	From, To    *time.Time // on started_at, To exclusive
 	Login       string     // LoginSuccess or LoginFailed
 	HasCommands *bool
@@ -87,6 +88,9 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 	}
 	if f.SrcIP != "" {
 		q = q.Where("s.src_ip = ?", f.SrcIP)
+	}
+	if f.Country != "" {
+		q = q.Where("s.geo_country = ?", f.Country)
 	}
 	if f.Client != "" {
 		q = q.Where(`LOWER(s.client_version) LIKE ? ESCAPE '\'`, likeContains(f.Client))
@@ -260,6 +264,7 @@ type LoginAttemptFilter struct {
 	SrcIP    string
 	Username string
 	Password string
+	Country  string     // of the session's source address
 	From, To *time.Time // on ts, To exclusive
 	Success  *bool
 	// Interactive filters on whether the session obtained a shell, that is
@@ -280,6 +285,7 @@ type LoginAttemptRow struct {
 	Session   string    `bun:"cowrie_session" json:"session"`
 	SrcIP     *string   `bun:"src_ip" json:"src_ip"`
 	Client    *string   `bun:"client_version" json:"client_version"`
+	Country   *string   `bun:"geo_country" json:"geo_country"`
 }
 
 // ListLoginAttempts returns a page of login attempts, latest first, and
@@ -287,7 +293,7 @@ type LoginAttemptRow struct {
 func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([]LoginAttemptRow, int, error) {
 	q := db.NewSelect().Model((*LoginAttempt)(nil)).
 		ColumnExpr("la.id, la.session_id, la.ts, la.username, la.password, la.success").
-		ColumnExpr("s.sensor_id, s.session AS cowrie_session, s.src_ip, s.client_version").
+		ColumnExpr("s.sensor_id, s.session AS cowrie_session, s.src_ip, s.client_version, s.geo_country").
 		Join("JOIN sessions AS s ON s.id = la.session_id")
 	if f.SensorID != "" {
 		q = q.Where("s.sensor_id = ?", f.SensorID)
@@ -297,6 +303,9 @@ func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([
 	}
 	if f.Username != "" {
 		q = q.Where("la.username = ?", f.Username)
+	}
+	if f.Country != "" {
+		q = q.Where("s.geo_country = ?", f.Country)
 	}
 	if f.Password != "" {
 		q = q.Where("la.password = ?", f.Password)
@@ -448,4 +457,23 @@ func GetSessionFacts(ctx context.Context, db bun.IDB, id string) (*SessionFacts,
 		}
 	}
 	return f, nil
+}
+
+// CountryCount is a country and its number of sessions.
+type CountryCount struct {
+	Country  string `bun:"geo_country" json:"country"`
+	Sessions int    `bun:"n" json:"sessions"`
+}
+
+// ListCountries returns the countries sessions came from, most sessions
+// first, for one sensor if sensorID is set.
+func ListCountries(ctx context.Context, db bun.IDB, sensorID string) ([]CountryCount, error) {
+	out := []CountryCount{}
+	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country").ColumnExpr("COUNT(*) AS n").
+		Where("s.geo_country IS NOT NULL").GroupExpr("s.geo_country").OrderExpr("n DESC, s.geo_country")
+	if sensorID != "" {
+		q = q.Where("s.sensor_id = ?", sensorID)
+	}
+	err := q.Scan(ctx, &out)
+	return out, err
 }
