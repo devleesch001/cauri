@@ -1,7 +1,23 @@
 # Database
 
-Status: **proposal under review**, replacing the schema of v0.0.1–v0.0.6.
-Nothing below is implemented yet.
+Status: **implemented**, replacing the schema of v0.0.1–v0.0.6 (breaking
+change: no conversion, see "Upgrading from v0.0.x" in the README).
+
+## Measured result
+
+The same 39,983 real Cowrie lines (7,437 sessions) sent to both schemas
+through the API, SQLite, databases vacuumed:
+
+| | Before | After |
+|---|---|---|
+| Database | 55.4 MB | 40.4 MB |
+| Events, with their raw lines and indexes | 48.9 MB | 37.4 MB (`events` 5.8, `event_data` 31.6) |
+| Sessions, projections, their indexes | 6.5 MB | 3.1 MB |
+| Left once raw lines are purged | (not possible) | 8.9 MB, 1.2 KB per session |
+| Session list filtered by username | 995 ms | 3 ms |
+| Ingestion | | 15,800 events/s |
+
+Every other list query stays between 1 and 18 ms.
 
 ## Why a new schema
 
@@ -195,7 +211,11 @@ WHERE event_id IN (SELECT id FROM events WHERE ts < :limit);
 
 Sessions, events, projections and deduplication are untouched; only the
 raw view of old events and their reprocessing are lost. Retention is an
-operator setting, off by default.
+operator setting, not implemented yet.
+
+One feature still reads raw lines: replays take the terminal sizes from
+`cowrie.client.size` lines (`store.GetRecording`). A purge must keep
+those, or they must first be projected into their own table.
 
 ## Types
 
@@ -264,15 +284,22 @@ internal/store/migrations/
 The two directories must describe the same tables, columns and indexes:
 a test compares the schema read back from both engines.
 
-## Open questions
+## Decisions
 
-- Upgrade from v0.0.x: a conversion migration, or a new schema with a
-  breaking change and re-ingestion from `cowrie.json`. Databases of
-  v0.0.x carry goose's history table (`goose_db_version`), which bun's
-  migrator does not read.
-- Session URLs become `/sessions/{integer}`: no longer the same after a
-  rebuild of the database.
-- `events.type` repeats strings of about 25 bytes: keep them as text, or a
-  small lookup table.
-- Retention of `event_data`: default (off), and whether to drop
-  `cowrie.client.kex` lines earlier than the others.
+- **Upgrade from v0.0.x**: none. The new schema starts clean (breaking
+  change); existing users re-ingest from `cowrie.json` by resetting the
+  ingestor's position. The API refuses to start on a v0.0.x database
+  (goose's `goose_db_version` table present) with a message saying so,
+  rather than creating new tables beside the old ones.
+- **`events.type`**: text, as Cowrie names its events.
+- **Retention of `event_data`**: later. `cowrie.client.kex` lines (the
+  client's SSH algorithm lists, about half of the raw volume; their HASSH
+  fingerprint is already in `sessions.hassh`) will be part of that
+  discussion.
+
+## Consequences
+
+- Session URLs are `/sessions/{integer}`: not the same after a rebuild
+  of the database.
+- The read API names the sensor in `sensor`; durations are
+  `duration_ms` and `tty_duration_ms`.

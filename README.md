@@ -63,7 +63,8 @@ and symbolic links are ignored.
 
 | Table                      | Content                                                                                       |
 |----------------------------|-----------------------------------------------------------------------------------------------|
-| `raw_events`               | Every event as Cowrie wrote it, including fields not used today                               |
+| `events`                   | One row per Cowrie line: type, time, session, and the hash that recognises a line sent twice  |
+| `event_data`               | Each line as Cowrie wrote it, including fields not used today; separate so it can be purged   |
 | `sessions`                 | One row per Cowrie session and sensor: source, client, HASSH, times, login outcome, recording |
 | `login_attempts`           | Username and password of every login, with its outcome                                        |
 | `commands`                 | Commands typed                                                                                |
@@ -80,8 +81,26 @@ the real digest.
 cauri is built for SQLite first (pure Go driver, no CGO): it is the
 default, the configuration tested by the CI, and enough for most
 deployments. Through the bun ORM, PostgreSQL is supported too for those
-who prefer it: the schema and queries stay portable between both.
-Migrations (goose) are embedded and applied when the API starts.
+who prefer it: the queries are the same on both, and each engine has its
+own migrations (run by bun's `migrate` package), embedded and applied when
+the API starts. Design, sizes and indexes: [docs/db.md](docs/db.md).
+
+### Upgrading from v0.0.x
+
+The database schema of v0.0.1–v0.0.6 was replaced without conversion
+(integer keys, raw data that can be purged). The API refuses to start on
+an old database. To move to the new one, resend the events, which Cowrie
+still has on disk (`cowrie.json` and its rotations):
+
+1. stop the API and the ingestors;
+2. move the old database away (keep it until the new one is complete);
+3. delete each ingestor's state directory (`--state-dir`), so that it
+   reads the Cowrie logs from the start;
+4. create the tokens again (`cauri token create`), start the API, then
+   the ingestors.
+
+Recordings already in the TTY directory are uploaded again by the
+ingestors and recognised by their digest. Session URLs change.
 
 ### Repository
 
