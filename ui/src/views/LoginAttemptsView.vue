@@ -75,7 +75,7 @@ function onPage(e: DataTablePageEvent) {
   void patchQuery({ page: e.page > 0 ? String(e.page + 1) : undefined }, true)
 }
 function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
-  void router.push({ name: 'session', params: { id: e.data.session_id } })
+  void router.push({ name: 'session', params: { id: String(e.data.session_id) } })
 }
 </script>
 
@@ -153,7 +153,7 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       <Column :header="t('logins.columns.time')">
         <template #body="{ data }">
           <RouterLink
-            :to="{ name: 'session', params: { id: data.session_id } }"
+            :to="{ name: 'session', params: { id: String(data.session_id) } }"
             class="time"
             @click.stop
           >
@@ -162,7 +162,7 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
         </template>
       </Column>
       <Column
-        field="sensor_id"
+        field="sensor"
         :header="t('logins.columns.sensor')"
       />
       <Column :header="t('logins.columns.sourceIp')">

@@ -21,6 +21,11 @@ export function formatDuration(seconds: number | null | undefined): string {
   return t('units.hourMin', { h: Math.floor(m / 60), m: m % 60 })
 }
 
+/** A duration given in milliseconds, as the API stores them. */
+export function formatMillis(ms: number | null | undefined): string {
+  return formatDuration(ms === null || ms === undefined ? ms : ms / 1000)
+}
+
 /** Offset of at from start, as "+1.2 s". */
 export function formatOffset(start: string, at: string): string {
   const s = (new Date(at).getTime() - new Date(start).getTime()) / 1000

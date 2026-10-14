@@ -15,7 +15,7 @@ import CountryFlag from '@/components/CountryFlag.vue'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
-import { countryName, endpoint, formatDuration, formatTime } from '@/format'
+import { countryName, endpoint, formatMillis, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
 
 const { t } = useI18n()
@@ -117,7 +117,7 @@ function onPage(e: DataTablePageEvent) {
   void patchQuery({ page: e.page > 0 ? String(e.page + 1) : undefined }, true)
 }
 function open(e: DataTableRowClickEvent<SessionSummary>) {
-  void router.push({ name: 'session', params: { id: e.data.id } })
+  void router.push({ name: 'session', params: { id: String(e.data.id) } })
 }
 // The credentials that opened a shell come first: they are what matters.
 function shown(s: SessionSummary) {
@@ -256,7 +256,7 @@ function clearFilters() {
       <Column :header="t('sessions.columns.started')">
         <template #body="{ data }">
           <RouterLink
-            :to="{ name: 'session', params: { id: data.id } }"
+            :to="{ name: 'session', params: { id: String(data.id) } }"
             class="time"
             @click.stop
           >
@@ -265,7 +265,7 @@ function clearFilters() {
         </template>
       </Column>
       <Column
-        field="sensor_id"
+        field="sensor"
         :header="t('sessions.columns.sensor')"
       />
       <Column :header="t('sessions.columns.source')">
@@ -307,7 +307,7 @@ function clearFilters() {
       </Column>
       <Column :header="t('sessions.columns.duration')">
         <template #body="{ data }">
-          {{ formatDuration(data.duration) }}
+          {{ formatMillis(data.duration_ms) }}
         </template>
       </Column>
       <Column

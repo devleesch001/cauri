@@ -8,7 +8,7 @@ export interface Page<T> {
 }
 
 export interface Sensor {
-  id: string
+  id: string // the name the ingestor sends
   first_seen: string
   last_seen: string
 }
@@ -20,9 +20,9 @@ export interface Credential {
 }
 
 export interface Session {
-  id: string
-  sensor_id: string
-  session: string
+  id: number
+  sensor: string
+  session: string // Cowrie's id
   src_ip: string | null
   src_port: number | null
   dst_ip: string | null
@@ -32,10 +32,10 @@ export interface Session {
   hassh: string | null
   started_at: string
   ended_at: string | null
-  duration: number | null
+  duration_ms: number | null
   login_success: boolean
   tty_log: string | null
-  tty_duration: number | null
+  tty_duration_ms: number | null
   tty_sha256: string | null
   tty_size: number | null
   geo_country: string | null // ISO 3166-1 alpha-2
@@ -53,8 +53,8 @@ export interface SessionSummary extends Session {
 }
 
 export interface LoginAttempt {
-  id: string
-  session_id: string
+  id: number
+  session_id: number
   ts: string
   username: string
   password: string
@@ -62,15 +62,15 @@ export interface LoginAttempt {
 }
 
 export interface Command {
-  id: string
-  session_id: string
+  id: number
+  session_id: number
   ts: string
   input: string
 }
 
 export interface Transfer {
-  id: string
-  session_id: string
+  id: number
+  session_id: number
   ts: string
   direction: 'download' | 'upload'
   url: string | null
@@ -78,12 +78,12 @@ export interface Transfer {
   sha256: string | null
 }
 
-/** A raw Cowrie event: data is the object Cowrie wrote, unmodified. */
+/** A Cowrie event: data is the object Cowrie wrote, unmodified; null once purged. */
 export interface RawEvent {
-  id: string
+  id: number
   eventid: string
   ts: string
-  data: Record<string, unknown>
+  data: Record<string, unknown> | null
 }
 
 export interface SessionDetail extends SessionSummary {
@@ -94,13 +94,13 @@ export interface SessionDetail extends SessionSummary {
 }
 
 export interface LoginAttemptRow {
-  id: string
-  session_id: string
+  id: number
+  session_id: number
   ts: string
   username: string
   password: string
   success: boolean
-  sensor_id: string
+  sensor: string
   session: string
   src_ip: string | null
   client_version: string | null

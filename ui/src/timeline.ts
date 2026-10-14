@@ -40,7 +40,7 @@ function duration(d: Record<string, unknown>): string {
 }
 
 function prose(e: RawEvent): ProseEntry {
-  const d = e.data
+  const d = e.data ?? {}
   const p = (text: string, detail?: string, tone: Tone = 'normal'): ProseEntry => ({ kind: 'prose', ts: e.ts, text, detail, tone })
   switch (e.eventid) {
     case 'cowrie.session.connect':
@@ -80,7 +80,7 @@ export function timeline(events: RawEvent[]): Entry[] {
   const out: Entry[] = []
   for (const e of events) {
     if (e.eventid === 'cowrie.command.input' || e.eventid === 'cowrie.command.failed') {
-      const line = { ts: e.ts, input: str(e.data.input), failed: e.eventid === 'cowrie.command.failed' }
+      const line = { ts: e.ts, input: str(e.data?.input), failed: e.eventid === 'cowrie.command.failed' }
       const last = out[out.length - 1]
       // command.failed repeats the input it follows: mark that line instead.
       if (line.failed && last?.kind === 'terminal') {

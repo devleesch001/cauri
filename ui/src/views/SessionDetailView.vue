@@ -9,7 +9,7 @@ import ChapterList from '@/components/ChapterList.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import ReplayPlayer from '@/components/ReplayPlayer.vue'
-import { endpoint, formatBytes, formatDuration, formatOffset, formatTime } from '@/format'
+import { endpoint, formatBytes, formatMillis, formatOffset, formatTime } from '@/format'
 import { timeline } from '@/timeline'
 
 const props = defineProps<{ id: string }>()
@@ -110,8 +110,8 @@ const logins = computed(() => {
       result: l.success ? 'accepted' : 'refused',
     })),
     ...eventsOf('cowrie.client.fingerprint').map((e) => ({
-      ts: e.ts, key: true, user: String(e.data.username ?? ''),
-      secret: [e.data.type, e.data.fingerprint].filter(Boolean).join(' '),
+      ts: e.ts, key: true, user: String(e.data?.username ?? ''),
+      secret: [e.data?.type, e.data?.fingerprint].filter(Boolean).join(' '),
       result: 'offered',
     })),
   ]
@@ -155,7 +155,7 @@ const logins = computed(() => {
             :class="'badge-' + verdict.verdict"
           >{{ t('session.verdict.' + verdict.verdict) }}</span>
         </h1>
-        <span class="muted">{{ t('session.startedOn', { time: formatTime(session.started_at), sensor: session.sensor_id }) }}</span>
+        <span class="muted">{{ t('session.startedOn', { time: formatTime(session.started_at), sensor: session.sensor }) }}</span>
       </div>
 
       <div class="layout">
@@ -169,7 +169,7 @@ const logins = computed(() => {
           </h2>
           <ReplayPlayer
             ref="player"
-            :session-id="session.id"
+            :session-id="id"
             @time="(s) => (playerTime = s)"
             @markers="(m) => (markers = m)"
           />
@@ -204,7 +204,7 @@ const logins = computed(() => {
                 </dd>
               </template>
               <dt>{{ t('session.facts.sensor') }}</dt>
-              <dd>{{ session.sensor_id }}</dd>
+              <dd>{{ session.sensor }}</dd>
               <dt>{{ t('session.facts.user') }}</dt>
               <dd class="data">
                 {{ user ?? '—' }}
@@ -220,7 +220,7 @@ const logins = computed(() => {
               <dt>{{ t('session.facts.started') }}</dt>
               <dd>{{ formatTime(session.started_at) }}</dd>
               <dt>{{ t('session.facts.duration') }}</dt>
-              <dd>{{ formatDuration(session.duration) }}</dd>
+              <dd>{{ formatMillis(session.duration_ms) }}</dd>
               <dt>{{ t('session.facts.port') }}</dt>
               <dd>{{ session.dst_port ?? '—' }} <span class="muted">{{ session.protocol }}</span></dd>
               <dt>{{ t('session.facts.mode') }}</dt>
@@ -231,7 +231,7 @@ const logins = computed(() => {
               </dd>
               <dt>{{ t('session.recording.title') }}</dt>
               <dd v-if="session.tty_available">
-                {{ t('session.recording.stored', { size: formatBytes(session.tty_size), duration: formatDuration(session.tty_duration) }) }}
+                {{ t('session.recording.stored', { size: formatBytes(session.tty_size), duration: formatMillis(session.tty_duration_ms) }) }}
                 <span
                   v-if="chapters"
                   class="muted"
