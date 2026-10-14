@@ -37,11 +37,7 @@ jobs:
         run: go test -race ./...
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.14.0
-          # Build golangci-lint with the runner's Go: release binaries are
-          # built with an older Go and cannot read the packages of a newer
-          # one (Go 1.27.2: "export data version 5").
-          install-mode: goinstall
+          version: v2.14.0 # at least: older versions cannot read Go 1.27.2 packages
 
   ui:
     runs-on: ubuntu-latest

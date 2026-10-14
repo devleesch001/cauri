@@ -42,14 +42,10 @@ No C compiler is needed: the SQLite driver is pure Go. The race detector (`go te
 go version && node --version && docker compose version && golangci-lint version
 ```
 
-Install golangci-lint with `go install`, so that it is built with your Go,
-and reinstall it after updating Go: a binary built with an older Go
-cannot read the packages of a newer one (with Go 1.27.2: "export data
-version 5 is greater than maximum supported version 4").
-
-```sh
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
-```
+golangci-lint must be v2.14.0 or later: Go 1.27.2 compiles packages in a
+newer format (export data version 5) that earlier versions cannot read,
+and they fail with "export data version 5 is greater than maximum
+supported version 4".
 
 ## First setup
 
