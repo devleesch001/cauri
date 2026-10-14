@@ -179,7 +179,10 @@ With Docker: `docker compose exec api cauri token create --sensor hp-01`.
 
 ## Deployment
 
-The image runs as the distroless `nonroot` user (uid 65532). Its `/data`
+The image is `scratch` plus what the static binary needs, taken from
+Alpine: CA certificates (the ingestor calls the API over HTTPS), time zones
+(set `TZ` to log in local time; UTC otherwise) and a `nonroot` user. It
+runs as that user (uid 65532). Its `/data`
 directory is owned by that user, so a new named volume mounted there is
 writable. With a bind mount instead, give the directory to uid 65532.
 

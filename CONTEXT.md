@@ -16,7 +16,7 @@ Version 1 is complete:
 - UI: session list, session detail with a timeline (commands shown as a
   terminal) and the replay of the recording, failed logins without a
   shell, sensor filter; English, all texts in vue-i18n;
-- one Docker image (distroless, non-root), compose examples for modes 1
+- one Docker image (scratch, non-root), compose examples for modes 1
   and 2, GitHub and Forgejo Actions workflows with GoReleaser releases,
   README.
 
@@ -45,7 +45,8 @@ module path is `github.com/devleesch001/cauri`.
 | Token management | `cauri token` CLI writing to the database | User: acceptable exception to "the API is the only writer"; rare writes to one table. |
 | Ingestor buffer | No local copy: position saved after acknowledgement, the Cowrie log files are the buffer | Simplest at-least-once design. Limit: rotated logs must outlive an API outage. User agreed. |
 | First start of an ingestor | Default `--start beginning`: send all existing logs | User agreed. |
-| Containers | Non-root everywhere (distroless `nonroot`, uid 65532) | User: maximise rootless. |
+| Containers | Non-root everywhere (`nonroot`, uid 65532) | User: maximise rootless. |
+| Image base | `scratch` plus files from Alpine: CA certificates, time zones, `/etc/passwd` and `/etc/group` for `nonroot` | User: does not know distroless, prefers scratch. |
 | Licence | MIT | User. |
 | UI library | OpenVue (npm `openvue`, `@openvue/themes`, `@openvue/icons`) | User asked for it; it is a direct fork of PrimeVue after PrimeVue stopped, hence its young age. Do not switch to PrimeVue without asking. |
 | UI language | English, with vue-i18n from the start | User. |
