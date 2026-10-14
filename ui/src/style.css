@@ -55,6 +55,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Header, page, footer: the page takes the free height, so the footer
+   stays at the bottom of the screen when the page is short. */
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+#app > main {
+  flex: 1 0 auto;
+}
+
 h1,
 h2 {
   margin: 0;
