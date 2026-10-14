@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/uptrace/bun"
 
+	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/ingest"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/pkg/protocol"
@@ -29,6 +30,11 @@ type Config struct {
 	TTY    *ttystore.Store // stored recordings, read for replays
 	Tokens Authenticator
 	Logger *slog.Logger
+	// Version is shown by GET /api/about.
+	Version string
+	// GeoIP is the GeoIP database, nil without one: its provider sets the
+	// attribution the UI must show.
+	GeoIP interface{ Info() geoip.Info }
 	// ReadAuth protects the read endpoints. Nil lets every request through;
 	// UI authentication will plug in here.
 	ReadAuth func(http.Handler) http.Handler
@@ -61,6 +67,8 @@ func New(c Config) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(c.ReadAuth)
 			r.Get("/sensors", s.listSensors)
+			r.Get("/countries", s.listCountries)
+			r.Get("/about", s.getAbout)
 			r.Get("/sessions", s.listSessions)
 			r.Get("/sessions/{id}", s.getSession)
 			r.Get("/sessions/{id}/cast", s.getCast)

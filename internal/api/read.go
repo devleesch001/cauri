@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/store"
 )
 
@@ -35,6 +37,7 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 	f := store.SessionFilter{
 		SensorID:    q.str("sensor"),
 		SrcIP:       q.str("ip"),
+		Country:     q.country("country"),
 		Username:    q.str("username"),
 		Password:    q.str("password"),
 		Client:      q.str("client"),
@@ -75,6 +78,7 @@ func (s *server) listLoginAttempts(w http.ResponseWriter, r *http.Request) {
 	f := store.LoginAttemptFilter{
 		SensorID:    q.str("sensor"),
 		SrcIP:       q.str("ip"),
+		Country:     q.country("country"),
 		Username:    q.str("username"),
 		Password:    q.str("password"),
 		From:        q.time("from"),
@@ -144,6 +148,19 @@ func (q *query) bool(name string) *bool {
 	return &b
 }
 
+// country accepts an ISO 3166-1 alpha-2 code, in any case.
+func (q *query) country(name string) string {
+	s := strings.ToUpper(q.v.Get(name))
+	if s == "" {
+		return ""
+	}
+	if len(s) != 2 || s[0] < 'A' || s[0] > 'Z' || s[1] < 'A' || s[1] > 'Z' {
+		q.fail(name, "a two-letter country code")
+		return ""
+	}
+	return s
+}
+
 func (q *query) oneOf(name string, values ...string) string {
 	s := q.v.Get(name)
 	if s == "" {
@@ -173,4 +190,29 @@ func (q *query) int(name string) int {
 
 func (q *query) page() store.Page {
 	return store.Page{Limit: q.int("limit"), Offset: q.int("offset")}
+}
+
+func (s *server) listCountries(w http.ResponseWriter, r *http.Request) {
+	countries, err := store.ListCountries(r.Context(), s.DB, r.URL.Query().Get("sensor"))
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, countries)
+}
+
+type about struct {
+	Version string      `json:"version"`
+	GeoIP   *geoip.Info `json:"geoip"` // null without a GeoIP database
+}
+
+// getAbout describes this cauri: the UI shows the attribution the GeoIP
+// database requires.
+func (s *server) getAbout(w http.ResponseWriter, _ *http.Request) {
+	out := about{Version: s.Version}
+	if s.GeoIP != nil {
+		info := s.GeoIP.Info()
+		out.GeoIP = &info
+	}
+	writeJSON(w, http.StatusOK, out)
 }

@@ -22,7 +22,11 @@ type Network struct {
 // built at built, into dir, and returns its path.
 func Write(t testing.TB, dir, dbType string, built time.Time, networks ...Network) string {
 	t.Helper()
-	tree, err := mmdbwriter.New(mmdbwriter.Options{DatabaseType: dbType, RecordSize: 24, BuildEpoch: built.Unix()})
+	// Tests use documentation ranges (203.0.113.0/24) as public addresses:
+	// reserved networks must be allowed.
+	tree, err := mmdbwriter.New(mmdbwriter.Options{
+		DatabaseType: dbType, RecordSize: 24, BuildEpoch: built.Unix(), IncludeReservedNetworks: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

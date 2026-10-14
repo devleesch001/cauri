@@ -21,6 +21,8 @@ import (
 
 	"github.com/devleesch001/cauri/internal/api"
 	"github.com/devleesch001/cauri/internal/auth"
+	"github.com/devleesch001/cauri/internal/geoip"
+	"github.com/devleesch001/cauri/internal/geoip/geoiptest"
 	"github.com/devleesch001/cauri/internal/ingest"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/store/storetest"
@@ -542,4 +544,63 @@ func TestVerdict(t *testing.T) {
 		}
 		get(t, e, "/api/sessions/unknown/verdict", http.StatusNotFound, nil)
 	})
+}
+
+func TestGeoIP(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		path := geoiptest.Write(t, t.TempDir(), "DBIP-City-Lite", time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+			geoiptest.Network{CIDR: "203.0.113.0/24", Country: "IR", City: "Tehran"})
+		geo, err := geoip.Open(path, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = geo.Close() }()
+		e := setup(t, db, func(c *api.Config) {
+			c.Ingest.SetLocator(geo)
+			c.GeoIP = geo
+			c.Version = "1.2.3"
+		})
+		if _, err := e.client.SendEvents(context.Background(), events("hp-01")); err != nil {
+			t.Fatal(err)
+		}
+
+		var list struct {
+			Items []store.SessionSummary `json:"items"`
+		}
+		get(t, e, "/api/sessions?country=ir", http.StatusOK, &list)
+		if len(list.Items) != 1 || *list.Items[0].GeoCity != "Tehran" || *list.Items[0].GeoSource != "DBIP-City-Lite 2026-10-01" {
+			t.Fatalf("sessions from IR = %+v", list.Items)
+		}
+		get(t, e, "/api/sessions?country=FR", http.StatusOK, &list)
+		if len(list.Items) != 0 {
+			t.Errorf("sessions from FR = %d", len(list.Items))
+		}
+		get(t, e, "/api/sessions?country=Iran", http.StatusBadRequest, nil)
+
+		var countries []store.CountryCount
+		get(t, e, "/api/countries", http.StatusOK, &countries)
+		if len(countries) != 1 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 1}) {
+			t.Errorf("countries = %+v", countries)
+		}
+
+		var a struct {
+			Version string `json:"version"`
+			GeoIP   *struct {
+				Type, Provider string
+			} `json:"geoip"`
+		}
+		get(t, e, "/api/about", http.StatusOK, &a)
+		if a.Version != "1.2.3" || a.GeoIP == nil || a.GeoIP.Provider != "db-ip" || a.GeoIP.Type != "DBIP-City-Lite" {
+			t.Errorf("about = %+v", a)
+		}
+	})
+}
+
+func TestAboutWithoutGeoIP(t *testing.T) {
+	e := setup(t, storetest.SQLite(t), nil)
+	var a map[string]any
+	get(t, e, "/api/about", http.StatusOK, &a)
+	if v, ok := a["geoip"]; !ok || v != nil {
+		t.Errorf("about = %v", a)
+	}
 }
