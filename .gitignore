@@ -5,8 +5,8 @@
 
 # UI
 /ui/node_modules/
-/ui/dist/*
-!/ui/dist/index.html
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep
 
 # Local data
 *.db
@@ -16,3 +16,6 @@
 # IDE
 /.idea/
 /.vscode/
+
+# Browser automation output
+/.playwright-mcp/

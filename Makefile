@@ -19,3 +19,4 @@ lint:
 
 clean:
 	rm -rf bin
+	find internal/webui/dist -mindepth 1 ! -name .gitkeep -delete

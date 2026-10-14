@@ -10,6 +10,7 @@ import (
 	"cauri/internal/envflag"
 	"cauri/internal/ingest"
 	"cauri/internal/ttystore"
+	"cauri/internal/webui"
 )
 
 func init() {
@@ -23,6 +24,7 @@ func runAPI(ctx context.Context, args []string) error {
 	listen := fs.String("listen", ":8080", "HTTP listen address")
 	ttyDir := fs.String("tty-dir", "data/tty", "directory storing raw TTY recordings")
 	maxTTY := fs.Int64("max-tty-size", ingest.DefaultMaxTTYSize, "largest TTY recording accepted, in bytes")
+	withUI := fs.Bool("ui", false, "also serve the web UI, for a single container")
 	logLevel := fs.String("log-level", "info", "log level: debug, info, warn or error")
 	if err := envflag.Parse(fs, args); err != nil {
 		return err
@@ -42,12 +44,16 @@ func runAPI(ctx context.Context, args []string) error {
 		return err
 	}
 
-	handler := api.New(api.Config{
+	cfg := api.Config{
 		DB:     conn,
 		Ingest: ingest.New(conn, tty, *maxTTY),
 		Tokens: auth.NewTokens(conn),
 		Logger: log,
-	})
+	}
+	if *withUI {
+		cfg.UI = webui.Handler()
+	}
+	handler := api.New(cfg)
 	srv := &http.Server{
 		Addr:              *listen,
 		Handler:           handler,
@@ -56,6 +62,6 @@ func runAPI(ctx context.Context, args []string) error {
 		WriteTimeout:      time.Minute,
 		IdleTimeout:       2 * time.Minute,
 	}
-	log.Info("starting api", "version", buildVersion(), "db", db.driver)
+	log.Info("starting api", "version", buildVersion(), "db", db.driver, "ui", *withUI)
 	return serve(ctx, srv, log)
 }

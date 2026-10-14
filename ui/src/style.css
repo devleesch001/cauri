@@ -1,0 +1,143 @@
+:root {
+  --c-ink: #1d2730;
+  --c-muted: #5b6a77;
+  --c-paper: #f5f7f9;
+  --c-surface: #ffffff;
+  --c-rule: #d8dee4;
+  --c-shell: #b42318; /* an attacker obtained a shell: the one alarm colour */
+  --c-shell-bg: #fdecea;
+  --c-term-bg: #0f1b24;
+  --c-term-ink: #d6e2ea;
+  --c-term-prompt: #7fd1c7;
+  --c-term-dim: #7d8f9c;
+
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-ink: #e3e9ee;
+    --c-muted: #93a3b0;
+    --c-paper: #12181d;
+    --c-surface: #1a2229;
+    --c-rule: #2c3741;
+    --c-shell: #f97066;
+    --c-shell-bg: #3a1714;
+    --c-term-bg: #0a1117;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  margin: 0;
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.07rem;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--p-primary-color);
+  outline-offset: 2px;
+}
+
+/* Technical values: IPs, hashes, credentials, commands. */
+.data {
+  font-family: var(--font-data);
+  font-size: 0.93em;
+}
+
+.muted {
+  color: var(--c-muted);
+}
+
+.shell {
+  color: var(--c-shell);
+  font-weight: 600;
+}
+
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-4) var(--space-5);
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.filters .p-inputtext {
+  width: 11rem;
+}
+
+/* Clickable table rows open the detail. */
+.p-datatable .p-datatable-tbody > tr {
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: var(--space-3);
+  }
+
+  .filters .p-inputtext {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
