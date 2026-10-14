@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -58,9 +59,14 @@ func newLogger(level string) (*slog.Logger, error) {
 
 // serve runs srv until ctx is done, then shuts it down gracefully.
 func serve(ctx context.Context, srv *http.Server, log *slog.Logger) error {
+	// Listen first, so that "listening" is only logged once the port is ours.
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", srv.Addr)
+	if err != nil {
+		return err
+	}
 	errc := make(chan error, 1)
-	go func() { errc <- srv.ListenAndServe() }()
-	log.Info("listening", "addr", srv.Addr)
+	go func() { errc <- srv.Serve(ln) }()
+	log.Info("listening", "addr", ln.Addr().String())
 	select {
 	case err := <-errc:
 		return err
