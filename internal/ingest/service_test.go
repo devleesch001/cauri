@@ -15,6 +15,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/store/storetest"
 	"github.com/devleesch001/cauri/internal/ttystore"
@@ -444,4 +445,78 @@ func TestParseLenient(t *testing.T) {
 	if _, err := parseEvent([]byte(`{"eventid":42,"timestamp":"2026-10-14T09:00:00Z"}`)); err == nil {
 		t.Error("want error when eventid is not a string")
 	}
+}
+
+// fakeLocator locates 203.0.113.0/24 in Iran; its source can change, as
+// an updated database would.
+type fakeLocator struct{ source string }
+
+func (f *fakeLocator) Locate(ip string) (geoip.Location, string, bool) {
+	if strings.HasPrefix(ip, "203.0.113.") {
+		return geoip.Location{Country: "IR", City: "Tehran"}, f.source, true
+	}
+	return geoip.Location{}, f.source, false
+}
+
+func TestIngestLocates(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		loc := &fakeLocator{source: "DBIP-City-Lite 2026-10-01"}
+		svc.SetLocator(loc)
+		ctx := context.Background()
+
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, "s1", 0, nil))); err != nil {
+			t.Fatal(err)
+		}
+		s := getSession(t, db, sensor, "s1")
+		if s.GeoCountry == nil || *s.GeoCountry != "IR" || *s.GeoCity != "Tehran" || *s.GeoSource != "DBIP-City-Lite 2026-10-01" {
+			t.Fatalf("located session = %v %v %v", s.GeoCountry, s.GeoCity, s.GeoSource)
+		}
+
+		// A later batch, with an updated database, keeps the first location.
+		loc.source = "DBIP-City-Lite 2026-11-01"
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evCommandInput, "s1", 1, map[string]any{"input": "id"}))); err != nil {
+			t.Fatal(err)
+		}
+		if s := getSession(t, db, sensor, "s1"); *s.GeoSource != "DBIP-City-Lite 2026-10-01" {
+			t.Errorf("relocated: %v", *s.GeoSource)
+		}
+
+		// A private address is looked up, but has no country.
+		l := line(evConnect, "s2", 0, nil)
+		l = bytes.Replace(l, []byte("203.0.113.7"), []byte("10.0.0.9"), 1)
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, l)); err != nil {
+			t.Fatal(err)
+		}
+		if s := getSession(t, db, sensor, "s2"); s.GeoSource == nil || s.GeoCountry != nil || s.GeoCity != nil {
+			t.Errorf("private address = %v %v %v", s.GeoCountry, s.GeoCity, s.GeoSource)
+		}
+	})
+}
+
+// Sessions stored before a database was configured are located once.
+func TestLocateSessions(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		for _, sess := range []string{"a", "b", "c"} {
+			if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, sess, 0, nil))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if n, err := svc.LocateSessions(ctx); n != 0 || err != nil {
+			t.Fatalf("without locator: %d, %v", n, err)
+		}
+		svc.SetLocator(&fakeLocator{source: "GeoLite2-City 2026-10-01"})
+		n, err := svc.LocateSessions(ctx)
+		if err != nil || n != 3 {
+			t.Fatalf("located %d, %v", n, err)
+		}
+		if s := getSession(t, db, sensor, "b"); s.GeoCountry == nil || *s.GeoCountry != "IR" {
+			t.Errorf("session b = %v", s.GeoCountry)
+		}
+		if n, err := svc.LocateSessions(ctx); n != 0 || err != nil {
+			t.Errorf("second run located %d, %v", n, err)
+		}
+	})
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/pkg/protocol"
@@ -48,7 +49,18 @@ type Service struct {
 	tty        *ttystore.Store
 	maxTTYSize int64
 	now        func() time.Time
+	locator    Locator // optional
 }
+
+// Locator locates IP addresses, see package geoip. source names the
+// database that answered; ok is false for unknown addresses.
+type Locator interface {
+	Locate(ip string) (loc geoip.Location, source string, ok bool)
+}
+
+// SetLocator makes the service locate new sessions by their source
+// address. Without it, sessions are not located.
+func (s *Service) SetLocator(l Locator) { s.locator = l }
 
 // New returns a service writing to db and tty, refusing TTY recordings
 // larger than maxTTYSize bytes (DefaultMaxTTYSize if not positive).
@@ -123,7 +135,7 @@ func (s *Service) IngestEvents(ctx context.Context, sensorID string, b protocol.
 			isKnown[id] = true
 		}
 
-		w := newBatchWriter(sensorID, s.now().UTC())
+		w := newBatchWriter(sensorID, s.now().UTC(), s.locator)
 		for _, e := range events {
 			if isKnown[e.id] {
 				res.Duplicates++
@@ -199,4 +211,51 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 		return nil
 	})
 	return res, err
+}
+
+// locateBatch is the number of sessions located per transaction.
+const locateBatch = 500
+
+// LocateSessions locates the sessions that were stored without a
+// location, such as before a GeoIP database was configured, and returns
+// how many it looked up. Sessions already located are never changed.
+func (s *Service) LocateSessions(ctx context.Context) (int, error) {
+	if s.locator == nil {
+		return 0, nil
+	}
+	total := 0
+	for {
+		var rows []store.Session
+		err := s.db.NewSelect().Model(&rows).Column("id", "src_ip").
+			Where("geo_source IS NULL").Where("src_ip IS NOT NULL").
+			OrderExpr("s.id").Limit(locateBatch).Scan(ctx)
+		if err != nil || len(rows) == 0 {
+			return total, err
+		}
+		err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+			for _, r := range rows {
+				loc, source, ok := s.locator.Locate(*r.SrcIP)
+				q := tx.NewUpdate().Model((*store.Session)(nil)).
+					Set("geo_source = ?", source).Where("id = ?", r.ID).Where("geo_source IS NULL")
+				if ok {
+					q = q.Set("geo_country = ?", loc.Country).Set("geo_city = ?", nullable(loc.City))
+				}
+				if _, err := q.Exec(ctx); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return total, err
+		}
+		total += len(rows)
+	}
+}
+
+func nullable(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

@@ -20,6 +20,7 @@ import (
 // recording are only set by StoreTTY, from the uploaded file.
 type batchWriter struct {
 	now      time.Time
+	locator  Locator // optional
 	sensor   store.Sensor
 	sessions map[string]*store.Session
 	order    []string // session ids, in order of appearance
@@ -29,9 +30,10 @@ type batchWriter struct {
 	xfers    []store.Transfer
 }
 
-func newBatchWriter(sensorID string, now time.Time) *batchWriter {
+func newBatchWriter(sensorID string, now time.Time, locator Locator) *batchWriter {
 	return &batchWriter{
 		now:      now,
+		locator:  locator,
 		sensor:   store.Sensor{ID: sensorID},
 		sessions: map[string]*store.Session{},
 	}
@@ -153,6 +155,7 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) error {
 	rows := make([]store.Session, len(w.order))
 	for i, id := range w.order {
 		rows[i] = *w.sessions[id]
+		w.locate(&rows[i])
 	}
 	q := tx.NewInsert().Model(&rows).On("CONFLICT (id) DO UPDATE").
 		Set("started_at = CASE WHEN EXCLUDED.started_at < ?TableAlias.started_at THEN EXCLUDED.started_at ELSE ?TableAlias.started_at END").
@@ -163,8 +166,26 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) error {
 	for _, col := range []string{"ended_at", "duration", "tty_log", "tty_duration"} {
 		q = q.Set(col + " = COALESCE(EXCLUDED." + col + ", ?TableAlias." + col + ")")
 	}
+	// A located session keeps its location: the three columns come from
+	// the same lookup, the first one.
+	for _, col := range []string{"geo_country", "geo_city", "geo_source"} {
+		q = q.Set(col + " = CASE WHEN ?TableAlias.geo_source IS NULL THEN EXCLUDED." + col + " ELSE ?TableAlias." + col + " END")
+	}
 	_, err := q.Exec(ctx)
 	return err
+}
+
+// locate sets the location of a session row from its source address.
+func (w *batchWriter) locate(s *store.Session) {
+	if w.locator == nil || s.SrcIP == nil {
+		return
+	}
+	loc, source, ok := w.locator.Locate(*s.SrcIP)
+	s.GeoSource = &source
+	if ok {
+		s.GeoCountry = &loc.Country
+		s.GeoCity = nullable(loc.City)
+	}
 }
 
 func insertIgnore[T any](ctx context.Context, tx bun.Tx, rows *[]T) error {
