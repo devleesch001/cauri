@@ -77,7 +77,7 @@ type Event struct {
 	Hash       []byte `bun:"hash"`
 	SensorID   int64  `bun:"sensor_id"`
 	SessionID  *int64 `bun:"session_id"`
-	Type       string `bun:"type"`
+	Type       string `bun:"column:type"`
 	TS         Time   `bun:"ts"`
 	ReceivedAt Time   `bun:"received_at"`
 }

@@ -204,7 +204,18 @@ func (q *query) page() store.Page {
 }
 
 func (s *server) listCountries(w http.ResponseWriter, r *http.Request) {
-	countries, err := store.ListCountries(r.Context(), s.DB, r.URL.Query().Get("sensor"))
+	q := query{v: r.URL.Query()}
+	f := store.CountryFilter{
+		Sensor:  q.str("sensor"),
+		From:    q.time("from"),
+		To:      q.time("to"),
+		Verdict: q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
+	}
+	if q.err != nil {
+		writeError(w, http.StatusBadRequest, q.err.Error())
+		return
+	}
+	countries, err := store.ListCountries(r.Context(), s.DB, f)
 	if err != nil {
 		s.internalError(w, r, err)
 		return

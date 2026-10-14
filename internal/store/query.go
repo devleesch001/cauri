@@ -125,12 +125,7 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 	case LoginFailed:
 		q = q.Where("s.login_success = ?", false)
 	}
-	switch f.Verdict {
-	case VerdictHuman:
-		q = q.Where("s.verdict = ?", "human")
-	case VerdictBot:
-		q = q.Where("s.verdict IN (?)", bun.List([]string{"bot", "no_interaction", "uncertain"}))
-	}
+	q = whereVerdict(q, f.Verdict)
 	if f.Username != "" || f.Password != "" {
 		// IN, not a correlated EXISTS: the attempts matching the username
 		// are read once, not once per session.
@@ -216,7 +211,7 @@ func summarize(ctx context.Context, db bun.IDB, rows []Session) ([]SessionSummar
 // Cowrie wrote, null once purged.
 type EventView struct {
 	ID      int64           `bun:"id" json:"id"`
-	EventID string          `bun:"type" json:"eventid"`
+	EventID string          `bun:"column:type" json:"eventid"`
 	TS      Time            `bun:"ts" json:"ts"`
 	Data    json.RawMessage `bun:"data" json:"data"`
 }
@@ -456,23 +451,51 @@ func GetSessionFacts(ctx context.Context, db bun.IDB, id int64) (*SessionFacts, 
 	return f, nil
 }
 
-// CountryCount is a country and its number of sessions.
+// CountryCount is a country and what came from it.
 type CountryCount struct {
 	Country  string `bun:"geo_country" json:"country"`
 	Sessions int    `bun:"n" json:"sessions"`
+	Shells   int    `bun:"shells" json:"shells"` // sessions that obtained a shell
+}
+
+// CountryFilter selects the sessions counted by country. Zero values do
+// not filter.
+type CountryFilter struct {
+	Sensor   string     // name
+	From, To *time.Time // on started_at, To exclusive
+	Verdict  string     // VerdictHuman or VerdictBot, as in SessionFilter
 }
 
 // ListCountries returns the countries sessions came from, most sessions
-// first, for one sensor (by name) if sensor is set.
-func ListCountries(ctx context.Context, db bun.IDB, sensor string) ([]CountryCount, error) {
+// first. Sessions without a location are not counted.
+func ListCountries(ctx context.Context, db bun.IDB, f CountryFilter) ([]CountryCount, error) {
 	out := []CountryCount{}
 	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country").ColumnExpr("COUNT(*) AS n").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
 		Where("s.geo_country IS NOT NULL").GroupExpr("s.geo_country").OrderExpr("n DESC, s.geo_country")
-	if sensor != "" {
-		q = q.Where("s.sensor_id = (SELECT id FROM sensors WHERE name = ?)", sensor)
+	if f.Sensor != "" {
+		q = q.Where("s.sensor_id = (SELECT id FROM sensors WHERE name = ?)", f.Sensor)
 	}
+	if f.From != nil {
+		q = q.Where("s.started_at >= ?", Micro(*f.From))
+	}
+	if f.To != nil {
+		q = q.Where("s.started_at < ?", Micro(*f.To))
+	}
+	q = whereVerdict(q, f.Verdict)
 	err := q.Scan(ctx, &out)
 	return out, err
+}
+
+// whereVerdict filters on the stored verdict, see VerdictHuman.
+func whereVerdict(q *bun.SelectQuery, v string) *bun.SelectQuery {
+	switch v {
+	case VerdictHuman:
+		return q.Where("s.verdict = ?", "human")
+	case VerdictBot:
+		return q.Where("s.verdict IN (?)", bun.List([]string{"bot", "no_interaction", "uncertain"}))
+	}
+	return q
 }
 
 // LookupSession returns the id of a session from its sensor name and

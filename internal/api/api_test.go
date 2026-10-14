@@ -617,7 +617,7 @@ func TestGeoIP(t *testing.T) {
 
 		var countries []store.CountryCount
 		get(t, e, "/api/countries", http.StatusOK, &countries)
-		if len(countries) != 1 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 1}) {
+		if len(countries) != 1 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 1, Shells: 1}) {
 			t.Errorf("countries = %+v", countries)
 		}
 

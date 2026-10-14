@@ -242,12 +242,21 @@ func TestCountries(t *testing.T) {
 		if _, got := sessions(t, db, store.SessionFilter{Country: "IR"}); got != "31" {
 			t.Errorf("sessions from IR = %q", got)
 		}
-		countries, err := store.ListCountries(ctx, db, "")
-		if err != nil || len(countries) != 2 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 2}) {
+		// Session 1 (IR) obtained a shell.
+		countries, err := store.ListCountries(ctx, db, store.CountryFilter{})
+		if err != nil || len(countries) != 2 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 2, Shells: 1}) ||
+			countries[1] != (store.CountryCount{Country: "FR", Sessions: 1}) {
 			t.Errorf("countries = %+v, %v", countries, err)
 		}
-		if c, _ := store.ListCountries(ctx, db, "hp-02"); len(c) != 1 || c[0].Country != "IR" {
+		if c, _ := store.ListCountries(ctx, db, store.CountryFilter{Sensor: "hp-02"}); len(c) != 1 || c[0].Country != "IR" {
 			t.Errorf("countries of hp-02 = %+v", c)
+		}
+		if c, _ := store.ListCountries(ctx, db, store.CountryFilter{From: ptr(t0.Add(time.Hour))}); len(c) != 2 || c[0].Sessions != 1 {
+			t.Errorf("countries from t0+1h = %+v", c)
+		}
+		// 1 is uncertain, 2 and 3 without interaction: all bots.
+		if c, _ := store.ListCountries(ctx, db, store.CountryFilter{Verdict: store.VerdictHuman}); len(c) != 0 {
+			t.Errorf("countries of humans = %+v", c)
 		}
 		rows, _, err := store.ListLoginAttempts(ctx, db, store.LoginAttemptFilter{Country: "FR"})
 		if err != nil || len(rows) != 1 || *rows[0].Country != "FR" {
