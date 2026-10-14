@@ -133,8 +133,10 @@ a {
   color: var(--c-surface);
 }
 
+/* Wide enough for the session table on a 2K screen without scrolling;
+   capped so that lines stay readable on larger ones. */
 .page {
-  max-width: 1440px;
+  max-width: 2400px;
   margin: 0 auto;
   padding: var(--space-4) var(--space-4) var(--space-5);
 }
