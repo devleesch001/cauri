@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Skeleton from 'openvue/skeleton'
 import { ApiError, api } from '@/api/client'
-import type { Chapter, Chapters, SessionDetail } from '@/api/types'
+import type { Chapter, Chapters, SessionDetail, Verdict } from '@/api/types'
 import ChapterList from '@/components/ChapterList.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import ReplayPlayer from '@/components/ReplayPlayer.vue'
@@ -16,6 +16,7 @@ const { t } = useI18n()
 
 const session = ref<SessionDetail | null>(null)
 const chapters = ref<Chapters | null>(null)
+const verdict = ref<Verdict | null>(null)
 // Position of the player and of its markers, on its own timeline.
 const playerTime = ref(0)
 const markers = ref<number[]>([])
@@ -28,10 +29,13 @@ watch(
     session.value = null
     missing.value = false
     chapters.value = null
+    verdict.value = null
     markers.value = []
     try {
       session.value = await api.session(id)
       error.value = null
+      // Optional: the page works without it.
+      void api.verdict(id).then((v) => (verdict.value = v)).catch(() => undefined)
       if (session.value.tty_available) {
         // Without chapters, the commands are listed without their output.
         chapters.value = await api.chapters(id).catch(() => null)
@@ -72,6 +76,8 @@ const commandChapters = computed<Chapter[]>(() => {
     full_screen: false,
   }))
 })
+
+const signed = (n: number) => (n > 0 ? `+${n}` : String(n))
 
 const eventsOf = (id: string) => session.value?.events.filter((e) => e.eventid === id) ?? []
 
@@ -142,6 +148,11 @@ const logins = computed(() => {
             v-else
             class="muted verdict"
           >{{ t('session.noShell') }}</span>
+          <span
+            v-if="verdict"
+            class="badge"
+            :class="'badge-' + verdict.verdict"
+          >{{ t('session.verdict.' + verdict.verdict) }}</span>
         </h1>
         <span class="muted">{{ t('session.startedOn', { time: formatTime(session.started_at), sensor: session.sensor_id }) }}</span>
       </div>
@@ -222,6 +233,28 @@ const logins = computed(() => {
               >
                 {{ t('session.recording.none') }}
               </dd>
+              <template v-if="verdict">
+                <dt>{{ t('session.verdict.label') }}</dt>
+                <dd>
+                  <span
+                    class="badge"
+                    :class="'badge-' + verdict.verdict"
+                  >{{ t('session.verdict.' + verdict.verdict) }}</span>
+                  <span class="muted score">{{ t('session.verdict.score', { score: signed(verdict.score) }) }}</span>
+                  <ul
+                    v-if="verdict.reasons.length"
+                    class="reasons"
+                  >
+                    <li
+                      v-for="r in verdict.reasons"
+                      :key="r.code"
+                    >
+                      {{ t('session.verdict.reasons.' + r.code) }}
+                      <span class="data muted">{{ signed(r.points) }}</span>
+                    </li>
+                  </ul>
+                </dd>
+              </template>
               <dt>{{ t('session.facts.cowrieSession') }}</dt>
               <dd class="data">
                 {{ session.session }}
@@ -429,6 +462,46 @@ const logins = computed(() => {
 /* No replay: the timeline takes the replay's place. */
 .layout:not(:has(.replay-area)) {
   grid-template-areas: 'timeline side';
+}
+
+/* Verdict: neutral colours; red only means "got a shell". */
+.badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--c-rule);
+  border-radius: 999px;
+  color: var(--c-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.6;
+  vertical-align: middle;
+}
+
+dd > .badge {
+  margin-left: 0;
+}
+
+.badge-human {
+  border-color: var(--p-primary-color);
+  color: var(--p-primary-color);
+}
+
+.badge-bot {
+  border-color: var(--c-ink);
+  background: var(--c-ink);
+  color: var(--c-surface);
+}
+
+.score {
+  margin-left: var(--space-2);
+}
+
+.reasons {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.93em;
 }
 
 .card {

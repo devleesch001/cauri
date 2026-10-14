@@ -1,4 +1,4 @@
-import type { Chapters, LoginAttemptRow, Page, Sensor, SessionDetail, SessionSummary } from './types'
+import type { Chapters, LoginAttemptRow, Page, Sensor, SessionDetail, SessionSummary, Verdict } from './types'
 
 // Paths are relative to the page: the API and the UI share a domain, so
 // there is no API URL to configure and no CORS.
@@ -39,6 +39,7 @@ export const api = {
   sessions: (params: Params) => get<Page<SessionSummary>>('/sessions', params),
   session: (id: string) => get<SessionDetail>('/sessions/' + encodeURIComponent(id)),
   chapters: (id: string) => get<Chapters>('/sessions/' + encodeURIComponent(id) + '/chapters'),
+  verdict: (id: string) => get<Verdict>('/sessions/' + encodeURIComponent(id) + '/verdict'),
   /** URL of a session's replay; realTime removes the idle time limit. */
   castUrl: (id: string, realTime: boolean) =>
     `${base}/sessions/${encodeURIComponent(id)}/cast` + (realTime ? '?idle_time_limit=0' : ''),

@@ -114,3 +114,10 @@ export interface Chapters {
   records: number // records in the raw recording
   chapters: Chapter[]
 }
+
+/** Whether a session looks typed by a human or run by a bot (GET /api/sessions/{id}/verdict). */
+export interface Verdict {
+  verdict: 'human' | 'bot' | 'uncertain' | 'no_interaction'
+  score: number
+  reasons: { code: string; points: number }[]
+}
