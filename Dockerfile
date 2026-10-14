@@ -9,7 +9,7 @@ COPY ui/ ./
 # Vite writes to ../internal/webui/dist, embedded by the Go build.
 RUN mkdir -p ../internal/webui/dist && npm run build
 
-FROM golang:1.27-alpine AS build
+FROM golang:1.27.2-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

@@ -136,7 +136,9 @@ result in a browser.
 
 ## Conventions
 
-**Go.** Standard library first; `log/slog` (JSON); errors wrapped with
+**Go.** Version 1.27.2 everywhere: the `go` directive of `go.mod` (read by
+the CI) and the `golang:1.27.2-alpine` build image; change both together.
+Standard library first; `log/slog` (JSON); errors wrapped with
 `%w`, sentinel errors for the cases callers map (see `internal/ingest`).
 Match the surrounding comment density: comments say why, not what.
 Tests that touch the database use `storetest.Run` so they cover both

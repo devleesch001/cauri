@@ -30,7 +30,7 @@ and the two URLs that point at it.
 
 | Tool                | Version                  | Used for                      |
 |---------------------|--------------------------|-------------------------------|
-| Go                  | 1.27 (see `go.mod`)      | API, ingestor, tests          |
+| Go                  | 1.27.2 (see `go.mod`)    | API, ingestor, tests          |
 | Node.js and npm     | 24                       | UI                            |
 | Docker with Compose | recent                   | Cowrie, the image             |
 | golangci-lint       | v2.14.0 (same as the CI) | Go lint                       |
@@ -41,6 +41,11 @@ No C compiler is needed: the SQLite driver is pure Go. The race detector (`go te
 ```sh
 go version && node --version && docker compose version && golangci-lint version
 ```
+
+The project uses Go 1.27.2 everywhere: `go.mod` requires it, so an older
+`go` command downloads and uses it automatically in the project
+(`GOTOOLCHAIN=auto`, the default); the CI installs that version and the
+Dockerfile builds with it.
 
 golangci-lint must be v2.14.0 or later: Go 1.27.2 compiles packages in a
 newer format (export data version 5) that earlier versions cannot read,

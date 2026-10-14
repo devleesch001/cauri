@@ -39,6 +39,7 @@ module path is `github.com/devleesch001/cauri`.
 |---|---|---|
 | Name | `cauri` | Chosen by the user. |
 | Database | SQLite first; PostgreSQL optional through the bun ORM, SQL kept portable; CI tests SQLite only | User: the ORM lets people choose their database, but cauri is built for SQLite, which is much simpler to run and test. |
+| Go version | 1.27.2 everywhere (`go.mod`, CI through `go-version-file`, Docker build image) | User: one Go version for every environment. |
 | Module path | `github.com/devleesch001/cauri` | The repository's home, chosen by the user; it lets third parties import `pkg/` and `go install` the binary. |
 | Public code | Protocol and client in `pkg/`, everything else in `internal/` | User: `internal/` is only for purely internal logic; others must be able to build tools on the protocol. |
 | Token management | `cauri token` CLI writing to the database | User: acceptable exception to "the API is the only writer"; rare writes to one table. |
