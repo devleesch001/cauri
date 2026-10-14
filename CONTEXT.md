@@ -14,7 +14,8 @@ Version 1 is complete:
 - API with token-authenticated ingestion and read endpoints (sessions with
   filters, session detail, failed logins, sensors);
 - UI: session list, session detail with a timeline (commands shown as a
-  terminal) and the replay of the recording, failed logins without a
+  terminal) and the replay of the recording with chapters (one per
+  command, with its output) and player controls, failed logins without a
   shell, sensor filter; English, all texts in vue-i18n;
 - one Docker image (scratch, non-root), compose examples for modes 1
   and 2, GitHub and Forgejo Actions workflows with GoReleaser releases,
@@ -83,6 +84,15 @@ Checked against the official image v3.1.2:
   staircases until the converter added it.
 - On a freshly mounted `var`, Cowrie creates neither `log/cowrie` nor
   `lib/cowrie/tty` and fails without them.
+- **Command times match the recording**: `cowrie.command.input` is logged
+  within a millisecond of the Enter key in the TTY recording, for scripted
+  and interactive clients, so chapters need no heuristic. Scripted clients
+  send a whole line, then get its echo; interactive ones get each key
+  echoed: in both cases the echo of a command ends at the first line feed
+  after its Enter.
+- Cowrie does not log the terminal type or why a connection ended; public
+  keys offered are logged (`cowrie.client.fingerprint`) without the
+  outcome.
 
 ## Security fixes made during version 1
 

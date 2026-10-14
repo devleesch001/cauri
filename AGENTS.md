@@ -68,8 +68,10 @@ migrations are immutable: add a new file.
 the file (`internal/ttystore`); the database keeps the reference. They
 are converted to asciicast at read time (`/api/sessions/{id}/cast`,
 `internal/ttylog` → `internal/asciicast`), never at ingestion. Replays
-keep the real timing and include keystrokes (`"i"`); `idle_time_limit` is
-only a header hint. A new asciicast version is a new `Encoder`, not a
+keep the real timing and include keystrokes (`"i"`) and a marker (`"m"`)
+per command; `idle_time_limit` is only a header hint. Chapters (each
+command and its plain-text output, `/api/sessions/{id}/chapters`) come
+from the same recording, with bounded cost and output. A new asciicast version is a new `Encoder`, not a
 change of the converter.
 
 **Same origin.** The UI calls relative `/api/...` paths: no CORS, no API

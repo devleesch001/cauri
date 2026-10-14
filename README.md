@@ -121,8 +121,25 @@ request and never modified.
   `sudo` or `passwd`.
 - The terminal size comes from the client's `cowrie.client.size` events,
   80×24 if none; later changes become `"r"` events.
+- Each command typed (`cowrie.command.input`) becomes an `"m"` marker,
+  which players show as chapters on the progress bar. Cowrie logs a
+  command within a millisecond of its Enter key in the recording.
 - `404` if the session has no stored recording, `422` if the file cannot
   be read; an `ETag` makes repeated loads cheap.
+
+`GET /api/sessions/{id}/chapters` returns those commands with what each
+printed, as plain text: the terminal output after the echo of the command
+line, until the next key typed, without colours, escape sequences or the
+final prompt. A full-screen program (an editor, a pager) is flagged
+instead of rendered. Output is capped (64 KiB per command, 4 MiB per
+session): it comes from the attacker. Both are computed on read, so
+sessions recorded before these features have them too.
+
+In the UI, the session page shows the replay with controls (skip 10 or
+30 seconds, previous and next command, speed from 0.5× to 8×, real time),
+and beside it the session facts, the commands with their output (a click
+moves the player there; the current one is highlighted), the logins
+tried (passwords and offered public keys) and the files.
 
 ## Configuration
 
