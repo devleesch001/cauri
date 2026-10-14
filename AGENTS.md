@@ -100,6 +100,9 @@ mandatory.
 
 ## Commands
 
+Full development setup (local Cowrie, API, ingestor and UI dev server,
+PostgreSQL, troubleshooting): `docs/development.md`.
+
 ```sh
 make test                      # go test ./... (SQLite)
 make lint                      # golangci-lint (config: .golangci.yml)
