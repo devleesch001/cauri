@@ -1,0 +1,98 @@
+# Mode 1: api, ui and ingestor in three containers. Traefik serves both
+# under one domain: /api to the API, everything else to the UI.
+#
+#   docker compose -f compose.separate.yml --env-file .env up -d
+#
+# See ../README.md for the first start (token creation) and for
+# protecting the UI, which has no authentication of its own yet.
+
+name: cauri
+
+services:
+  api:
+    image: ${CAURI_IMAGE:?set CAURI_IMAGE}
+    command: ["api"]
+    restart: unless-stopped
+    environment:
+      CAURI_DB_DRIVER: ${CAURI_DB_DRIVER:-sqlite}
+      CAURI_DB_DSN: ${CAURI_DB_DSN:-/data/cauri.db}
+    volumes:
+      - cauri-data:/data
+    networks: [default, traefik]
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}
+      # Ingestion: token-authenticated by cauri itself.
+      traefik.http.routers.cauri-ingest.rule: Host(`${CAURI_DOMAIN:?set CAURI_DOMAIN}`) && PathPrefix(`/api/ingest`)
+      traefik.http.routers.cauri-ingest.entrypoints: ${TRAEFIK_ENTRYPOINT:?set TRAEFIK_ENTRYPOINT}
+      traefik.http.routers.cauri-ingest.tls.certresolver: ${TRAEFIK_CERTRESOLVER:?set TRAEFIK_CERTRESOLVER}
+      traefik.http.routers.cauri-ingest.service: cauri-api
+      # Read API used by the UI: put the same protection as the UI here.
+      traefik.http.routers.cauri-api.rule: Host(`${CAURI_DOMAIN}`) && PathPrefix(`/api`)
+      traefik.http.routers.cauri-api.entrypoints: ${TRAEFIK_ENTRYPOINT}
+      traefik.http.routers.cauri-api.tls.certresolver: ${TRAEFIK_CERTRESOLVER}
+      traefik.http.routers.cauri-api.service: cauri-api
+      traefik.http.services.cauri-api.loadbalancer.server.port: "8080"
+
+  ui:
+    image: ${CAURI_IMAGE}
+    command: ["ui"]
+    restart: unless-stopped
+    networks: [traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK}
+      traefik.http.routers.cauri-ui.rule: Host(`${CAURI_DOMAIN}`)
+      traefik.http.routers.cauri-ui.entrypoints: ${TRAEFIK_ENTRYPOINT}
+      traefik.http.routers.cauri-ui.tls.certresolver: ${TRAEFIK_CERTRESOLVER}
+      traefik.http.services.cauri-ui.loadbalancer.server.port: "8080"
+
+  ingestor:
+    image: ${CAURI_IMAGE}
+    command: ["ingestor"]
+    restart: unless-stopped
+    environment:
+      CAURI_API_URL: ${CAURI_INGEST_API_URL:-http://api:8080}
+      CAURI_SENSOR_ID: ${CAURI_SENSOR_ID:?set CAURI_SENSOR_ID}
+      CAURI_TOKEN_FILE: /run/secrets/cauri_token
+      CAURI_COWRIE_LOG_DIR: /cowrie/var/log/cowrie
+      CAURI_COWRIE_TTY_DIR: /cowrie/var/lib/cowrie/tty
+    volumes:
+      - ${COWRIE_VAR_DIR:?set COWRIE_VAR_DIR}:/cowrie/var:ro
+      - cauri-ingestor:/data
+    secrets: [cauri_token]
+    depends_on: [api]
+
+  # Optional PostgreSQL: docker compose --profile postgres up -d
+  db:
+    image: postgres:17-alpine
+    profiles: [postgres]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cauri
+      POSTGRES_DB: cauri
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - cauri-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "cauri"]
+      interval: 5s
+      retries: 10
+
+secrets:
+  cauri_token:
+    file: ${CAURI_TOKEN_FILE:?set CAURI_TOKEN_FILE}
+
+volumes:
+  cauri-data:
+  cauri-ingestor:
+  cauri-postgres:
+
+networks:
+  traefik:
+    name: ${TRAEFIK_NETWORK}
+    external: true

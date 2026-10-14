@@ -1,0 +1,8 @@
+.git
+.idea
+.playwright-mcp
+bin
+data
+ui/node_modules
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
