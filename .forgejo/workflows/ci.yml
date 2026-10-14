@@ -1,0 +1,93 @@
+# Tests and lint on every push and pull request; on main and on v* tags,
+# the image is also built and pushed to the container registry of this
+# Forgejo instance, as <instance host>/<owner>/<repository>.
+#
+# Settings of the repository (Settings > Actions):
+#   secret REGISTRY_TOKEN  access token allowed to write packages
+#   var    REGISTRY_USER   its user (defaults to the user who pushed)
+#
+# "runs-on: docker" is the default label of the Forgejo runner: change it
+# to match your runner. The image job needs a runner whose job
+# containers can reach a Docker daemon (for example the host socket).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: docker
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+    env:
+      CAURI_TEST_PG_DSN: postgres://postgres:test@postgres:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - name: Test (SQLite and PostgreSQL)
+        run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.2
+
+  ui:
+    runs-on: docker
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build # type-checks, then builds
+
+  image:
+    if: github.event_name == 'push'
+    needs: [go, ui]
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image name and tags
+        id: meta
+        run: |
+          host="${GITHUB_SERVER_URL#*://}"
+          image="$(echo "${host%/}/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            version="${GITHUB_REF_NAME}"
+            tags="${image}:${version},${image}:latest"
+          else
+            version="${GITHUB_SHA::12}"
+            tags="${image}:main,${image}:sha-${version}"
+          fi
+          echo "registry=${host%/}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.meta.outputs.registry }}
+          username: ${{ vars.REGISTRY_USER || github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: VERSION=${{ steps.meta.outputs.version }}
