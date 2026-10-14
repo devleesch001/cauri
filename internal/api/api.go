@@ -65,6 +65,7 @@ func New(c Config) http.Handler {
 			r.Get("/sessions/{id}", s.getSession)
 			r.Get("/sessions/{id}/cast", s.getCast)
 			r.Get("/sessions/{id}/chapters", s.getChapters)
+			r.Get("/sessions/{id}/verdict", s.getVerdict)
 			r.Get("/login-attempts", s.listLoginAttempts)
 		})
 

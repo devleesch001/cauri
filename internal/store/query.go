@@ -400,3 +400,52 @@ func GetRecording(ctx context.Context, db bun.IDB, id string) (*Recording, error
 	}
 	return rec, nil
 }
+
+// SessionFacts are what judging a session needs (see package verdict).
+type SessionFacts struct {
+	ClientVersion string
+	Commands      int
+	// Terminal: the session had a pty, as told by a recording or a
+	// terminal size.
+	Terminal bool
+	// RecordingSHA256 is the stored recording, nil if there is none.
+	RecordingSHA256 *string
+}
+
+// GetSessionFacts returns the facts of a session.
+func GetSessionFacts(ctx context.Context, db bun.IDB, id string) (*SessionFacts, error) {
+	var s Session
+	err := db.NewSelect().Model(&s).Column("client_version", "tty_log", "tty_sha256").Where("id = ?", id).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	f := &SessionFacts{Terminal: s.TTYLog != nil || s.TTYSHA256 != nil}
+	if s.ClientVersion != nil {
+		f.ClientVersion = *s.ClientVersion
+	}
+	n, err := db.NewSelect().Model((*Command)(nil)).Where("session_id = ?", id).Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+	f.Commands = int(n)
+	if !f.Terminal {
+		f.Terminal, err = db.NewSelect().Model((*RawEvent)(nil)).
+			Where("session_id = ?", id).Where("eventid = ?", "cowrie.client.size").Exists(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if s.TTYSHA256 != nil {
+		stored, err := db.NewSelect().Model((*TTYFile)(nil)).Where("sha256 = ?", *s.TTYSHA256).Exists(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if stored {
+			f.RecordingSHA256 = s.TTYSHA256
+		}
+	}
+	return f, nil
+}

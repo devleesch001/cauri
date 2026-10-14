@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -490,5 +491,55 @@ func TestChapters(t *testing.T) {
 		}
 
 		get(t, e, "/api/sessions/unknown/chapters", http.StatusNotFound, nil)
+	})
+}
+
+type verdictBody struct {
+	Verdict string `json:"verdict"`
+	Score   int    `json:"score"`
+	Reasons []struct {
+		Code   string `json:"code"`
+		Points int    `json:"points"`
+	} `json:"reasons"`
+}
+
+func TestVerdict(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		ctx := context.Background()
+
+		// The scripted session of the real capture: whole lines, constant
+		// delays, Go client.
+		var v verdictBody
+		get(t, e, "/api/sessions/"+realSession(t, e)+"/verdict", http.StatusOK, &v)
+		if v.Verdict != "bot" || v.Score != -5 || len(v.Reasons) != 3 {
+			t.Errorf("scripted session = %+v", v)
+		}
+
+		// Commands without a terminal (ssh host command), and a session
+		// with no interaction at all.
+		send := func(session string, events ...string) {
+			b := protocol.EventBatch{SensorID: "hp-01"}
+			for i, ev := range events {
+				raw := fmt.Sprintf(`{"session":%q,"timestamp":"2026-10-14T10:00:0%dZ",%s}`, session, i, ev)
+				b.Events = append(b.Events, protocol.Event{ID: protocol.EventID("hp-01", []byte(raw)), Raw: json.RawMessage(raw)})
+			}
+			if _, err := e.client.SendEvents(ctx, b); err != nil {
+				t.Fatal(err)
+			}
+		}
+		send("exec1", `"eventid":"cowrie.session.connect"`, `"eventid":"cowrie.client.version","version":"SSH-2.0-libssh_0.9.6"`,
+			`"eventid":"cowrie.command.input","input":"uname -a"`)
+		send("quiet1", `"eventid":"cowrie.session.connect"`, `"eventid":"cowrie.login.failed","username":"root","password":"x"`)
+
+		get(t, e, "/api/sessions/"+store.SessionID("hp-01", "exec1")+"/verdict", http.StatusOK, &v)
+		if v.Verdict != "bot" || v.Score != -3 {
+			t.Errorf("exec session = %+v", v)
+		}
+		get(t, e, "/api/sessions/"+store.SessionID("hp-01", "quiet1")+"/verdict", http.StatusOK, &v)
+		if v.Verdict != "no_interaction" || v.Reasons == nil {
+			t.Errorf("quiet session = %+v", v)
+		}
+		get(t, e, "/api/sessions/unknown/verdict", http.StatusNotFound, nil)
 	})
 }
