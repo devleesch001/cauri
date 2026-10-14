@@ -45,6 +45,10 @@ const (
 	AutomationLibrary = "automation_library"
 )
 
+// Version identifies the criteria below. Stored verdicts of another
+// version are recomputed: change it with any threshold or point.
+const Version = "1"
+
 // Thresholds.
 const (
 	humanScore = 3  // at least: human
