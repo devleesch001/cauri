@@ -1,0 +1,186 @@
+// Package ingest is the single entry point for data sent by ingestors:
+// validation, deduplication, projection of Cowrie events into tables and
+// storage of TTY recordings. HTTP handlers call it; an in-process ingestor
+// (all-in-one build) can call it directly.
+package ingest
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/uptrace/bun"
+
+	"cauri/internal/store"
+	"cauri/internal/ttystore"
+	"cauri/pkg/protocol"
+)
+
+// Errors returned by the service; callers map them to protocol responses.
+var (
+	// ErrInvalid wraps every validation error of a request as a whole.
+	ErrInvalid = errors.New("invalid request")
+	// ErrSensorMismatch means the request names another sensor than the
+	// authenticated one.
+	ErrSensorMismatch = errors.New("sensor does not match credentials")
+	// ErrUnknownSession means a TTY recording arrived for a session whose
+	// events have not been ingested yet.
+	ErrUnknownSession = errors.New("unknown session")
+	// ErrTTYConflict means the session is already linked to another recording.
+	ErrTTYConflict = errors.New("session already has another tty recording")
+	// ErrDigestMismatch means an upload does not match its digest or size.
+	ErrDigestMismatch = ttystore.ErrDigestMismatch
+)
+
+// Service ingests events and TTY recordings.
+type Service struct {
+	db  *bun.DB
+	tty *ttystore.Store
+	now func() time.Time
+}
+
+// New returns a service writing to db and tty.
+func New(db *bun.DB, tty *ttystore.Store) *Service {
+	return &Service{db: db, tty: tty, now: time.Now}
+}
+
+// IngestEvents stores a batch sent by sensorID, the authenticated sensor.
+// Invalid events are rejected one by one; already known events are counted
+// as duplicates. The batch is written in one transaction.
+func (s *Service) IngestEvents(ctx context.Context, sensorID string, b protocol.EventBatch) (protocol.EventBatchResult, error) {
+	var res protocol.EventBatchResult
+	if b.SensorID != sensorID {
+		return res, ErrSensorMismatch
+	}
+	if len(b.Events) > protocol.MaxBatchEvents {
+		return res, fmt.Errorf("%w: more than %d events", ErrInvalid, protocol.MaxBatchEvents)
+	}
+
+	// Validate and drop duplicates inside the batch.
+	type parsed struct {
+		id  string
+		raw string
+		ev  *cowrieEvent
+	}
+	var events []parsed
+	seen := map[string]bool{}
+	for _, e := range b.Events {
+		if !protocol.ValidSHA256(e.ID) {
+			res.Rejected = append(res.Rejected, protocol.Rejection{ID: e.ID, Reason: "invalid id"})
+			continue
+		}
+		if seen[e.ID] {
+			res.Duplicates++
+			continue
+		}
+		seen[e.ID] = true
+		ev, err := parseEvent(e.Raw)
+		if err != nil {
+			res.Rejected = append(res.Rejected, protocol.Rejection{ID: e.ID, Reason: err.Error()})
+			continue
+		}
+		if ev.Session != "" && !protocol.ValidSession(ev.Session) {
+			res.Rejected = append(res.Rejected, protocol.Rejection{ID: e.ID, Reason: "invalid session"})
+			continue
+		}
+		events = append(events, parsed{id: e.ID, raw: strings.ToValidUTF8(string(e.Raw), string(utf8.RuneError)), ev: ev})
+	}
+	if len(events) == 0 {
+		return res, nil
+	}
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Drop events already stored.
+		ids := make([]string, len(events))
+		for i, e := range events {
+			ids[i] = e.id
+		}
+		var known []string
+		if err := tx.NewSelect().Model((*store.RawEvent)(nil)).Column("id").
+			Where("id IN (?)", bun.List(ids)).Scan(ctx, &known); err != nil {
+			return err
+		}
+		isKnown := make(map[string]bool, len(known))
+		for _, id := range known {
+			isKnown[id] = true
+		}
+
+		w := newBatchWriter(sensorID, s.now().UTC())
+		for _, e := range events {
+			if isKnown[e.id] {
+				res.Duplicates++
+				continue
+			}
+			w.add(e.id, e.raw, e.ev)
+			res.Accepted++
+		}
+		return w.write(ctx, tx)
+	})
+	if err != nil {
+		return protocol.EventBatchResult{}, err
+	}
+	return res, nil
+}
+
+// StoreTTY stores the TTY recording of a session of sensorID, the
+// authenticated sensor. Storing the same recording twice is a no-op that
+// returns protocol.TTYExists without reading body.
+func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYMeta, body io.Reader) (protocol.TTYResult, error) {
+	res := protocol.TTYResult{SHA256: m.SHA256}
+	if m.SensorID != sensorID {
+		return res, ErrSensorMismatch
+	}
+	if !protocol.ValidSession(m.Session) || !protocol.ValidSHA256(m.SHA256) || m.Size < 0 {
+		return res, fmt.Errorf("%w: bad session, digest or size", ErrInvalid)
+	}
+
+	sess := new(store.Session)
+	err := s.db.NewSelect().Model(sess).Where("id = ?", store.SessionID(sensorID, m.Session)).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return res, ErrUnknownSession
+	}
+	if err != nil {
+		return res, err
+	}
+	if sess.TTYSHA256 != nil && *sess.TTYSHA256 != m.SHA256 {
+		return res, ErrTTYConflict
+	}
+
+	exists, err := s.db.NewSelect().Model((*store.TTYFile)(nil)).Where("sha256 = ?", m.SHA256).Exists(ctx)
+	if err != nil {
+		return res, err
+	}
+	res.Status = protocol.TTYExists
+	var rel string
+	if !exists {
+		// Written outside the transaction: a file without a row is
+		// harmless, and the next upload of the same file inserts the row.
+		if rel, err = s.tty.Write(m.SHA256, m.Size, body); err != nil {
+			return res, err
+		}
+		res.Status = protocol.TTYStored
+	}
+
+	err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if !exists {
+			f := &store.TTYFile{SHA256: m.SHA256, Size: m.Size, Path: rel, StoredAt: s.now().UTC()}
+			if _, err := tx.NewInsert().Model(f).On("CONFLICT (sha256) DO NOTHING").Exec(ctx); err != nil {
+				return err
+			}
+		}
+		if sess.TTYSHA256 == nil {
+			_, err := tx.NewUpdate().Model((*store.Session)(nil)).
+				Set("tty_sha256 = ?", m.SHA256).
+				Set("tty_size = COALESCE(tty_size, ?)", m.Size).
+				Where("id = ?", sess.ID).Exec(ctx)
+			return err
+		}
+		return nil
+	})
+	return res, err
+}
