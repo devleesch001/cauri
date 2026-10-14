@@ -204,8 +204,15 @@ A score of 3 or more is `human`, −3 or less `bot`, `uncertain` in
 between; a session with neither commands nor recording is
 `no_interaction`. It is a heuristic: a human pasting commands sends whole
 lines, a bot can fake typing. The thresholds, in `internal/verdict`, come
-from a small sample and are meant to be tuned. Computed on read, like
-replays: past sessions have a verdict too.
+from a small sample and are meant to be tuned.
+
+The verdict is also stored with each session, to filter the list:
+`GET /api/sessions?verdict=human` or `verdict=bot` (bots include the
+sessions without interaction; uncertain ones only show unfiltered). It
+is computed at ingestion, again when the recording arrives, and when
+the API starts for sessions judged by older criteria
+(`verdict.Version`) or stored before verdicts were. The session page
+computes it on read, with the same code.
 
 ## Configuration
 

@@ -74,7 +74,9 @@ command and its plain-text output, `/api/sessions/{id}/chapters`) come
 from the same recording, with bounded cost and output. So does the
 human/bot verdict (`/api/sessions/{id}/verdict`, `internal/verdict`): it
 always returns its reasons with their points, and its thresholds stay
-grouped there to be tuned. A new asciicast version is a new `Encoder`, not a
+grouped there to be tuned. The verdict is also stored per session (for
+the list filter), computed in `internal/ingest`: bump `verdict.Version`
+with any change of the criteria so stored verdicts are recomputed. A new asciicast version is a new `Encoder`, not a
 change of the converter.
 
 **Same origin.** The UI calls relative `/api/...` paths: no CORS, no API
