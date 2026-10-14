@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -567,6 +568,44 @@ func TestJudgeSessions(t *testing.T) {
 		}
 		if n, err := svc.JudgeSessions(ctx); n != 0 || err != nil {
 			t.Errorf("second run judged %d, %v", n, err)
+		}
+	})
+}
+
+// A recording lost from the volume (deleted, volume not mounted) must not
+// block ingestion: the session is judged on its events alone.
+func TestJudgeMissingRecording(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		dir := t.TempDir()
+		tty, err := ttystore.New(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		svc := New(db, tty, 1<<20)
+		ctx := context.Background()
+		const content = "recording"
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, fullSession("a1b2c3d4e5f6", "x")...)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.StoreTTY(ctx, sensor, ttyMeta("a1b2c3d4e5f6", content), strings.NewReader(content)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(dir, ttystore.RelPath(sum(content)))); err != nil {
+			t.Fatal(err)
+		}
+
+		late := line("cowrie.command.input", "a1b2c3d4e5f6", 30, map[string]any{"input": "id"})
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, late)); err != nil {
+			t.Fatalf("events of a session whose recording is missing: %v", err)
+		}
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("verdict_version = NULL").Where("1 = 1").Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := svc.JudgeSessions(ctx); n != 1 || err != nil {
+			t.Fatalf("judged %d, %v", n, err)
+		}
+		if res, err := svc.JudgeSession(ctx, store.SessionID(sensor, "a1b2c3d4e5f6")); err != nil || res.Verdict == "" {
+			t.Errorf("on read: %+v, %v", res, err)
 		}
 	})
 }

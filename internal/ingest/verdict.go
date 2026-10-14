@@ -21,17 +21,16 @@ func (s *Service) judge(ctx context.Context, db bun.IDB, id string) (verdict.Res
 	if err != nil {
 		return verdict.Result{}, err
 	}
+	// A recording missing from the volume or unreadable leaves the events
+	// alone to judge: it must not block the ingestion of events.
 	var typing *verdict.Typing
 	if facts.RecordingSHA256 != nil {
-		f, err := s.tty.Open(*facts.RecordingSHA256)
-		if err != nil {
-			return verdict.Result{}, err
-		}
-		ty, err := verdict.ReadTyping(f)
-		_ = f.Close()
-		// An unreadable recording leaves the events alone to judge.
-		if err == nil {
-			typing = &ty
+		if f, err := s.tty.Open(*facts.RecordingSHA256); err == nil {
+			ty, err := verdict.ReadTyping(f)
+			_ = f.Close()
+			if err == nil {
+				typing = &ty
+			}
 		}
 	}
 	return verdict.Judge(verdict.Facts{
