@@ -62,7 +62,10 @@ only writer, except `cauri token`, accepted by the user.
 
 **Migrations.** goose, SQL files embedded from
 `internal/store/migrations`, applied when the API starts. Released
-migrations are immutable: add a new file.
+migrations are immutable: add a new file. A new schema is decided but not
+implemented (`docs/db.md`: integer keys, purgeable raw data, bun
+`migrate` instead of goose, one migration set per engine): do not add
+goose migrations or build on the current ids without asking.
 
 **TTY recordings** are stored raw in a volume, named by the SHA-256 of
 the file (`internal/ttystore`); the database keeps the reference. They
