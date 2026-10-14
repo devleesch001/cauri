@@ -133,10 +133,17 @@ a {
   color: var(--c-surface);
 }
 
-/* Pages take the full width, as data tools do: any cap leaves empty
-   margins on some screen (a 4K at 100 % scaling) while tables scroll. */
+/* Wide enough for the session table on a 2K screen without scrolling;
+   capped so that rows stay readable on larger ones. */
 .page {
+  max-width: 2400px;
+  margin: 0 auto;
   padding: var(--space-4) var(--space-4) var(--space-5);
+}
+
+/* Lifted by the full-width button of App.vue. */
+:root[data-width='full'] .page {
+  max-width: none;
 }
 
 .page-head {

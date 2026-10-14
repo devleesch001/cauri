@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watchEffect } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import Button from 'openvue/button'
+import WindowMaximizeIcon from '@openvue/icons/windowmaximize'
+import WindowMinimizeIcon from '@openvue/icons/windowminimize'
 import { api } from './api/client'
 import type { About } from './api/types'
 import SensorSelect from './components/SensorSelect.vue'
@@ -11,6 +14,25 @@ const { t } = useI18n()
 const sensors = useSensors()
 // The GeoIP database, when there is one, requires an attribution.
 const about = ref<About | null>(null)
+
+// Pages are capped in width (style.css); this lifts the cap, remembered
+// per browser. Storage can be unavailable: then it lasts for the visit.
+const widthKey = 'cauri.fullWidth'
+const fullWidth = ref(false)
+try {
+  fullWidth.value = localStorage.getItem(widthKey) === '1'
+} catch {
+  // private mode or blocked storage
+}
+watchEffect(() => {
+  document.documentElement.dataset.width = fullWidth.value ? 'full' : ''
+  try {
+    localStorage.setItem(widthKey, fullWidth.value ? '1' : '0')
+  } catch {
+    // see above
+  }
+})
+
 onMounted(() => {
   void sensors.load()
   void api.about().then((a) => (about.value = a)).catch(() => undefined)
@@ -41,6 +63,28 @@ onMounted(() => {
   <main>
     <RouterView />
   </main>
+  <Button
+    class="width-toggle"
+    severity="secondary"
+    text
+    rounded
+    size="small"
+    :aria-label="fullWidth ? t('layout.limitWidth') : t('layout.fullWidth')"
+    :title="fullWidth ? t('layout.limitWidth') : t('layout.fullWidth')"
+    :aria-pressed="fullWidth"
+    @click="fullWidth = !fullWidth"
+  >
+    <template #icon="{ class: c }">
+      <WindowMinimizeIcon
+        v-if="fullWidth"
+        :class="c"
+      />
+      <WindowMaximizeIcon
+        v-else
+        :class="c"
+      />
+    </template>
+  </Button>
   <footer
     v-if="about?.geoip?.provider"
     class="attribution muted"
@@ -61,6 +105,26 @@ onMounted(() => {
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--c-rule);
   font-size: 0.85em;
+}
+
+.width-toggle {
+  position: fixed;
+  bottom: var(--space-2);
+  left: var(--space-2);
+  z-index: 2;
+}
+
+/* Useful only where the page cap (2400 px, style.css) leaves margins. */
+@media (width <= 2400px) {
+  .width-toggle {
+    display: none;
+  }
+}
+
+@media (width > 2400px) {
+  .attribution {
+    padding-left: calc(var(--space-4) + 2.5rem);
+  }
 }
 
 .bar {

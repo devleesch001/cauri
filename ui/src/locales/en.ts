@@ -225,6 +225,10 @@ export default {
       country: 'Country',
     },
   },
+  layout: {
+    fullWidth: 'Use the full width of the screen',
+    limitWidth: 'Limit the width of pages',
+  },
   attribution: {
     dbip: 'IP geolocation by DB-IP',
     maxmind: 'This product includes GeoLite Data created by MaxMind, available from',
