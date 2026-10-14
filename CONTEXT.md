@@ -1,0 +1,251 @@
+# CONTEXT.md
+
+Why cauri is the way it is: the original brief, the decisions taken with
+the user since, what real Cowrie data changed, and where the project
+stands. Rules for agents are in `AGENTS.md`; operator documentation in
+`README.md`.
+
+## Status (2026-10-14)
+
+Version 1 is complete:
+
+- ingestion of events and TTY recordings, multi-sensor, deduplicated,
+  resilient to API outages, rotations and restarts;
+- API with token-authenticated ingestion and read endpoints (sessions with
+  filters, session detail, failed logins, sensors);
+- UI: session list, session detail with a timeline (commands shown as a
+  terminal), failed logins without a shell, sensor filter; English, all
+  texts in vue-i18n;
+- one Docker image (distroless, non-root), compose examples for modes 1
+  and 2, Forgejo Actions workflow, README.
+
+Verified: Go tests with the race detector on SQLite and PostgreSQL, lint,
+UI lint/typecheck/build; the real chain against the official
+`cowrie/cowrie` image (v3.1.2) with a simulated attacker; mode 2 under
+Docker Compose as non-root; the UI in a browser (desktop and phone).
+
+Not verified: the Forgejo workflow (no Forgejo runner was available) and
+whether the instance's actions mirror has the pinned commits.
+
+The repository has no remote yet. The Go module path is `cauri` until the
+Forgejo URL is known; changing it is a `sed` on `go.mod` and the imports.
+
+## Decisions
+
+| Topic | Decision | Why |
+|---|---|---|
+| Name | `cauri` | Chosen by the user. |
+| Module path | `cauri`, no host | Hosting not decided; a plain path builds fine. Third parties can import `pkg/` once a real URL is set. |
+| Public code | Protocol and client in `pkg/`, everything else in `internal/` | User: `internal/` is only for purely internal logic; others must be able to build tools on the protocol. |
+| Token management | `cauri token` CLI writing to the database | User: acceptable exception to "the API is the only writer"; rare writes to one table. |
+| Ingestor buffer | No local copy: position saved after acknowledgement, the Cowrie log files are the buffer | Simplest at-least-once design. Limit: rotated logs must outlive an API outage. User agreed. |
+| First start of an ingestor | Default `--start beginning`: send all existing logs | User agreed. |
+| Containers | Non-root everywhere (distroless `nonroot`, uid 65532) | User: maximise rootless. |
+| Licence | MIT | User. |
+| UI library | OpenVue (npm `openvue`, `@openvue/themes`, `@openvue/icons`) | User asked for it; it is a direct fork of PrimeVue after PrimeVue stopped, hence its young age. Do not switch to PrimeVue without asking. |
+| UI language | English, with vue-i18n from the start | User. |
+| Reverse proxy | Traefik only as the example of the compose files; README describes any proxy | User: not everyone uses Traefik. |
+| UI protection | None imposed by cauri or the compose files; documented as the operator's job until UI auth exists | User: no mandatory middleware. |
+| CI runner | `runs-on: ubuntu-latest` | User. |
+| CI actions | Pinned to commit SHAs | The image job hands the registry token to third-party actions. |
+
+## What real Cowrie data changed
+
+Checked against the official image v3.1.2:
+
+- **TTY recording names are not file digests.** The name and `shasum` of
+  `cowrie.log.closed` hash the terminal output; the file adds binary
+  ttylog headers. The first design used them as the file digest and the
+  API refused every upload with 409. Sessions now keep Cowrie's name in
+  `tty_log`; `tty_sha256` and `tty_size` come only from the uploaded file.
+- **Durations are `duration_ms`** (integer milliseconds); older versions
+  wrote `duration` in seconds, as number or string. Both are read.
+- **Field types can surprise.** A field of an unexpected type used to make
+  the whole event rejected, hence lost. Parsing is now per field: a wrong
+  type empties one column and the raw event is still stored.
+- Cowrie runs as uid 999 with umask 0022: its files are world-readable,
+  so the ingestor runs under its own non-root user.
+
+## Security fixes made during version 1
+
+- TTY size limit enforced in the ingestion service itself, so every caller
+  is bounded.
+- A compromised Cowrie could have made the ingestor upload files from
+  outside the TTY directory through symbolic links: TTY files are opened
+  with `os.Root`, must be regular files; symlinks in the log directory are
+  ignored.
+- NUL bytes and invalid UTF-8 from attackers are cleaned before PostgreSQL.
+
+## Next steps the code is prepared for
+
+- **Replay**: `GET /api/sessions/{id}/cast` converting the raw recording
+  from `ttystore` to asciicast on read; asciinema-player in the session
+  page, next to the timeline.
+- **Statistics and charts**: queries on the existing tables.
+- **UI and read API authentication**: implement `ReadAuth` in
+  `internal/api`.
+- **All-in-one binary** (build tag `allinone`): an in-process `Sink`
+  calling `ingest.Service`.
+- **GeoIP, message broker**: not designed yet; nothing prevents them.
+
+## Original brief (verbatim, from the user)
+
+The specification the project started from. Later decisions above take
+precedence where they differ.
+
+````markdown
+# Projet
+
+Créer de zéro une application de visualisation pour le honeypot SSH Cowrie.
+Le projet Honeywatch (https://github.com/straightchlorine/honeywatch, licence MIT) peut servir
+de référence pour le schéma de données, mais on ne le forke pas : c'est une nouvelle base de code.
+
+Demande-moi le nom du projet et le chemin du module Go avant de créer quoi que ce soit.
+Le dépôt sera hébergé sur ma propre instance Forgejo.
+
+Objectif à terme : visualiser les statistiques d'attaque et rejouer les sessions des attaquants
+(avec asciinema-player). La première version pose les fondations, mais l'architecture doit
+dès maintenant prévoir ces deux usages.
+
+# Architecture
+
+Trois briques :
+- **API** en Go : lecture des données pour l'UI, et réception des données des ingesteurs.
+- **UI** en Vue 3.
+- **Ingesteur** en Go : lit ce que Cowrie écrit sur le disque et l'envoie à l'API. Il ne calcule rien :
+  il transmet les données brutes, en ajoutant l'identifiant du capteur.
+
+## Flux de données
+
+```
+Cowrie ──► cowrie.json ──┐
+       └─► tty/<fichier> ┤
+                         ▼
+                    Ingesteur (lecture continue, position, tampon, id capteur)
+                         │  POST /api/ingest/events   (lots d'événements JSON)
+                         │  PUT  /api/ingest/tty/...  (fichier TTY brut, en fin de session)
+                         ▼
+                        API ──► base (événements, sessions…)
+                            └─► volume de fichiers (TTY bruts)
+                         ▼
+                        UI : statistiques, liste et détail des sessions,
+                             rejeu avec asciinema-player (/api/sessions/{id}/cast)
+```
+
+## Données transmises par l'ingesteur
+
+1. **Les événements du `cowrie.json`** (un objet JSON par ligne), avec l'identifiant de session,
+   l'heure et l'IP source. Les principaux :
+   - `cowrie.session.connect` : IP et port source, début de session ;
+   - `cowrie.client.version`, `cowrie.client.kex` : client SSH, empreinte HASSH ;
+   - `cowrie.login.failed` / `cowrie.login.success` : identifiant et mot de passe testés ;
+   - `cowrie.command.input` : commandes tapées ;
+   - `cowrie.session.file_download` / `cowrie.session.file_upload` : URL, SHA-256 ;
+   - `cowrie.log.closed` : chemin de l'enregistrement TTY de la session, taille, durée ;
+   - `cowrie.session.closed` : fin et durée de session.
+   Conserve aussi l'événement brut complet, pour ne rien perdre des champs non exploités aujourd'hui.
+
+2. **Les enregistrements TTY** (`var/lib/cowrie/tty/`) : la vraie sortie du terminal, horodatée,
+   nécessaire au rejeu. L'événement `cowrie.log.closed` fait le lien : quand l'ingesteur le voit passer,
+   il envoie le fichier TTY correspondant à l'API, une seule fois par session.
+
+## Stockage
+
+- L'API range les événements dans des tables (sessions, tentatives de connexion, commandes,
+  téléchargements, événements bruts). Les statistiques futures seront des requêtes sur ces tables.
+- Les fichiers TTY sont stockés **bruts dans un volume**, pas dans la base. La base garde
+  la référence au fichier pour chaque session. La conversion au format asciinema se fera plus tard
+  dans l'API, au moment de la lecture, pour garder l'original intact.
+
+## Image et modes de déploiement
+
+Une seule base de code et **une seule image Docker**, avec des sous-commandes :
+- `api` : l'API seule ;
+- `api --ui` : l'API qui sert aussi l'UI (fichiers Vue compilés embarqués avec `embed`) ;
+- `ui` : sert uniquement l'UI statique ;
+- `ingestor` : l'ingesteur.
+
+Modes de déploiement à supporter dès maintenant :
+1. **Séparé** : trois conteneurs (`api`, `ui`, `ingestor`). L'UI et l'API sont servies sous le même domaine
+   par le reverse proxy (Traefik), `/api` vers l'API et le reste vers l'UI : pas de CORS, pas d'URL d'API en dur.
+2. **API + UI / ingesteur** : deux conteneurs (`api --ui` et `ingestor`).
+
+Mode prévu plus tard, à ne pas implémenter mais à rendre possible :
+3. **Tout-en-un** : un binaire distinct, compilé avec un build tag Go (`allinone`), où l'ingesteur appelle
+   directement le service d'ingestion de l'API par un appel de fonction, sans réseau.
+   Pour cela, la sortie de l'ingesteur doit être une **interface Go**, avec HTTPS pour seule implémentation
+   aujourd'hui. Côté API, la validation, la déduplication et l'écriture (base et fichiers TTY) doivent vivre
+   dans **un service d'ingestion unique**, appelé par les handlers HTTP (et plus tard par l'appel local).
+
+# Choix techniques
+
+- **API** : Go, routeur **chi**.
+- **Base de données** : **SQLite ou PostgreSQL au choix**, par configuration. Couche d'accès **bun**.
+  SQLite via un pilote en pur Go (`modernc.org/sqlite`) pour éviter CGO et garder un binaire statique.
+  SQL portable entre les deux, sans fonctionnalités propres à Postgres.
+  L'API est le seul processus qui écrit en base.
+- **Migrations** : **goose**, migrations embarquées dans le binaire, exécutées au démarrage de l'API.
+- **Ingesteur → API** : **HTTPS**, sans protobuf.
+  - Événements : `POST /api/ingest/events`, par lots (par exemple toutes les secondes ou par paquets),
+    en JSON, avec des structs Go partagées entre l'ingesteur et l'API.
+  - Fichiers TTY : `PUT /api/ingest/tty/{session}`, envoi du fichier brut avec son SHA-256,
+    pour vérifier l'intégrité et rendre l'envoi idempotent.
+  - Authentification : **un jeton par ingesteur** (révocable), en en-tête `Authorization: Bearer`.
+    Le TLS est assuré par le reverse proxy.
+- **UI** : **Vue 3 + Vite + TypeScript**, Pinia, Vue Router, bibliothèque de composants **OpenVue**,
+  un fork open source de PrimeVue (mêmes composants, même logique, nom différent).
+  Vérifie le nom exact du paquet et sa disponibilité avant de l'utiliser. S'il pose problème, dis-le-moi
+  au lieu de basculer seul sur PrimeVue.
+- **Authentification de l'UI et de l'API de lecture** : pas pour cette version, mais à prévoir.
+  Structure le code pour qu'elle s'ajoute plus tard sous forme de middleware, sans refonte.
+- **CI** : Forgejo Actions (tests, lint, build de l'image, publication dans le registre de mon Forgejo).
+
+# Exigences de l'ingesteur
+
+- Lire `cowrie.json` en le suivant comme `tail -f`.
+- Gérer la rotation quotidienne de Cowrie (`cowrie.json` renommé en `cowrie.json.AAAA-MM-JJ`).
+- Mémoriser sa position pour reprendre sans perte après un redémarrage.
+- Garder les événements et les fichiers TTY en attente si l'API est injoignable, puis les renvoyer.
+- Cowrie ne fournit pas d'identifiant unique par événement : l'ingesteur en calcule un
+  (par exemple un hash de l'identifiant du capteur et de la ligne brute), pour que l'API ignore les doublons.
+- Chaque ingesteur a un **identifiant de capteur**, ajouté à tous ses événements.
+- Il lit deux dossiers, montés en lecture seule : `var/log/cowrie` et `var/lib/cowrie/tty`.
+
+# Périmètre de la première version
+
+- Ingestion complète : événements **et fichiers TTY** (collectés dès maintenant, pour que les sessions
+  passées soient rejouables quand le rejeu arrivera).
+- Liste des sessions : IP, identifiants testés, client SSH, début, durée, capteur, avec filtres.
+- Détail d'une session : commandes tapées, téléchargements et événements, dans l'ordre chronologique.
+- Tentatives de connexion échouées, sans session interactive.
+- Multi-instances : identifiant de capteur sur chaque événement, filtrage par capteur dans l'UI.
+
+Hors périmètre pour l'instant, mais à ne pas rendre impossible :
+conversion TTY → asciinema et rejeu dans l'UI, statistiques et graphiques, GeoIP,
+authentification de l'UI, mode tout-en-un, broker de messages.
+
+# Contexte de déploiement
+
+- Cowrie tourne en Docker avec l'image officielle `cowrie/cowrie`. L'ingesteur lira ses dossiers
+  de logs et d'enregistrements TTY, montés en lecture seule.
+- Reverse proxy : Traefik, configuré par labels Docker.
+- N'invente aucune valeur de ma configuration (domaines, chemins, réseaux, mots de passe) :
+  utilise des variables d'environnement documentées, ou demande-moi.
+
+# Livrables
+
+- Le code (API, UI, ingesteur) et les migrations goose.
+- Le Dockerfile multi-étapes de l'image unique.
+- Un docker-compose d'exemple pour le mode 1 et un pour le mode 2.
+- Le workflow Forgejo Actions.
+- Un README : architecture (avec le schéma de flux), configuration (variables d'environnement),
+  déploiement de chaque mode.
+
+# Méthode
+
+1. Présente-moi d'abord un plan : arborescence du dépôt, schéma de base de données,
+   format des requêtes d'ingestion, liste des sous-commandes et de leurs options, découpage en étapes.
+2. Attends ma validation avant d'écrire du code.
+3. Avance ensuite étape par étape, avec des commits séparés, et des tests pour l'ingesteur
+   (rotation, reprise, doublons, envoi des TTY) et pour le service d'ingestion.
+````
