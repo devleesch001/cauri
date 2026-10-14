@@ -33,13 +33,22 @@ and the two URLs that point at it.
 | Go                  | 1.27 (see `go.mod`)      | API, ingestor, tests          |
 | Node.js and npm     | 24                       | UI                            |
 | Docker with Compose | recent                   | Cowrie, the image             |
-| golangci-lint       | v2.13.2 (same as the CI) | Go lint                       |
+| golangci-lint       | v2.14.0 (same as the CI) | Go lint                       |
 | git, make           | any                      |                               |
 
 No C compiler is needed: the SQLite driver is pure Go. The race detector (`go test -race`) does need one (gcc or clang).
 
 ```sh
 go version && node --version && docker compose version && golangci-lint version
+```
+
+Install golangci-lint with `go install`, so that it is built with your Go,
+and reinstall it after updating Go: a binary built with an older Go
+cannot read the packages of a newer one (with Go 1.27.2: "export data
+version 5 is greater than maximum supported version 4").
+
+```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 ```
 
 ## First setup
