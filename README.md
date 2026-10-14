@@ -159,8 +159,30 @@ The image runs as the distroless `nonroot` user (uid 65532). Its `/data`
 directory is owned by that user, so a new named volume mounted there is
 writable. With a bind mount instead, give the directory to uid 65532.
 
-Copy `deploy/.env.example` to `deploy/.env` and fill it in: domain, Traefik
-network, entrypoint and certificate resolver, image, sensor id, Cowrie
+### Reverse proxy
+
+cauri expects a reverse proxy in front of it, whichever you use (Traefik,
+Caddy, nginx, HAProxy…). It terminates TLS and serves cauri under one
+domain:
+
+- mode 1: `/api` and everything below it to the `api` container, every
+  other path to the `ui` container;
+- mode 2: the whole domain to the `api` container (`api --ui`);
+- ingestors on other hosts must reach `/api/ingest`;
+- TTY uploads can weigh several megabytes (up to `CAURI_MAX_TTY_SIZE`):
+  raise the body size limit of proxies that have a small one, such as
+  nginx (`client_max_body_size`);
+- containers listen on port 8080.
+
+The compose files in `deploy/` are examples for Traefik, configured by
+Docker labels. With another proxy, drop the `labels` and the `traefik`
+network, then attach the containers to your proxy's network or publish
+their port.
+
+### Compose examples
+
+Copy `deploy/.env.example` to `deploy/.env` and fill it in: image, domain,
+Traefik network, entrypoint and certificate resolver, sensor id, Cowrie
 directory, token file. The compose files read every site-specific value
 from it.
 
@@ -184,8 +206,8 @@ docker compose -f compose.separate.yml exec api cauri token create --sensor "$CA
 docker compose -f compose.separate.yml up -d ingestor
 ```
 
-Traefik routes `Host(CAURI_DOMAIN) && PathPrefix(/api)` to `api` and the
-rest of the domain to `ui`: one origin, no CORS, no API URL in the UI.
+The proxy sends `/api` to `api` and the rest of the domain to `ui`: one
+origin, no CORS, no API URL in the UI.
 
 ### Mode 2: API with UI, and ingestor
 
@@ -204,7 +226,7 @@ mounts it with the permissions of the host file: make it readable by uid
 
 On another host, run only the `ingestor` service of either compose file,
 with `CAURI_INGEST_API_URL=https://<CAURI_DOMAIN>` and the token of that
-sensor. TLS is handled by Traefik in front of the API.
+sensor. TLS is handled by the reverse proxy in front of the API.
 
 ### PostgreSQL
 
@@ -216,11 +238,14 @@ server.
 ### Protecting the UI
 
 **The UI and the read API have no authentication yet.** Until they do,
-put them behind protection at Traefik: a `basicAuth` or `forwardAuth`
-middleware, or an `ipAllowList`. The compose files give ingestion its own
-router (`cauri-ingest`, `/api/ingest`, authenticated by the ingestor
-tokens), so a middleware added to the other routers (`cauri-api` and
-`cauri-ui` in mode 1, `cauri` in mode 2) does not block ingestors:
+do not expose them as is: protect them at the reverse proxy (basic
+authentication, single sign-on, IP allow list) or keep them on a private
+network or behind a VPN. Leave `/api/ingest` out of that protection:
+ingestors authenticate with their tokens.
+
+With the Traefik examples, ingestion has its own router (`cauri-ingest`),
+so a middleware added to the other routers (`cauri-api` and `cauri-ui` in
+mode 1, `cauri` in mode 2) does not block ingestors:
 
 ```yaml
 traefik.http.routers.cauri-ui.middlewares: <your middleware>@<provider>
