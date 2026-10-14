@@ -141,3 +141,26 @@ a {
     animation: none !important;
   }
 }
+
+/* asciinema-player theme: the colours of the terminal blocks. Doubled
+   class: the player's own stylesheet, loaded later, sets defaults. */
+.ap-player.asciinema-player-theme-cauri {
+  --term-color-foreground: var(--c-term-ink);
+  --term-color-background: var(--c-term-bg);
+  --term-color-0: #0f1b24;
+  --term-color-1: #e5534b;
+  --term-color-2: #57ab5a;
+  --term-color-3: #c69026;
+  --term-color-4: #539bf5;
+  --term-color-5: #b083f0;
+  --term-color-6: #7fd1c7;
+  --term-color-7: #d6e2ea;
+  --term-color-8: #7d8f9c;
+  --term-color-9: #f47067;
+  --term-color-10: #6bc46d;
+  --term-color-11: #daaa3f;
+  --term-color-12: #6cb6ff;
+  --term-color-13: #dcbdfb;
+  --term-color-14: #a5e8df;
+  --term-color-15: #ffffff;
+}

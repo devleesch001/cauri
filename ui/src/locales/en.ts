@@ -70,10 +70,16 @@ export default {
       duration: 'Duration',
       cowrieSession: 'Cowrie session',
     },
+    replay: {
+      title: 'Replay',
+      player: 'Replay of the terminal',
+      realTime: 'Real time',
+      realTimeOff: 'Pauses longer than 2 s are shortened.',
+      realTimeOn: 'Real timing, pauses included.',
+    },
     recording: {
       title: 'Recording',
       stored: 'Stored, {size} over {duration}.',
-      noReplay: 'Replay is not available in this version.',
       pending: 'Cowrie recorded the terminal; the file has not reached the API yet.',
       none: 'No terminal was opened.',
     },

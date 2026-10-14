@@ -6,6 +6,7 @@ import Skeleton from 'openvue/skeleton'
 import { ApiError, api } from '@/api/client'
 import type { SessionDetail } from '@/api/types'
 import ErrorNotice from '@/components/ErrorNotice.vue'
+import ReplayPlayer from '@/components/ReplayPlayer.vue'
 import { endpoint, formatBytes, formatDuration, formatOffset, formatTime } from '@/format'
 import { timeline } from '@/timeline'
 
@@ -101,7 +102,6 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
             class="recording"
           >
             {{ t('session.recording.stored', { size: formatBytes(session.tty_size), duration: formatDuration(session.tty_duration) }) }}
-            <span class="muted">{{ t('session.recording.noReplay') }}</span>
           </p>
           <p
             v-else-if="session.tty_log"
@@ -135,6 +135,10 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
         </aside>
 
         <section aria-labelledby="timeline-title">
+          <template v-if="session.tty_available">
+            <h2>{{ t('session.replay.title') }}</h2>
+            <ReplayPlayer :session-id="session.id" />
+          </template>
           <h2 id="timeline-title">
             {{ t('session.timeline.title') }}
           </h2>
