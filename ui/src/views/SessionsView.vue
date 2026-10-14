@@ -63,6 +63,16 @@ const loginOptions = computed(() => [
   { label: t('sessions.filters.shellObtained'), value: 'success' },
   { label: t('sessions.filters.loginFailed'), value: 'failed' },
 ])
+// Bots include the sessions without interaction (the API counts them so).
+const verdict = computed({
+  get: () => q('verdict') || 'any',
+  set: (v: string) => void patchQuery({ verdict: v === 'any' ? undefined : v }),
+})
+const verdictOptions = computed(() => [
+  { label: t('sessions.filters.anyVerdict'), value: 'any' },
+  { label: t('sessions.filters.humans'), value: 'human' },
+  { label: t('sessions.filters.bots'), value: 'bot' },
+])
 const withCommands = computed({
   get: () => q('has_commands') === 'true',
   set: (v: boolean) => void patchQuery({ has_commands: v ? 'true' : undefined }),
@@ -84,7 +94,8 @@ watch(
     try {
       const res = await api.sessions({
         sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        client: q('client'), country: q('country'), login: q('login'), has_commands: q('has_commands'),
+        client: q('client'), country: q('country'), login: q('login'), verdict: q('verdict'),
+        has_commands: q('has_commands'),
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
       })
@@ -175,6 +186,14 @@ function clearFilters() {
         option-value="value"
         :allow-empty="false"
         :aria-label="t('sessions.filters.outcome')"
+      />
+      <SelectButton
+        v-model="verdict"
+        :options="verdictOptions"
+        option-label="label"
+        option-value="value"
+        :allow-empty="false"
+        :aria-label="t('sessions.filters.verdict')"
       />
       <label class="toggle">
         <ToggleSwitch v-model="withCommands" />
@@ -283,6 +302,19 @@ function clearFilters() {
       >
         <template #body="{ data }">
           {{ data.commands || '—' }}
+        </template>
+      </Column>
+      <Column :header="t('sessions.columns.verdict')">
+        <template #body="{ data }">
+          <span
+            v-if="data.verdict"
+            class="badge"
+            :class="'badge-' + data.verdict"
+          >{{ t('session.verdict.' + data.verdict) }}</span>
+          <span
+            v-else
+            class="muted"
+          >—</span>
         </template>
       </Column>
       <Column :header="t('sessions.columns.outcome')">

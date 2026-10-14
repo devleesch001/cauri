@@ -33,6 +33,10 @@ export default {
       shellObtained: 'Shell obtained',
       loginFailed: 'Login failed',
       typedCommands: 'Typed commands',
+      verdict: 'Human or bot',
+      anyVerdict: 'All',
+      humans: 'Humans',
+      bots: 'Bots',
     },
     empty: {
       filtered: 'No session matches these filters.',
@@ -48,6 +52,7 @@ export default {
       duration: 'Duration',
       commands: 'Commands',
       outcome: 'Outcome',
+      verdict: 'Verdict',
     },
     moreCredentials: '+{n} more',
     outcome: {

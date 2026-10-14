@@ -93,6 +93,31 @@ a {
   font-weight: 600;
 }
 
+/* Verdict of a session: neutral colours; red only means "got a shell". */
+.badge {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--c-rule);
+  border-radius: 999px;
+  color: var(--c-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.badge-human {
+  border-color: var(--p-primary-color);
+  color: var(--p-primary-color);
+}
+
+.badge-bot {
+  border-color: var(--c-ink);
+  background: var(--c-ink);
+  color: var(--c-surface);
+}
+
 .page {
   max-width: 1440px;
   margin: 0 auto;

@@ -477,33 +477,8 @@ const logins = computed(() => {
   grid-template-areas: 'timeline side';
 }
 
-/* Verdict: neutral colours; red only means "got a shell". */
-.badge {
-  display: inline-block;
+h1 > .badge {
   margin-left: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--c-rule);
-  border-radius: 999px;
-  color: var(--c-muted);
-  font-size: 0.8rem;
-  font-weight: 500;
-  line-height: 1.6;
-  vertical-align: middle;
-}
-
-dd > .badge {
-  margin-left: 0;
-}
-
-.badge-human {
-  border-color: var(--p-primary-color);
-  color: var(--p-primary-color);
-}
-
-.badge-bot {
-  border-color: var(--c-ink);
-  background: var(--c-ink);
-  color: var(--c-surface);
 }
 
 .source {

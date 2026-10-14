@@ -41,6 +41,8 @@ export interface Session {
   geo_country: string | null // ISO 3166-1 alpha-2
   geo_city: string | null
   geo_source: string | null // GeoIP database used; set with no country: unknown address
+  verdict: Verdict['verdict'] | null // stored; null until judged
+  verdict_score: number | null
 }
 
 export interface SessionSummary extends Session {
