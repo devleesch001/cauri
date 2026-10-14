@@ -4,7 +4,8 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Skeleton from 'openvue/skeleton'
 import { ApiError, api } from '@/api/client'
-import type { SessionDetail } from '@/api/types'
+import type { Chapter, Chapters, SessionDetail } from '@/api/types'
+import ChapterList from '@/components/ChapterList.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import ReplayPlayer from '@/components/ReplayPlayer.vue'
 import { endpoint, formatBytes, formatDuration, formatOffset, formatTime } from '@/format'
@@ -14,6 +15,10 @@ const props = defineProps<{ id: string }>()
 const { t } = useI18n()
 
 const session = ref<SessionDetail | null>(null)
+const chapters = ref<Chapters | null>(null)
+// Position of the player and of its markers, on its own timeline.
+const playerTime = ref(0)
+const markers = ref<number[]>([])
 const missing = ref(false)
 const error = ref<string | null>(null)
 
@@ -22,9 +27,15 @@ watch(
   async (id) => {
     session.value = null
     missing.value = false
+    chapters.value = null
+    markers.value = []
     try {
       session.value = await api.session(id)
       error.value = null
+      if (session.value.tty_available) {
+        // Without chapters, the commands are listed without their output.
+        chapters.value = await api.chapters(id).catch(() => null)
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) missing.value = true
       else error.value = e instanceof Error ? e.message : String(e)
@@ -35,6 +46,70 @@ watch(
 
 const entries = computed(() => (session.value ? timeline(session.value.events) : []))
 const offset = (ts: string) => (session.value ? formatOffset(session.value.started_at, ts) : '')
+
+// Replay and chapters: the player reports its position and where its
+// markers (one per command, in order) fall, on its own timeline.
+const player = ref<InstanceType<typeof ReplayPlayer> | null>(null)
+const currentChapter = computed(() => {
+  let current = -1
+  markers.value.forEach((m, i) => {
+    if (m <= playerTime.value + 0.05) current = i
+  })
+  return current
+})
+
+// The commands, with their output when the recording gives it.
+const commandChapters = computed<Chapter[]>(() => {
+  if (chapters.value) return chapters.value.chapters
+  const s = session.value
+  if (!s) return []
+  const start = new Date(s.started_at).getTime()
+  return s.command_list.map((c) => ({
+    time: Math.max((new Date(c.ts).getTime() - start) / 1000, 0),
+    command: c.input,
+    output: '',
+    truncated: false,
+    full_screen: false,
+  }))
+})
+
+const eventsOf = (id: string) => session.value?.events.filter((e) => e.eventid === id) ?? []
+
+const user = computed(() => session.value?.login_attempt_list.find((l) => l.success)?.username)
+
+const terminal = computed(() => {
+  const size = eventsOf('cowrie.client.size')[0]?.data
+  return size ? `${String(size.width)}×${String(size.height)}` : undefined
+})
+
+// A recording or a terminal size means an interactive shell (pty);
+// commands without them were run directly (ssh host command).
+const mode = computed(() => {
+  const s = session.value
+  if (!s) return '—'
+  if (s.tty_log || s.tty_sha256 || terminal.value) return t('session.mode.pty')
+  if (s.command_list.length) return t('session.mode.exec')
+  return '—'
+})
+
+// Passwords and public keys tried, in time order. Cowrie logs offered keys
+// (cowrie.client.fingerprint) without telling whether they were accepted.
+const logins = computed(() => {
+  const s = session.value
+  if (!s) return []
+  const rows = [
+    ...s.login_attempt_list.map((l) => ({
+      ts: l.ts, key: false, user: l.username, secret: l.password,
+      result: l.success ? 'accepted' : 'refused',
+    })),
+    ...eventsOf('cowrie.client.fingerprint').map((e) => ({
+      ts: e.ts, key: true, user: String(e.data.username ?? ''),
+      secret: [e.data.type, e.data.fingerprint].filter(Boolean).join(' '),
+      result: 'offered',
+    })),
+  ]
+  return rows.sort((a, b) => a.ts.localeCompare(b.ts))
+})
 </script>
 
 <template>
@@ -72,52 +147,157 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
       </div>
 
       <div class="layout">
-        <aside>
-          <dl class="facts">
-            <dt>{{ t('session.facts.source') }}</dt>
-            <dd class="data">
-              {{ endpoint(session.src_ip, session.src_port) }}
-            </dd>
-            <dt>{{ t('session.facts.port') }}</dt>
-            <dd>{{ session.dst_port ?? '—' }} <span class="muted">{{ session.protocol }}</span></dd>
-            <dt>{{ t('session.facts.client') }}</dt>
-            <dd class="data">
-              {{ session.client_version ?? '—' }}
-            </dd>
-            <dt>{{ t('session.facts.hassh') }}</dt>
-            <dd class="data">
-              {{ session.hassh ?? '—' }}
-            </dd>
-            <dt>{{ t('session.facts.duration') }}</dt>
-            <dd>{{ formatDuration(session.duration) }}</dd>
-            <dt>{{ t('session.facts.cowrieSession') }}</dt>
-            <dd class="data">
-              {{ session.session }}
-            </dd>
-          </dl>
+        <section
+          v-if="session.tty_available"
+          class="replay-area"
+          aria-labelledby="replay-title"
+        >
+          <h2 id="replay-title">
+            {{ t('session.replay.title') }}
+          </h2>
+          <ReplayPlayer
+            ref="player"
+            :session-id="session.id"
+            @time="(s) => (playerTime = s)"
+            @markers="(m) => (markers = m)"
+          />
+        </section>
 
-          <h2>{{ t('session.recording.title') }}</h2>
-          <p
-            v-if="session.tty_available"
-            class="recording"
+        <aside class="side">
+          <section
+            class="card"
+            aria-labelledby="session-title"
           >
-            {{ t('session.recording.stored', { size: formatBytes(session.tty_size), duration: formatDuration(session.tty_duration) }) }}
-          </p>
-          <p
-            v-else-if="session.tty_log"
-            class="muted recording"
-          >
-            {{ t('session.recording.pending') }}
-          </p>
-          <p
-            v-else
-            class="muted recording"
-          >
-            {{ t('session.recording.none') }}
-          </p>
+            <h2 id="session-title">
+              {{ t('session.side.session') }}
+            </h2>
+            <dl class="facts">
+              <dt>{{ t('session.facts.source') }}</dt>
+              <dd class="data">
+                {{ endpoint(session.src_ip, session.src_port) }}
+              </dd>
+              <dt>{{ t('session.facts.sensor') }}</dt>
+              <dd>{{ session.sensor_id }}</dd>
+              <dt>{{ t('session.facts.user') }}</dt>
+              <dd class="data">
+                {{ user ?? '—' }}
+              </dd>
+              <dt>{{ t('session.facts.client') }}</dt>
+              <dd class="data">
+                {{ session.client_version ?? '—' }}
+              </dd>
+              <dt>{{ t('session.facts.hassh') }}</dt>
+              <dd class="data">
+                {{ session.hassh ?? '—' }}
+              </dd>
+              <dt>{{ t('session.facts.started') }}</dt>
+              <dd>{{ formatTime(session.started_at) }}</dd>
+              <dt>{{ t('session.facts.duration') }}</dt>
+              <dd>{{ formatDuration(session.duration) }}</dd>
+              <dt>{{ t('session.facts.port') }}</dt>
+              <dd>{{ session.dst_port ?? '—' }} <span class="muted">{{ session.protocol }}</span></dd>
+              <dt>{{ t('session.facts.mode') }}</dt>
+              <dd>{{ mode }}</dd>
+              <dt>{{ t('session.facts.terminal') }}</dt>
+              <dd class="data">
+                {{ terminal ?? '—' }}
+              </dd>
+              <dt>{{ t('session.recording.title') }}</dt>
+              <dd v-if="session.tty_available">
+                {{ t('session.recording.stored', { size: formatBytes(session.tty_size), duration: formatDuration(session.tty_duration) }) }}
+                <span
+                  v-if="chapters"
+                  class="muted"
+                >{{ t('session.recording.records', { n: chapters.records }) }}</span>
+              </dd>
+              <dd
+                v-else-if="session.tty_log"
+                class="muted"
+              >
+                {{ t('session.recording.pending') }}
+              </dd>
+              <dd
+                v-else
+                class="muted"
+              >
+                {{ t('session.recording.none') }}
+              </dd>
+              <dt>{{ t('session.facts.cowrieSession') }}</dt>
+              <dd class="data">
+                {{ session.session }}
+              </dd>
+            </dl>
+          </section>
 
-          <template v-if="session.transfers.length">
-            <h2>{{ t('session.files.title') }}</h2>
+          <section
+            v-if="commandChapters.length"
+            class="card"
+            aria-labelledby="commands-title"
+          >
+            <h2 id="commands-title">
+              {{ t('session.side.commands', { n: commandChapters.length }) }}
+            </h2>
+            <ChapterList
+              :chapters="commandChapters"
+              :current="currentChapter"
+              :seekable="!!chapters"
+              @seek="(i) => player?.seekChapter(i)"
+            />
+          </section>
+
+          <section
+            class="card"
+            aria-labelledby="logins-title"
+          >
+            <h2 id="logins-title">
+              {{ t('session.side.logins') }}
+            </h2>
+            <table
+              v-if="logins.length"
+              class="logins"
+            >
+              <thead>
+                <tr>
+                  <th>{{ t('session.logins.method') }}</th>
+                  <th>{{ t('session.logins.user') }}</th>
+                  <th>{{ t('session.logins.secret') }}</th>
+                  <th>{{ t('session.logins.result') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(l, i) in logins"
+                  :key="i"
+                >
+                  <td>{{ l.key ? t('session.logins.key') : t('session.logins.password') }}</td>
+                  <td class="data">
+                    {{ l.user }}
+                  </td>
+                  <td class="data secret">
+                    {{ l.secret }}
+                  </td>
+                  <td :class="{ shell: l.result === 'accepted', muted: l.result !== 'accepted' }">
+                    {{ t('session.logins.' + l.result) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              v-else
+              class="muted"
+            >
+              {{ t('session.logins.none') }}
+            </p>
+          </section>
+
+          <section
+            v-if="session.transfers.length"
+            class="card"
+            aria-labelledby="files-title"
+          >
+            <h2 id="files-title">
+              {{ t('session.files.title') }}
+            </h2>
             <ul class="files">
               <li
                 v-for="x in session.transfers"
@@ -131,14 +311,13 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
                 >{{ t('session.files.sha256', { sha: x.sha256 }) }}</span>
               </li>
             </ul>
-          </template>
+          </section>
         </aside>
 
-        <section aria-labelledby="timeline-title">
-          <template v-if="session.tty_available">
-            <h2>{{ t('session.replay.title') }}</h2>
-            <ReplayPlayer :session-id="session.id" />
-          </template>
+        <section
+          class="timeline-area"
+          aria-labelledby="timeline-title"
+        >
           <h2 id="timeline-title">
             {{ t('session.timeline.title') }}
           </h2>
@@ -221,16 +400,72 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(16rem, 22rem) 1fr;
-  gap: var(--space-5);
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 27rem);
+  grid-template-areas:
+    'replay side'
+    'timeline side';
+  gap: var(--space-4) var(--space-5);
   align-items: start;
+}
+
+.replay-area {
+  grid-area: replay;
+}
+
+.side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.timeline-area {
+  grid-area: timeline;
+}
+
+/* No replay: the timeline takes the replay's place. */
+.layout:not(:has(.replay-area)) {
+  grid-template-areas: 'timeline side';
+}
+
+.card {
+  padding: var(--space-3);
+  border: 1px solid var(--c-rule);
+  border-radius: 6px;
+  background: var(--c-surface);
+}
+
+.card h2 {
+  margin-bottom: var(--space-2);
+}
+
+.logins {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.93em;
+}
+
+.logins th {
+  color: var(--c-muted);
+  font-weight: 500;
+  text-align: left;
+}
+
+.logins th,
+.logins td {
+  padding: var(--space-1) var(--space-2) var(--space-1) 0;
+  vertical-align: top;
+}
+
+.logins .secret {
+  overflow-wrap: anywhere;
 }
 
 .facts {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: var(--space-1) var(--space-3);
-  margin: 0 0 var(--space-4);
+  margin: 0;
 }
 
 .facts dt {
@@ -240,14 +475,6 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
 .facts dd {
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-aside h2 {
-  margin-bottom: var(--space-2);
-}
-
-.recording {
-  margin: 0 0 var(--space-4);
 }
 
 .files {
@@ -335,10 +562,15 @@ aside h2 {
   }
 }
 
-@media (max-width: 900px) {
-  .layout {
-    grid-template-columns: 1fr;
-    gap: var(--space-4);
+/* One column: the replay first, then the side cards, then the timeline. */
+@media (max-width: 1100px) {
+  .layout,
+  .layout:not(:has(.replay-area)) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'replay'
+      'side'
+      'timeline';
   }
 }
 </style>

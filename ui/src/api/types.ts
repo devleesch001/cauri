@@ -100,3 +100,17 @@ export interface LoginAttemptRow {
   src_ip: string | null
   client_version: string | null
 }
+
+/** A command of a replay and what it printed (GET /api/sessions/{id}/chapters). */
+export interface Chapter {
+  time: number // seconds from the start of the recording, real time
+  command: string
+  output: string // plain text, without the echo of the command or the prompt
+  truncated: boolean
+  full_screen: boolean // a full-screen program: no meaningful text output
+}
+
+export interface Chapters {
+  records: number // records in the raw recording
+  chapters: Chapter[]
+}
