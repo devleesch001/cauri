@@ -35,19 +35,32 @@ var (
 	ErrTTYConflict = errors.New("session already has another tty recording")
 	// ErrDigestMismatch means an upload does not match its digest or size.
 	ErrDigestMismatch = ttystore.ErrDigestMismatch
+	// ErrTooLarge means a TTY recording exceeds the configured limit.
+	ErrTooLarge = errors.New("tty recording too large")
 )
+
+// DefaultMaxTTYSize is the default limit on the size of a TTY recording.
+const DefaultMaxTTYSize = 128 << 20
 
 // Service ingests events and TTY recordings.
 type Service struct {
-	db  *bun.DB
-	tty *ttystore.Store
-	now func() time.Time
+	db         *bun.DB
+	tty        *ttystore.Store
+	maxTTYSize int64
+	now        func() time.Time
 }
 
-// New returns a service writing to db and tty.
-func New(db *bun.DB, tty *ttystore.Store) *Service {
-	return &Service{db: db, tty: tty, now: time.Now}
+// New returns a service writing to db and tty, refusing TTY recordings
+// larger than maxTTYSize bytes (DefaultMaxTTYSize if not positive).
+func New(db *bun.DB, tty *ttystore.Store, maxTTYSize int64) *Service {
+	if maxTTYSize <= 0 {
+		maxTTYSize = DefaultMaxTTYSize
+	}
+	return &Service{db: db, tty: tty, maxTTYSize: maxTTYSize, now: time.Now}
 }
+
+// MaxTTYSize returns the largest TTY recording the service accepts.
+func (s *Service) MaxTTYSize() int64 { return s.maxTTYSize }
 
 // IngestEvents stores a batch sent by sensorID, the authenticated sensor.
 // Invalid events are rejected one by one; already known events are counted
@@ -137,6 +150,9 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 	}
 	if !protocol.ValidSession(m.Session) || !protocol.ValidSHA256(m.SHA256) || m.Size < 0 {
 		return res, fmt.Errorf("%w: bad session, digest or size", ErrInvalid)
+	}
+	if m.Size > s.maxTTYSize {
+		return res, fmt.Errorf("%w: %d bytes, limit %d", ErrTooLarge, m.Size, s.maxTTYSize)
 	}
 
 	sess := new(store.Session)

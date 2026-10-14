@@ -53,7 +53,7 @@ func newService(t *testing.T, db *bun.DB) *Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(db, tty)
+	return New(db, tty, 1<<20)
 }
 
 func sum(s string) string {
@@ -350,6 +350,11 @@ func TestStoreTTYErrors(t *testing.T) {
 		m.SHA256 = "bad"
 		if _, err := svc.StoreTTY(ctx, sensor, m, strings.NewReader("x")); !errors.Is(err, ErrInvalid) {
 			t.Errorf("invalid digest: %v", err)
+		}
+		big := ttyMeta("s1", "x")
+		big.Size = svc.MaxTTYSize() + 1
+		if _, err := svc.StoreTTY(ctx, sensor, big, strings.NewReader("x")); !errors.Is(err, ErrTooLarge) {
+			t.Errorf("too large: %v", err)
 		}
 		if _, err := svc.StoreTTY(ctx, sensor, ttyMeta("s1", "x"), strings.NewReader("y")); !errors.Is(err, ErrDigestMismatch) {
 			t.Errorf("wrong content: %v", err)
