@@ -64,9 +64,12 @@ only writer, except `cauri token`, accepted by the user.
 migrations are immutable: add a new file.
 
 **TTY recordings** are stored raw in a volume, named by the SHA-256 of
-the file (`internal/ttystore`); the database keeps the reference.
-Conversion to asciicast will happen at read time
-(`/api/sessions/{id}/cast`), never at ingestion.
+the file (`internal/ttystore`); the database keeps the reference. They
+are converted to asciicast at read time (`/api/sessions/{id}/cast`,
+`internal/ttylog` → `internal/asciicast`), never at ingestion. Replays
+keep the real timing and include keystrokes (`"i"`); `idle_time_limit` is
+only a header hint. A new asciicast version is a new `Encoder`, not a
+change of the converter.
 
 **Same origin.** The UI calls relative `/api/...` paths: no CORS, no API
 URL in the UI. The reverse proxy routes `/api` to the API.
@@ -91,6 +94,7 @@ mandatory.
 | `internal/ingest/` | Ingestion service; Cowrie parsing in `cowrie.go`, projection in `batch.go` |
 | `internal/store/` | bun models, migrations, read queries; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
+| `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model and v3 encoder |
 | `internal/auth/` | Ingestor tokens |
 | `internal/api/` | chi router, ingestion and read handlers, middlewares |
 | `internal/ingestor/` | Ingestor loop, TTY queue, `Sink`; `tail/` follows the log files |

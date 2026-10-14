@@ -3,7 +3,7 @@
 cauri collects what the [Cowrie](https://github.com/cowrie/cowrie) SSH
 honeypot records, from one or several sensors, and shows it: sessions,
 credentials tried, commands typed, files fetched. It keeps the raw terminal
-recordings so that sessions can be replayed once replay lands in the UI.
+recordings and replays them in the browser, at the attacker's real pace.
 
 One Go binary and one Docker image provide every role:
 
@@ -30,8 +30,8 @@ Cowrie ──► cowrie.json ──┐
                         API ──► database (events, sessions, logins, commands, transfers)
                          │  └─► volume (raw TTY recordings)
                          ▼
-                        UI: sessions, session detail, failed logins
-                            (later: statistics, replay via /api/sessions/{id}/cast)
+                        UI: sessions, session detail and replay, failed logins
+                            (replay: GET /api/sessions/{id}/cast, converted on read)
 ```
 
 **The ingestor does not interpret events.** It sends each line of
@@ -90,6 +90,8 @@ pkg/client/          HTTP client of the ingestion protocol (public)
 internal/ingest/     ingestion service
 internal/store/      database: models, migrations, read queries
 internal/ttystore/   storage of TTY recordings
+internal/ttylog/     reads Cowrie's recordings, converts them for replay
+internal/asciicast/  asciicast model and encoders (version 3)
 internal/auth/       ingestor tokens
 internal/api/        HTTP API (chi)
 internal/ingestor/   ingestor; tail/ follows the log files
@@ -100,6 +102,25 @@ deploy/              compose files and .env.example
 
 `pkg/` holds what another program needs to feed a cauri API, for example a
 custom ingestor or an import tool.
+
+### Replay
+
+`GET /api/sessions/{id}/cast` returns the recording of a session as
+[asciicast v3](https://docs.asciinema.org/manual/asciicast/v3/), which the
+UI plays with asciinema-player. The stored file is converted on each
+request and never modified.
+
+- Real timing is kept. The header carries `idle_time_limit: 2`, a hint
+  that makes players shorten pauses longer than 2 s;
+  `?idle_time_limit=<seconds>` changes it, `0` removes it (the UI's "Real
+  time" switch). The real rhythm tells a human from a bot.
+- Terminal output becomes `"o"` events and keystrokes `"i"` events: they
+  include what the terminal does not show, such as passwords typed at
+  `sudo` or `passwd`.
+- The terminal size comes from the client's `cowrie.client.size` events,
+  80×24 if none; later changes become `"r"` events.
+- `404` if the session has no stored recording, `422` if the file cannot
+  be read; an `ETag` makes repeated loads cheap.
 
 ## Configuration
 
@@ -298,9 +319,6 @@ containers can reach a Docker daemon.
 
 ## Next steps the code is ready for
 
-- **Replay**: recordings are stored raw; `/api/sessions/{id}/cast` will
-  convert them to asciicast on read, for asciinema-player, next to the
-  timeline of the session page.
 - **Statistics**: queries on the existing tables.
 - **UI authentication**: a `ReadAuth` middleware.
 - **All-in-one binary** (build tag `allinone`): the ingestor writes to a

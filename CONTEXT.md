@@ -14,8 +14,8 @@ Version 1 is complete:
 - API with token-authenticated ingestion and read endpoints (sessions with
   filters, session detail, failed logins, sensors);
 - UI: session list, session detail with a timeline (commands shown as a
-  terminal), failed logins without a shell, sensor filter; English, all
-  texts in vue-i18n;
+  terminal) and the replay of the recording, failed logins without a
+  shell, sensor filter; English, all texts in vue-i18n;
 - one Docker image (distroless, non-root), compose examples for modes 1
   and 2, Forgejo Actions workflow, README.
 
@@ -48,6 +48,9 @@ module path is `github.com/devleesch001/cauri`.
 | UI protection | None imposed by cauri or the compose files; documented as the operator's job until UI auth exists | User: no mandatory middleware. |
 | CI runner | `runs-on: ubuntu-latest` | User. |
 | CI actions | Pinned to commit SHAs | The image job hands the registry token to third-party actions. |
+| Replay format | asciicast v3, the converter structured so that a v2 encoder can be added (not implemented) | User: the player is embedded (asciinema-player ≥ 3.10); CLI compatibility is not a priority. |
+| Keystrokes in replays | Included as `"i"` events | User: in a honeypot they hold input the terminal does not show (passwords at `sudo`, `passwd`…). |
+| Replay timing | Real timing in the cast; `idle_time_limit` 2 s in the header by default, removable (`?idle_time_limit=0`, "Real time" switch) | User: the real rhythm tells a human from a bot. |
 
 ## What real Cowrie data changed
 
@@ -65,6 +68,14 @@ Checked against the official image v3.1.2:
   type empties one column and the raw event is still stored.
 - Cowrie runs as uid 999 with umask 0022: its files are world-readable,
   so the ingestor runs under its own non-root user.
+- **Recording format**: records of a 24-byte little-endian header
+  (`op, tty, length, direction, sec, usec`, Cowrie's `<iLiiLL`) and their
+  data; ops open/write/close, direction 1 typed input, 2 output.
+- **Output line ends are bare `\n`**: Cowrie records before the terminal
+  driver, which on a real terminal adds the `\r` (onlcr). Replays drew
+  staircases until the converter added it.
+- On a freshly mounted `var`, Cowrie creates neither `log/cowrie` nor
+  `lib/cowrie/tty` and fails without them.
 
 ## Security fixes made during version 1
 
@@ -78,9 +89,6 @@ Checked against the official image v3.1.2:
 
 ## Next steps the code is prepared for
 
-- **Replay**: `GET /api/sessions/{id}/cast` converting the raw recording
-  from `ttystore` to asciicast on read; asciinema-player in the session
-  page, next to the timeline.
 - **Statistics and charts**: queries on the existing tables.
 - **UI and read API authentication**: implement `ReadAuth` in
   `internal/api`.
