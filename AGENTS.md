@@ -169,12 +169,13 @@ Plex Mono only for technical values; red (`--c-shell`) means only "an
 attacker obtained a shell". Respect dark mode, reduced motion, keyboard
 focus, phone widths.
 
-**CI.** GitHub and Forgejo workflows are kept equivalent. Third-party
-actions are pinned to commit SHAs with the version in a comment; jobs run
-on `ubuntu-latest` with the least permissions (read-only by default). On
+**CI.** GitHub and Forgejo workflows are kept equivalent. Actions are
+referenced by their major version tag (`@v7`) and GoReleaser by
+`"~> v2"`, so that fixes apply without changes: the user's choice, do not
+pin them to SHAs or exact versions. Jobs run on `ubuntu-latest` with the
+least permissions (read-only by default). On
 GitHub, jobs run on the runner itself: services are reached on
 `localhost`; on Forgejo, jobs run in a container: services by name.
-GoReleaser is pinned to the same version in both workflows.
 
 ## Way of working
 

@@ -50,7 +50,7 @@ module path is `github.com/devleesch001/cauri`.
 | Reverse proxy | Traefik only as the example of the compose files; README describes any proxy | User: not everyone uses Traefik. |
 | UI protection | None imposed by cauri or the compose files; documented as the operator's job until UI auth exists | User: no mandatory middleware. |
 | CI runner | `runs-on: ubuntu-latest` | User. |
-| CI actions | Pinned to commit SHAs | The image job hands the registry token to third-party actions. |
+| CI actions | Major version tags (`@v7`), GoReleaser `"~> v2"` | User: fixes within a major version must apply without changing the workflows. |
 | CI and releases | GitHub Actions (ghcr.io, GitHub releases) and Forgejo Actions (instance registry and releases), GoReleaser for binaries and deb/rpm/Arch packages | Set up by the user; the repository lives on GitHub. |
 | Replay format | asciicast v3, the converter structured so that a v2 encoder can be added (not implemented) | User: the player is embedded (asciinema-player ≥ 3.10); CLI compatibility is not a priority. |
 | Keystrokes in replays | Included as `"i"` events | User: in a honeypot they hold input the terminal does not show (passwords at `sudo`, `passwd`…). |
