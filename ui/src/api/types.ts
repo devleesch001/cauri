@@ -38,6 +38,9 @@ export interface Session {
   tty_duration: number | null
   tty_sha256: string | null
   tty_size: number | null
+  geo_country: string | null // ISO 3166-1 alpha-2
+  geo_city: string | null
+  geo_source: string | null // GeoIP database used; set with no country: unknown address
 }
 
 export interface SessionSummary extends Session {
@@ -99,6 +102,7 @@ export interface LoginAttemptRow {
   session: string
   src_ip: string | null
   client_version: string | null
+  geo_country: string | null
 }
 
 /** A command of a replay and what it printed (GET /api/sessions/{id}/chapters). */
@@ -120,4 +124,15 @@ export interface Verdict {
   verdict: 'human' | 'bot' | 'uncertain' | 'no_interaction'
   score: number
   reasons: { code: string; points: number }[]
+}
+
+export interface CountryCount {
+  country: string
+  sessions: number
+}
+
+/** GET /api/about. */
+export interface About {
+  version: string
+  geoip: { type: string; built: string; provider: 'db-ip' | 'maxmind' | '' } | null
 }

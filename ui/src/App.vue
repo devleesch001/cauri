@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { api } from './api/client'
+import type { About } from './api/types'
 import SensorSelect from './components/SensorSelect.vue'
 import { useSensors } from './stores/sensors'
 
 const { t } = useI18n()
 const sensors = useSensors()
-onMounted(sensors.load)
+// The GeoIP database, when there is one, requires an attribution.
+const about = ref<About | null>(null)
+onMounted(() => {
+  void sensors.load()
+  void api.about().then((a) => (about.value = a)).catch(() => undefined)
+})
 </script>
 
 <template>
@@ -31,9 +38,28 @@ onMounted(sensors.load)
   <main>
     <RouterView />
   </main>
+  <footer
+    v-if="about?.geoip?.provider"
+    class="attribution muted"
+  >
+    <a
+      v-if="about.geoip.provider === 'db-ip'"
+      href="https://db-ip.com"
+    >{{ t('attribution.dbip') }}</a>
+    <template v-else>
+      {{ t('attribution.maxmind') }}
+      <a href="https://www.maxmind.com">https://www.maxmind.com</a>
+    </template>
+  </footer>
 </template>
 
 <style scoped>
+.attribution {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--c-rule);
+  font-size: 0.85em;
+}
+
 .bar {
   display: flex;
   flex-wrap: wrap;

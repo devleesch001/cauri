@@ -12,7 +12,7 @@ import type { LoginAttemptRow } from '@/api/types'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
-import { formatTime } from '@/format'
+import { countryName, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
 
 // Failed logins. By default only those of sessions that never obtained a
@@ -177,6 +177,15 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       <Column :header="t('logins.columns.password')">
         <template #body="{ data }">
           <span class="data">{{ data.password }}</span>
+        </template>
+      </Column>
+      <Column :header="t('logins.columns.country')">
+        <template #body="{ data }">
+          <span v-if="data.geo_country">{{ countryName(data.geo_country) }}</span>
+          <span
+            v-else
+            class="muted"
+          >—</span>
         </template>
       </Column>
       <Column :header="t('logins.columns.client')">

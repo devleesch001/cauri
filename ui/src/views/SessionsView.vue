@@ -5,15 +5,16 @@ import { useI18n } from 'vue-i18n'
 import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent } from 'openvue/datatable'
 import Column from 'openvue/column'
 import InputText from 'openvue/inputtext'
+import Select from 'openvue/select'
 import SelectButton from 'openvue/selectbutton'
 import ToggleSwitch from 'openvue/toggleswitch'
 import Button from 'openvue/button'
 import { api } from '@/api/client'
-import type { SessionSummary } from '@/api/types'
+import type { CountryCount, SessionSummary } from '@/api/types'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
-import { endpoint, formatDuration, formatTime } from '@/format'
+import { countryName, endpoint, formatDuration, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
 
 const { t } = useI18n()
@@ -32,6 +33,26 @@ watch(
 function applyText() {
   void patchQuery({ ...text.value })
 }
+
+// Countries seen, for the filter: those of the selected sensor.
+const countries = ref<CountryCount[]>([])
+watch(
+  () => q('sensor'),
+  async (sensor) => {
+    countries.value = await api.countries(sensor).catch(() => [])
+  },
+  { immediate: true },
+)
+const countryOptions = computed(() =>
+  countries.value.map((c) => ({
+    label: `${countryName(c.country)} (${c.sessions})`,
+    value: c.country,
+  })),
+)
+const country = computed({
+  get: () => q('country') || null,
+  set: (v: string | null) => void patchQuery({ country: v ?? undefined }),
+})
 
 const login = computed({
   get: () => q('login') || 'any',
@@ -63,7 +84,7 @@ watch(
     try {
       const res = await api.sessions({
         sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        client: q('client'), login: q('login'), has_commands: q('has_commands'),
+        client: q('client'), country: q('country'), login: q('login'), has_commands: q('has_commands'),
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
       })
@@ -132,6 +153,16 @@ function clearFilters() {
         :aria-label="t('sessions.filters.clientLabel')"
         @keyup.enter="applyText"
         @blur="applyText"
+      />
+      <Select
+        v-model="country"
+        :options="countryOptions"
+        option-label="label"
+        option-value="value"
+        :placeholder="t('sessions.filters.country')"
+        :aria-label="t('sessions.columns.country')"
+        show-clear
+        filter
       />
       <DayRange
         v-model:from="from"
@@ -223,6 +254,19 @@ function clearFilters() {
           >{{ t('sessions.moreCredentials', { n: data.login_attempts - 3 }) }}</span>
         </template>
       </Column>
+      <Column :header="t('sessions.columns.country')">
+        <template #body="{ data }">
+          <span
+            v-if="data.geo_country"
+            class="country"
+            :title="[data.geo_country, data.geo_city].filter(Boolean).join(', ')"
+          >{{ countryName(data.geo_country) }}</span>
+          <span
+            v-else
+            class="muted"
+          >—</span>
+        </template>
+      </Column>
       <Column :header="t('sessions.columns.client')">
         <template #body="{ data }">
           <span class="data client">{{ data.client_version ?? '—' }}</span>
@@ -281,6 +325,10 @@ function clearFilters() {
 .cred {
   display: inline-block;
   margin-right: var(--space-3);
+  white-space: nowrap;
+}
+
+.country {
   white-space: nowrap;
 }
 

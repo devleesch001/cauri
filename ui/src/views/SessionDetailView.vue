@@ -8,7 +8,7 @@ import type { Chapter, Chapters, SessionDetail, Verdict } from '@/api/types'
 import ChapterList from '@/components/ChapterList.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import ReplayPlayer from '@/components/ReplayPlayer.vue'
-import { endpoint, formatBytes, formatDuration, formatOffset, formatTime } from '@/format'
+import { countryName, endpoint, formatBytes, formatDuration, formatOffset, formatTime } from '@/format'
 import { timeline } from '@/timeline'
 
 const props = defineProps<{ id: string }>()
@@ -187,6 +187,19 @@ const logins = computed(() => {
               <dd class="data">
                 {{ endpoint(session.src_ip, session.src_port) }}
               </dd>
+              <template v-if="session.geo_source">
+                <dt>{{ t('session.facts.location') }}</dt>
+                <dd v-if="session.geo_country">
+                  {{ countryName(session.geo_country) }}{{ session.geo_city ? `, ${session.geo_city}` : '' }}
+                  <span class="muted source">{{ t('session.facts.locationSource', { source: session.geo_source }) }}</span>
+                </dd>
+                <dd
+                  v-else
+                  class="muted"
+                >
+                  {{ t('session.facts.locationUnknown') }}
+                </dd>
+              </template>
               <dt>{{ t('session.facts.sensor') }}</dt>
               <dd>{{ session.sensor_id }}</dd>
               <dt>{{ t('session.facts.user') }}</dt>
@@ -491,6 +504,11 @@ dd > .badge {
   border-color: var(--c-ink);
   background: var(--c-ink);
   color: var(--c-surface);
+}
+
+.source {
+  display: block;
+  font-size: 0.85em;
 }
 
 .score {

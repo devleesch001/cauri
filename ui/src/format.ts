@@ -38,3 +38,15 @@ export function endpoint(ip: string | null, port: number | null): string {
   if (!ip) return '—'
   return port ? `${ip}:${port}` : ip
 }
+
+const regions = new Intl.DisplayNames(['en'], { type: 'region' })
+
+/** Name of a country from its ISO 3166-1 alpha-2 code. */
+export function countryName(code: string): string {
+  try {
+    return regions.of(code) ?? code
+  } catch {
+    return code
+  }
+}
+
