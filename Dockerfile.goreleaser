@@ -1,0 +1,16 @@
+FROM alpine:latest AS dirs
+RUN mkdir -p -m 0755 /data && chown 65532:65532 /data
+
+FROM gcr.io/distroless/static-debian13:nonroot
+ARG TARGETOS
+ARG TARGETARCH
+COPY ${TARGETOS}/${TARGETARCH}/cauri /usr/local/bin/cauri
+COPY --from=dirs --chown=65532:65532 /data /data
+WORKDIR /data
+ENV CAURI_DB_DSN=/data/cauri.db \
+    CAURI_TTY_DIR=/data/tty \
+    CAURI_STATE_DIR=/data/ingestor
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/cauri"]
+CMD ["api", "--ui"]

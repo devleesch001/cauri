@@ -2,6 +2,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: all ui build test lint clean
+.PHONY: release release-forgejo release-snapshot release-build
 .PHONY: init-dev dev-api dev-ingestor dev-ui dev-down dev-reset
 
 all: ui build
@@ -18,8 +19,20 @@ test:
 lint:
 	golangci-lint run ./...
 
+release:
+	goreleaser release --clean
+
+release-forgejo:
+	goreleaser release -f .goreleaser.forgejo.yaml --clean
+
+release-snapshot:
+	goreleaser release --snapshot --clean
+
+release-build:
+	goreleaser build --snapshot --clean
+
 clean:
-	rm -rf bin
+	rm -rf bin dist
 	find internal/webui/dist -mindepth 1 ! -name .gitkeep -delete
 
 # Development environment, see docs/development.md. Everything lives in

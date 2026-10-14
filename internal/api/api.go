@@ -13,6 +13,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"cauri/internal/ingest"
+	"cauri/internal/ttystore"
 	"cauri/pkg/protocol"
 )
 
@@ -25,6 +26,7 @@ type Authenticator interface {
 type Config struct {
 	DB     *bun.DB
 	Ingest *ingest.Service
+	TTY    *ttystore.Store // stored recordings, read for replays
 	Tokens Authenticator
 	Logger *slog.Logger
 	// ReadAuth protects the read endpoints. Nil lets every request through;
@@ -61,6 +63,7 @@ func New(c Config) http.Handler {
 			r.Get("/sensors", s.listSensors)
 			r.Get("/sessions", s.listSessions)
 			r.Get("/sessions/{id}", s.getSession)
+			r.Get("/sessions/{id}/cast", s.getCast)
 			r.Get("/login-attempts", s.listLoginAttempts)
 		})
 

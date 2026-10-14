@@ -47,6 +47,7 @@ func runAPI(ctx context.Context, args []string) error {
 	cfg := api.Config{
 		DB:     conn,
 		Ingest: ingest.New(conn, tty, *maxTTY),
+		TTY:    tty,
 		Tokens: auth.NewTokens(conn),
 		Logger: log,
 	}

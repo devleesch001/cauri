@@ -1,0 +1,82 @@
+version: 2
+
+project_name: cauri
+
+before:
+  hooks:
+    - go mod tidy
+    - make ui
+
+builds:
+  - env: [CGO_ENABLED=0]
+    id: cauri
+    main: ./cmd/cauri
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+
+nfpms:
+  - file_name_template: "cauri-{{ .Tag }}.{{ .Arch }}"
+    id: cauri-pkg
+    package_name: cauri
+    version_metadata: git
+    section: "utils"
+    priority: "extra"
+    maintainer: "Alexis DEVLEESCHAUWER <alexis@devleeschauwer.fr>"
+    description: |
+      Visualisation and ingestion tool for the Cowrie SSH honeypot.
+    formats: [deb, rpm, archlinux]
+    vendor: ""
+    license: "MIT"
+    bindir: /usr/bin
+
+archives:
+  - id: cauri-binary
+    formats: [binary]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    ids: [cauri]
+    allow_different_binary_count: true
+
+dockers_v2:
+  - id: cauri-image
+    ids: [cauri]
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - '{{ envOrDefault "IMAGE" "cauri" }}'
+    tags:
+      - "{{ .Version }}"
+    platforms: [linux/amd64, linux/arm64]
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "Visualisation and ingestion tool for the Cowrie SSH honeypot"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: "MIT"
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude: ['^docs:', '^test:']
+  groups:
+    - title: 'Features'
+      regexp: "^feat"
+      order: 0
+    - title: 'Fixes'
+      regexp: "^fix"
+      order: 1
+    - title: 'Others'
+      order: 999
+
+release:
+  disable: '{{ envOrDefault "SKIP_RELEASE" "false" }}'
+  header: |
+    {{ .Version }}
+    =============
+    {{ .Now.Format "2006-01-02" }}

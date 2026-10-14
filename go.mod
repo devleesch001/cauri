@@ -3,6 +3,7 @@ module cauri
 go 1.27
 
 require (
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/uptrace/bun v1.3.0
 	github.com/uptrace/bun/dialect/pgdialect v1.3.0
@@ -14,7 +15,6 @@ require (
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
-	github.com/go-chi/chi/v5 v5.4.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

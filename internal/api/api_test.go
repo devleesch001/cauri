@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -42,7 +44,7 @@ func setup(t *testing.T, db *bun.DB, mod func(*api.Config)) *env {
 	}
 	tokens := auth.NewTokens(db)
 	cfg := api.Config{
-		DB: db, Ingest: ingest.New(db, tty, 1024), Tokens: tokens,
+		DB: db, Ingest: ingest.New(db, tty, 1<<16), TTY: tty, Tokens: tokens,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	if mod != nil {
@@ -180,10 +182,10 @@ func TestTTYErrors(t *testing.T) {
 		t.Errorf("digest mismatch: %v", err)
 	}
 
-	// Larger than the limit of the test service (1024 bytes).
-	big := strings.Repeat("x", 2048)
+	// Larger than the limit of the test service (64 KiB).
+	big := strings.Repeat("x", 1<<17)
 	sum := sha256.Sum256([]byte(big))
-	m := protocol.TTYMeta{SensorID: "hp-01", Session: "a1b2c3d4e5f6", SHA256: hex.EncodeToString(sum[:]), Size: 2048}
+	m := protocol.TTYMeta{SensorID: "hp-01", Session: "a1b2c3d4e5f6", SHA256: hex.EncodeToString(sum[:]), Size: 1 << 17}
 	if _, err := e.client.SendTTY(ctx, m, strings.NewReader(big)); statusOf(err) != http.StatusRequestEntityTooLarge {
 		t.Errorf("too large: %v", err)
 	}
@@ -288,6 +290,7 @@ func TestReadAuthHook(t *testing.T) {
 	}
 	e := setup(t, storetest.SQLite(t), func(c *api.Config) { c.ReadAuth = deny })
 	get(t, e, "/api/sessions", http.StatusUnauthorized, nil)
+	get(t, e, "/api/sessions/x/cast", http.StatusUnauthorized, nil)
 	get(t, e, "/api/healthz", http.StatusOK, nil)
 	if _, err := e.client.SendEvents(context.Background(), events("hp-01")); err != nil {
 		t.Errorf("ingest with ReadAuth set: %v", err)
@@ -307,4 +310,122 @@ func TestUIHandler(t *testing.T) {
 		t.Errorf("UI path served %q", body)
 	}
 	get(t, e, "/api/nothing", http.StatusNotFound, nil)
+}
+
+// realRecording is a recording written by the official Cowrie image.
+func realRecording(t *testing.T) (protocol.TTYMeta, []byte) {
+	t.Helper()
+	data, err := os.ReadFile("../ttylog/testdata/cowrie-v3.1.2.tty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	return protocol.TTYMeta{
+		SensorID: "hp-01", Session: "a1b2c3d4e5f6", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data)),
+	}, data
+}
+
+// reply is a response read and closed.
+type reply struct {
+	code   int
+	header http.Header
+}
+
+func getRaw(t *testing.T, e *env, path string, header http.Header) (reply, string) {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, e.srv.URL+path, nil)
+	for k, v := range header {
+		req.Header[k] = v
+	}
+	resp, err := e.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	return reply{code: resp.StatusCode, header: resp.Header}, string(body)
+}
+
+func TestCast(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		ctx := context.Background()
+		b := events("hp-01")
+		// The client reports its terminal size.
+		size := []byte(`{"eventid":"cowrie.client.size","session":"a1b2c3d4e5f6","timestamp":"2026-10-14T09:00:00.5Z","width":120,"height":40}`)
+		b.Events = append(b.Events, protocol.Event{ID: protocol.EventID("hp-01", size), Raw: size})
+		if _, err := e.client.SendEvents(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+		id := store.SessionID("hp-01", "a1b2c3d4e5f6")
+		path := "/api/sessions/" + id + "/cast"
+
+		resp, body := getRaw(t, e, path, nil)
+		if resp.code != http.StatusNotFound || !strings.Contains(body, "no stored recording") {
+			t.Fatalf("before upload: %d %s", resp.code, body)
+		}
+
+		m, data := realRecording(t)
+		if _, err := e.client.SendTTY(ctx, m, bytes.NewReader(data)); err != nil {
+			t.Fatal(err)
+		}
+
+		resp, body = getRaw(t, e, path, nil)
+		if resp.code != http.StatusOK || resp.header.Get("Content-Type") != "application/x-asciicast" {
+			t.Fatalf("cast: %d %s %s", resp.code, resp.header.Get("Content-Type"), body)
+		}
+		lines := strings.Split(strings.TrimSpace(body), "\n")
+		var header struct {
+			Version       int                      `json:"version"`
+			Term          struct{ Cols, Rows int } `json:"term"`
+			IdleTimeLimit float64                  `json:"idle_time_limit"`
+		}
+		if err := json.Unmarshal([]byte(lines[0]), &header); err != nil {
+			t.Fatal(err)
+		}
+		if header.Version != 3 || header.Term.Cols != 120 || header.Term.Rows != 40 || header.IdleTimeLimit != 2 {
+			t.Errorf("header = %+v", header)
+		}
+		if len(lines) != 1+93 || !strings.Contains(body, `"i", "uname -a\n"`) {
+			t.Errorf("%d events, input missing", len(lines)-1)
+		}
+
+		// Real time: no idle_time_limit, another ETag.
+		etag := resp.header.Get("ETag")
+		resp, body = getRaw(t, e, path+"?idle_time_limit=0", nil)
+		if resp.code != http.StatusOK || strings.Contains(strings.SplitN(body, "\n", 2)[0], "idle_time_limit") {
+			t.Errorf("real time header: %s", strings.SplitN(body, "\n", 2)[0])
+		}
+		if resp.header.Get("ETag") == etag {
+			t.Error("same ETag for another conversion")
+		}
+
+		if resp, _ := getRaw(t, e, path, http.Header{"If-None-Match": {etag}}); resp.code != http.StatusNotModified {
+			t.Errorf("If-None-Match: %d", resp.code)
+		}
+		for _, bad := range []string{"-1", "soon", "100000"} {
+			if resp, _ := getRaw(t, e, path+"?idle_time_limit="+bad, nil); resp.code != http.StatusBadRequest {
+				t.Errorf("idle_time_limit=%s: %d", bad, resp.code)
+			}
+		}
+		if resp, _ := getRaw(t, e, "/api/sessions/unknown/cast", nil); resp.code != http.StatusNotFound {
+			t.Errorf("unknown session: %d", resp.code)
+		}
+	})
+}
+
+// A stored file that is not a Cowrie recording is reported, not served.
+func TestCastUnreadable(t *testing.T) {
+	e := setup(t, storetest.SQLite(t), nil)
+	ctx := context.Background()
+	if _, err := e.client.SendEvents(ctx, events("hp-01")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.client.SendTTY(ctx, ttyMeta(), strings.NewReader(ttyContent)); err != nil {
+		t.Fatal(err)
+	}
+	resp, body := getRaw(t, e, "/api/sessions/"+store.SessionID("hp-01", "a1b2c3d4e5f6")+"/cast", nil)
+	if resp.code != http.StatusUnprocessableEntity || resp.header.Get("ETag") != "" {
+		t.Errorf("= %d %s", resp.code, body)
+	}
 }

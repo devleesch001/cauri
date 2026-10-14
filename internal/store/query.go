@@ -331,3 +331,66 @@ func likeContains(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return "%" + r.Replace(strings.ToLower(s)) + "%"
 }
+
+// ErrNoRecording means the session exists but its TTY recording has not
+// been stored (no shell was opened, or the upload has not arrived yet).
+var ErrNoRecording = errors.New("no recording")
+
+// TermSize is a terminal size reported by the client during a session.
+type TermSize struct {
+	TS         time.Time
+	Cols, Rows int
+}
+
+// Recording is what replaying a session needs.
+type Recording struct {
+	Session string // Cowrie session identifier
+	SHA256  string // digest of the stored file, see ttystore
+	// Sizes are the terminal sizes reported by the client, in time order.
+	Sizes []TermSize
+}
+
+// GetRecording returns the stored recording of a session.
+func GetRecording(ctx context.Context, db bun.IDB, id string) (*Recording, error) {
+	var s Session
+	err := db.NewSelect().Model(&s).Column("session", "tty_sha256").Where("id = ?", id).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if s.TTYSHA256 == nil {
+		return nil, ErrNoRecording
+	}
+	stored, err := db.NewSelect().Model((*TTYFile)(nil)).Where("sha256 = ?", *s.TTYSHA256).Exists(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !stored {
+		return nil, ErrNoRecording
+	}
+
+	rec := &Recording{Session: s.Session, SHA256: *s.TTYSHA256}
+	var raw []RawEvent
+	if err := db.NewSelect().Model(&raw).Column("ts", "data").
+		Where("session_id = ?", id).Where("eventid = ?", "cowrie.client.size").
+		Order("ts", "id").Scan(ctx); err != nil {
+		return nil, err
+	}
+	for _, e := range raw {
+		var size struct {
+			Width  json.Number `json:"width"`
+			Height json.Number `json:"height"`
+		}
+		if json.Unmarshal([]byte(e.Data), &size) != nil {
+			continue
+		}
+		cols, err1 := size.Width.Int64()
+		rows, err2 := size.Height.Int64()
+		if err1 == nil && err2 == nil {
+			rec.Sizes = append(rec.Sizes, TermSize{TS: e.TS, Cols: int(cols), Rows: int(rows)})
+		}
+	}
+	return rec, nil
+}
