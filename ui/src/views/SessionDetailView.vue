@@ -273,8 +273,11 @@ const logins = computed(() => {
                   <td class="data">
                     {{ l.user }}
                   </td>
-                  <td class="data secret">
-                    {{ l.secret }}
+                  <td
+                    class="data secret"
+                    :class="{ muted: !l.secret }"
+                  >
+                    {{ l.secret || t('session.logins.emptyPassword') }}
                   </td>
                   <td :class="{ shell: l.result === 'accepted', muted: l.result !== 'accepted' }">
                     {{ t('session.logins.' + l.result) }}

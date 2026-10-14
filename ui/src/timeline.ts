@@ -51,6 +51,10 @@ function prose(e: RawEvent): ProseEntry {
       return p(t('events.kex'), str(d.hassh), 'muted')
     case 'cowrie.client.size':
       return p(t('events.clientSize', { width: str(d.width), height: str(d.height) }), undefined, 'muted')
+    case 'cowrie.client.fingerprint':
+      return p(t('events.keyOffered', { user: str(d.username) }), `${str(d.type)} ${str(d.fingerprint)}`.trim(), 'muted')
+    case 'cowrie.client.var':
+      return p(t('events.clientVar'), `${str(d.name)}=${str(d.value)}`, 'muted')
     case 'cowrie.session.params':
       return p(t('events.params'), str(d.arch), 'muted')
     case 'cowrie.login.failed':

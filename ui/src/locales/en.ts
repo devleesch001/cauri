@@ -102,6 +102,7 @@ export default {
       refused: 'Refused',
       offered: 'Offered',
       none: 'No login attempt.',
+      emptyPassword: '(empty)',
     },
     replay: {
       title: 'Replay',
@@ -140,6 +141,8 @@ export default {
     connect: 'Connected to port {port} over {protocol} from',
     clientVersion: 'Client announced',
     kex: 'Key exchange, HASSH',
+    keyOffered: 'Public key offered for {user}',
+    clientVar: 'Client environment variable',
     clientSize: 'Terminal size {width}×{height}',
     params: 'Shell architecture',
     loginFailed: 'Login refused',
