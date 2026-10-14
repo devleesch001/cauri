@@ -188,8 +188,14 @@ GitHub, jobs run on the runner itself: services are reached on
   writing code.
 - Ask rather than guess when a choice belongs to the user; say so when a
   simpler option exists.
-- One commit per coherent step, message in English: a short imperative
-  subject, then why.
+- One commit per coherent step using Conventional Commits (in English):
+  `type(scope): description`. Allowed types: `feat`, `fix`, `docs`, `style`,
+  `refactor`, `perf`, `test`, `chore`, `ci`. Scopes: `api`, `ui`, `ingestor`,
+  `store`, `auth`, `deploy`, `schema`. Include a commit body explaining why,
+  not what. Use `BREAKING CHANGE:` in the footer if applicable. Examples:
+  `feat(api): add session filtering by attack type`,
+  `fix(ingestor): handle corrupted TTY recordings gracefully`,
+  `refactor(store): extract database transaction logic`.
 - Report what was verified and what was not (for example, the CI cannot
   run locally).
 - The user writes in French; code, comments, UI texts and docs are in
