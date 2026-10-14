@@ -208,7 +208,8 @@ from a small sample and are meant to be tuned.
 
 The verdict is also stored with each session, to filter the list:
 `GET /api/sessions?verdict=human` or `verdict=bot` (bots include the
-sessions without interaction; uncertain ones only show unfiltered). It
+`uncertain` and `no_interaction` sessions: only a clear human verdict is
+singled out; the verdict shown stays the computed one). It
 is computed at ingestion, again when the recording arrives, and when
 the API starts for sessions judged by older criteria
 (`verdict.Version`) or stored before verdicts were. The session page

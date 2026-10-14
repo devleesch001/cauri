@@ -63,7 +63,7 @@ const loginOptions = computed(() => [
   { label: t('sessions.filters.shellObtained'), value: 'success' },
   { label: t('sessions.filters.loginFailed'), value: 'failed' },
 ])
-// Bots include the sessions without interaction (the API counts them so).
+// Bots include uncertain sessions and those without interaction (the API counts them so).
 const verdict = computed({
   get: () => q('verdict') || 'any',
   set: (v: string) => void patchQuery({ verdict: v === 'any' ? undefined : v }),

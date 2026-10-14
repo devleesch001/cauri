@@ -551,14 +551,14 @@ func TestVerdict(t *testing.T) {
 			Total int                    `json:"total"`
 		}
 		// The capture also has two sessions without interaction and one
-		// that only typed exit (uncertain, listed under no filter).
+		// that only typed exit (uncertain): all counted as bots.
 		get(t, e, "/api/sessions", http.StatusOK, &sessions)
 		if sessions.Total != 6 {
 			t.Fatalf("sessions = %d", sessions.Total)
 		}
 		get(t, e, "/api/sessions?verdict=bot", http.StatusOK, &sessions)
-		if sessions.Total != 5 {
-			t.Errorf("bots = %d, want all but the uncertain session", sessions.Total)
+		if sessions.Total != 6 {
+			t.Errorf("bots = %d, want all sessions", sessions.Total)
 		}
 		for _, it := range sessions.Items {
 			if it.ID == store.SessionID("hp-01", "6f07bbfeafaa") && (*it.Verdict != "bot" || *it.VerdictScore != -5) {

@@ -40,8 +40,10 @@ const (
 	LoginFailed  = "failed"
 )
 
-// Verdict filters, on the stored verdict (see package verdict). Sessions
-// without interaction count as bots: nobody typed in them.
+// Verdict filters, on the stored verdict (see package verdict). Bots
+// include the sessions without interaction, where nobody typed, and the
+// uncertain ones: only a clear human verdict is worth singling out. The
+// verdicts themselves are unchanged.
 const (
 	VerdictHuman = "human"
 	VerdictBot   = "bot"
@@ -119,7 +121,7 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 	case VerdictHuman:
 		q = q.Where("s.verdict = ?", "human")
 	case VerdictBot:
-		q = q.Where("s.verdict IN (?)", bun.List([]string{"bot", "no_interaction"}))
+		q = q.Where("s.verdict IN (?)", bun.List([]string{"bot", "no_interaction", "uncertain"}))
 	}
 	if f.Username != "" || f.Password != "" {
 		sub := db.NewSelect().TableExpr("login_attempts AS fla").ColumnExpr("1").Where("fla.session_id = s.id")
