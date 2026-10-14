@@ -323,8 +323,15 @@ then publish:
 | | GitHub (`.github/workflows/ci.yml`) | Forgejo (`.forgejo/workflows/ci.yml`) |
 |---|---|---|
 | Image, on `main` and `v*` tags | `ghcr.io/devleesch001/cauri` (`main`, `sha-…`, the tag, `latest`) | Registry of the instance |
-| Release, on `v*` tags | GitHub release by GoReleaser (`.goreleaser.yaml`) | Forgejo release by GoReleaser (`.goreleaser.forgejo.yaml`) |
+| Release, on `v*` tags | GitHub release by GoReleaser | Forgejo release by GoReleaser |
 | Secrets | None: the built-in `GITHUB_TOKEN` | `REGISTRY_TOKEN` (writes packages), optional `REGISTRY_USER`; `RELEASE_TOKEN` for the release if the built-in token cannot create it |
+
+Both use the same `.goreleaser.yaml`: GoReleaser publishes to the forge
+whose token is set (`GITHUB_TOKEN` or `GITEA_TOKEN`), and on Forgejo
+finds the instance through `GITHUB_SERVER_URL`, set by the runner. Locally,
+`make release` publishes to GitHub with `GITHUB_TOKEN`, and
+`make release-forgejo` to the Forgejo instance `FORGEJO_URL` with
+`GITEA_TOKEN`.
 
 A release holds the static binaries (linux amd64 and arm64), deb, rpm and
 Arch Linux packages installing `/usr/bin/cauri`, and checksums. To publish

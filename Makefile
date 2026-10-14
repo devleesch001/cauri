@@ -19,11 +19,15 @@ test:
 lint:
 	golangci-lint run ./...
 
+# Local releases with the single .goreleaser.yaml: GITHUB_TOKEN publishes to
+# GitHub; GITEA_TOKEN publishes to the Forgejo instance FORGEJO_URL.
+FORGEJO_URL ?= https://git.omniumcorp.fr
+
 release:
 	goreleaser release --clean
 
 release-forgejo:
-	goreleaser release -f .goreleaser.forgejo.yaml --clean
+	env -u GITHUB_TOKEN GITHUB_SERVER_URL=$(FORGEJO_URL) goreleaser release --clean
 
 release-snapshot:
 	goreleaser release --snapshot --clean

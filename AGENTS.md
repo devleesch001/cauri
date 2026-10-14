@@ -103,7 +103,7 @@ mandatory.
 | `ui/` | Vue app; builds into `../internal/webui/dist`; `ui/go.mod` keeps `node_modules` out of the Go module |
 | `deploy/` | Compose examples (mode 1: api/ui/ingestor; mode 2: api --ui/ingestor), `.env.example` |
 | `.github/workflows/ci.yml`, `.forgejo/workflows/ci.yml` | CI: tests, lint, UI build, image (ghcr.io / Forgejo registry), release on `v*` tags |
-| `.goreleaser.yaml`, `.goreleaser.forgejo.yaml`, `Dockerfile.goreleaser` | Releases: binaries, deb/rpm/Arch packages, multi-arch image |
+| `.goreleaser.yaml`, `Dockerfile.goreleaser` | Releases on GitHub or Forgejo (one config: the token chooses the forge), binaries, deb/rpm/Arch packages, multi-arch image |
 
 ## Commands
 

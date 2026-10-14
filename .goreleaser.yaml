@@ -74,6 +74,15 @@ changelog:
     - title: 'Others'
       order: 999
 
+# One configuration for GitHub and Forgejo: GoReleaser publishes to the forge
+# whose token is set (GITHUB_TOKEN or GITEA_TOKEN, never both). Forgejo
+# runners set GITHUB_SERVER_URL to the instance URL, which locates its API;
+# GitHub releases do not use these URLs.
+gitea_urls:
+  api: '{{ envOrDefault "GITHUB_SERVER_URL" "" }}/api/v1'
+  download: '{{ envOrDefault "GITHUB_SERVER_URL" "" }}'
+  skip_tls_verify: false
+
 release:
   disable: '{{ envOrDefault "SKIP_RELEASE" "false" }}'
   header: |

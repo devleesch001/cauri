@@ -108,6 +108,9 @@ jobs:
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean --skip=docker -f .goreleaser.forgejo.yaml
+          args: release --clean --skip=docker
+        # .goreleaser.yaml serves both forges: the token chooses Forgejo,
+        # GITHUB_SERVER_URL (set by the runner) locates the instance.
         env:
           GITEA_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: "" # GoReleaser refuses to run with two tokens
