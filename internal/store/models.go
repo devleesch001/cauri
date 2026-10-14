@@ -60,6 +60,9 @@ type Session struct {
 	TTYDuration   *float64   `bun:"tty_duration" json:"tty_duration"`
 	TTYSHA256     *string    `bun:"tty_sha256" json:"tty_sha256"`
 	TTYSize       *int64     `bun:"tty_size" json:"tty_size"`
+	GeoCountry    *string    `bun:"geo_country" json:"geo_country"` // ISO 3166-1 alpha-2
+	GeoCity       *string    `bun:"geo_city" json:"geo_city"`
+	GeoSource     *string    `bun:"geo_source" json:"geo_source"` // database used, set even if not found
 }
 
 // SessionID returns the internal identifier of a Cowrie session. Cowrie
