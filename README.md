@@ -366,7 +366,7 @@ then publish:
 
 | | GitHub (`.github/workflows/ci.yml`) | Forgejo (`.forgejo/workflows/ci.yml`) |
 |---|---|---|
-| Image, on `main` and `v*` tags | `ghcr.io/devleesch001/cauri` (`main`, `sha-…`, the tag, `latest`) | Registry of the instance |
+| Image, on `main` and `v*` tags | `ghcr.io/devleesch001/cauri` | Registry of the instance |
 | Release, on `v*` tags | GitHub release by GoReleaser | Forgejo release by GoReleaser |
 | Secrets | None: the built-in `GITHUB_TOKEN` | `REGISTRY_TOKEN` (writes packages), optional `REGISTRY_USER`; `RELEASE_TOKEN` for the release if the built-in token cannot create it |
 
@@ -376,6 +376,18 @@ finds the instance through `GITHUB_SERVER_URL`, set by the runner. Locally,
 `make release` publishes to GitHub with `GITHUB_TOKEN`, and
 `make release-forgejo` to the Forgejo instance `FORGEJO_URL` with
 `GITEA_TOKEN`.
+
+Image tags, the same on both forges (no `v`):
+
+| Git event | Image tags |
+|---|---|
+| Stable tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `latest` (no `0` while the major is 0: every `0.y` may break) |
+| Pre-release tag `v1.2.3-rc.1`, `v1.2.3-beta.2`… | `1.2.3-rc.1` and `next` (the latest pre-release) |
+| Push to `main` | `main`, `sha-<commit>` |
+
+Images carry the standard OCI labels (source, version, revision,
+creation date). GoReleaser publishes pre-release tags as pre-releases, so
+they never become the latest release.
 
 A release holds the static binaries (linux amd64 and arm64), deb, rpm and
 Arch Linux packages installing `/usr/bin/cauri`, and checksums. To publish

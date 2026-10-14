@@ -84,6 +84,8 @@ gitea_urls:
   skip_tls_verify: false
 
 release:
+  # vX.Y.Z-rc.1 and the like are published as pre-releases: never "Latest".
+  prerelease: auto
   disable: '{{ envOrDefault "SKIP_RELEASE" "false" }}'
   header: |
     {{ .Version }}
