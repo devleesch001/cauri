@@ -360,3 +360,28 @@ func TestTTYOutsideDirectory(t *testing.T) {
 		t.Fatalf("uploaded %v", ttys)
 	}
 }
+
+// On a fresh Cowrie, its log and tty directories appear with the first
+// connection, possibly after the ingestor started.
+func TestDirectoriesCreatedLater(t *testing.T) {
+	f := newFixture(t)
+	for _, d := range []string{f.logDir, f.ttyDir} {
+		if err := os.Remove(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.start(t, f.config(f.sink))
+	time.Sleep(30 * time.Millisecond)
+
+	for _, d := range []string{f.logDir, f.ttyDir} {
+		if err := os.Mkdir(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tty := writeTTY(t, f, "output")
+	f.write(t, LogName, event(1), logClosedEvent("s1", tty))
+	waitFor(t, "events and recording", func() bool {
+		_, ttys := f.sink.snapshot()
+		return eventCount(f.sink)() == 2 && ttys["s1"] == "output"
+	})
+}

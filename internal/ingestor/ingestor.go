@@ -81,14 +81,12 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := os.MkdirAll(cfg.StateDir, 0o750); err != nil {
 		return err
 	}
-	// Cowrie controls the TTY directory: os.Root refuses names, symbolic
-	// links included, that would lead outside of it.
-	ttyRoot, err := os.OpenRoot(cfg.TTYDir)
-	if err != nil {
-		return fmt.Errorf("tty directory: %w", err)
-	}
-	defer func() { _ = ttyRoot.Close() }()
-	in := &ingestor{Config: cfg, posPath: filepath.Join(cfg.StateDir, "position.json"), ttyRoot: ttyRoot}
+	in := &ingestor{Config: cfg, posPath: filepath.Join(cfg.StateDir, "position.json")}
+	defer func() {
+		if in.ttyRoot != nil {
+			_ = in.ttyRoot.Close()
+		}
+	}()
 
 	var saved *tail.Position
 	var pos tail.Position
@@ -295,6 +293,12 @@ func (in *ingestor) uploadTTYs(ctx context.Context) error {
 // errors are returned.
 func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	log := in.Logger.With("session", job.Session, "ttylog", job.TTYLog)
+	if err := in.openTTYRoot(); err != nil {
+		// Misconfiguration or directory not created yet: keep the job.
+		delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
+		log.Warn("tty directory unavailable, retrying", "err", err, "in", delay)
+		return in.queue.retry(job.Session, time.Now().Add(delay))
+	}
 	f, m, err := in.openTTY(job)
 	if err != nil {
 		log.Warn("tty recording unreadable, dropping it", "err", err)
@@ -316,6 +320,22 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
 	log.Warn("tty upload failed, retrying", "err", err, "in", delay)
 	return in.queue.retry(job.Session, time.Now().Add(delay))
+}
+
+// openTTYRoot opens the TTY directory on first use: Cowrie creates it
+// with its first recording, possibly after the ingestor started. Cowrie
+// controls its content: os.Root refuses names, symbolic links included,
+// that would lead outside of it.
+func (in *ingestor) openTTYRoot() error {
+	if in.ttyRoot != nil {
+		return nil
+	}
+	root, err := os.OpenRoot(in.TTYDir)
+	if err != nil {
+		return err
+	}
+	in.ttyRoot = root
+	return nil
 }
 
 // openTTY opens the recording of a job, which must be a regular file of

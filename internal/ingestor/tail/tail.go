@@ -93,6 +93,9 @@ func Open(opts Options, saved *Position) (*Follower, error) {
 	}
 	t := &Follower{opts: opts}
 
+	if _, err := os.Stat(opts.Dir); errors.Is(err, os.ErrNotExist) {
+		opts.Logger.Warn("log directory does not exist yet, waiting for it", "dir", opts.Dir)
+	}
 	files, err := t.list()
 	if err != nil {
 		return nil, err
@@ -342,9 +345,13 @@ func (t *Follower) switchTo(c *file, offset int64) error {
 	return nil
 }
 
-// list returns the current file and its rotations, oldest first.
+// list returns the current file and its rotations, oldest first. A
+// missing directory has no files yet: Cowrie creates it on its first event.
 func (t *Follower) list() ([]*file, error) {
 	entries, err := os.ReadDir(t.opts.Dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
