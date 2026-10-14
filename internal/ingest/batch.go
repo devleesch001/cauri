@@ -6,7 +6,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store"
 )
 
 // batchWriter accumulates the rows produced by the new events of a batch,

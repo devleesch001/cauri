@@ -1,4 +1,4 @@
-module cauri
+module github.com/devleesch001/cauri
 
 go 1.27
 

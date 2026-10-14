@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"cauri/internal/asciicast"
+	"github.com/devleesch001/cauri/internal/asciicast"
 )
 
 // TermSize is a terminal size reported at some time, from Cowrie's

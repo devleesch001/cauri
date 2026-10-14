@@ -7,8 +7,8 @@ import (
 	"io"
 	"net/http"
 
-	"cauri/pkg/client"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/pkg/client"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 // ErrPermanent marks a Sink error that will happen again if the same data

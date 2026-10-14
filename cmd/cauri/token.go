@@ -10,8 +10,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"cauri/internal/auth"
-	"cauri/internal/envflag"
+	"github.com/devleesch001/cauri/internal/auth"
+	"github.com/devleesch001/cauri/internal/envflag"
 )
 
 func init() {

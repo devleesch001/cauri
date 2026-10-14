@@ -8,7 +8,8 @@ taken and why; `README.md` for users and operators.
 
 A visualisation tool for the Cowrie SSH honeypot, built from scratch
 (Honeywatch is only a reference for the data model, never a code base to
-copy). Three parts in one Go module and one Docker image:
+copy). Three parts in one Go module (`github.com/devleesch001/cauri`) and
+one Docker image:
 
 - **ingestor**: reads what Cowrie writes on disk and forwards it, raw;
 - **API** (Go, chi): receives ingestor data, stores it, serves the UI;

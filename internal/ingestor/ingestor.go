@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"cauri/internal/ingestor/tail"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/internal/ingestor/tail"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 // LogName is the file Cowrie writes its JSON events to.

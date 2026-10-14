@@ -27,15 +27,15 @@ Docker Compose as non-root; the UI in a browser (desktop and phone).
 Not verified: the Forgejo workflow (no Forgejo runner was available) and
 whether the instance's actions mirror has the pinned commits.
 
-The repository has no remote yet. The Go module path is `cauri` until the
-Forgejo URL is known; changing it is a `sed` on `go.mod` and the imports.
+The repository is hosted at https://github.com/devleesch001/cauri; the Go
+module path is `github.com/devleesch001/cauri`.
 
 ## Decisions
 
 | Topic | Decision | Why |
 |---|---|---|
 | Name | `cauri` | Chosen by the user. |
-| Module path | `cauri`, no host | Hosting not decided; a plain path builds fine. Third parties can import `pkg/` once a real URL is set. |
+| Module path | `github.com/devleesch001/cauri` | The repository's home, chosen by the user; it lets third parties import `pkg/` and `go install` the binary. |
 | Public code | Protocol and client in `pkg/`, everything else in `internal/` | User: `internal/` is only for purely internal logic; others must be able to build tools on the protocol. |
 | Token management | `cauri token` CLI writing to the database | User: acceptable exception to "the API is the only writer"; rare writes to one table. |
 | Ingestor buffer | No local copy: position saved after acknowledgement, the Cowrie log files are the buffer | Simplest at-least-once design. Limit: rotated logs must outlive an API outage. User agreed. |

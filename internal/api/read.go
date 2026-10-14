@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store"
 )
 
 // list is the envelope of paginated responses.

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"cauri/internal/envflag"
-	"cauri/internal/webui"
+	"github.com/devleesch001/cauri/internal/envflag"
+	"github.com/devleesch001/cauri/internal/webui"
 )
 
 func init() {

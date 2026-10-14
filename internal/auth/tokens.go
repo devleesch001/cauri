@@ -16,8 +16,8 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/store"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 var (

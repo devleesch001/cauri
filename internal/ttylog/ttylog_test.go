@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"cauri/internal/asciicast"
+	"github.com/devleesch001/cauri/internal/asciicast"
 )
 
 // testdata/cowrie-v3.1.2.tty was written by the official cowrie/cowrie

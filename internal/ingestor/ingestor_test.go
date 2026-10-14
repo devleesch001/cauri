@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 // fakeSink records what it receives; failEvents/failTTY make the next

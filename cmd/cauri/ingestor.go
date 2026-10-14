@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"cauri/internal/envflag"
-	"cauri/internal/ingestor"
-	"cauri/pkg/client"
+	"github.com/devleesch001/cauri/internal/envflag"
+	"github.com/devleesch001/cauri/internal/ingestor"
+	"github.com/devleesch001/cauri/pkg/client"
 )
 
 func init() {

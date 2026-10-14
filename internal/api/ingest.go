@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"cauri/internal/ingest"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 func (s *server) postEvents(w http.ResponseWriter, r *http.Request) {

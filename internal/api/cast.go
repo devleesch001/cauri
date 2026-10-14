@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"cauri/internal/asciicast"
-	"cauri/internal/store"
-	"cauri/internal/ttylog"
+	"github.com/devleesch001/cauri/internal/asciicast"
+	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/ttylog"
 )
 
 // Replays keep the real timing; idle_time_limit only asks the player to

@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
-	"cauri/internal/auth"
+	"github.com/devleesch001/cauri/internal/auth"
 )
 
 type ctxKey int

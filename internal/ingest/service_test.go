@@ -15,10 +15,10 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/store"
-	"cauri/internal/store/storetest"
-	"cauri/internal/ttystore"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store/storetest"
+	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 const sensor = "hp-01"

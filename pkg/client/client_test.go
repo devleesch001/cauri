@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 func TestSendEvents(t *testing.T) {

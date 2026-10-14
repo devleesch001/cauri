@@ -15,7 +15,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store"
 )
 
 // dbFlags are the database options shared by api and token.

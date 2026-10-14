@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"cauri/internal/api"
-	"cauri/internal/auth"
-	"cauri/internal/ingest"
-	"cauri/internal/ingestor"
-	"cauri/internal/store"
-	"cauri/internal/store/storetest"
-	"cauri/internal/ttystore"
-	"cauri/pkg/client"
+	"github.com/devleesch001/cauri/internal/api"
+	"github.com/devleesch001/cauri/internal/auth"
+	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/ingestor"
+	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store/storetest"
+	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/pkg/client"
 )
 
 // The real chain: files on disk -> ingestor -> HTTP -> API -> database.

@@ -7,8 +7,8 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/store"
-	"cauri/internal/store/storetest"
+	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store/storetest"
 )
 
 func TestMigrateIdempotent(t *testing.T) {

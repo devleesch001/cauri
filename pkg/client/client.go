@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"strings"
 
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 // Client sends events and TTY recordings to a cauri API.

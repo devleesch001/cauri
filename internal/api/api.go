@@ -12,9 +12,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/uptrace/bun"
 
-	"cauri/internal/ingest"
-	"cauri/internal/ttystore"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 // Authenticator resolves an ingestor token to its sensor.

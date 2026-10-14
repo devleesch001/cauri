@@ -7,7 +7,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/store/storetest"
+	"github.com/devleesch001/cauri/internal/store/storetest"
 )
 
 func TestTokenLifecycle(t *testing.T) {

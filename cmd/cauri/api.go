@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"cauri/internal/api"
-	"cauri/internal/auth"
-	"cauri/internal/envflag"
-	"cauri/internal/ingest"
-	"cauri/internal/ttystore"
-	"cauri/internal/webui"
+	"github.com/devleesch001/cauri/internal/api"
+	"github.com/devleesch001/cauri/internal/auth"
+	"github.com/devleesch001/cauri/internal/envflag"
+	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/internal/webui"
 )
 
 func init() {

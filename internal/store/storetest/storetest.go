@@ -17,7 +17,7 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 
-	"cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store"
 )
 
 // EnvPostgres names the variable holding the test PostgreSQL URL.

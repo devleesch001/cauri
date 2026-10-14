@@ -18,14 +18,14 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/api"
-	"cauri/internal/auth"
-	"cauri/internal/ingest"
-	"cauri/internal/store"
-	"cauri/internal/store/storetest"
-	"cauri/internal/ttystore"
-	"cauri/pkg/client"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/internal/api"
+	"github.com/devleesch001/cauri/internal/auth"
+	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store/storetest"
+	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/pkg/client"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 type env struct {

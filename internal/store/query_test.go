@@ -12,11 +12,11 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"cauri/internal/ingest"
-	"cauri/internal/store"
-	"cauri/internal/store/storetest"
-	"cauri/internal/ttystore"
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/store/storetest"
+	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 var t0 = time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)

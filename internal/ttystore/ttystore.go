@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"cauri/pkg/protocol"
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 // ErrDigestMismatch means the content does not match the announced digest
