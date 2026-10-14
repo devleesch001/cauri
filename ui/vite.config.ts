@@ -29,6 +29,10 @@ export default defineConfig({
   },
   build: { outDir, emptyOutDir: true },
   server: {
+    // Fixed port: the VS Code launch configuration opens it; if it is
+    // taken, Vite stops instead of moving to another one.
+    port: 5173,
+    strictPort: true,
     proxy: { '/api': process.env.CAURI_API_URL ?? 'http://localhost:8080' },
   },
 })

@@ -28,16 +28,15 @@ and the two URLs that point at it.
 
 ## Prerequisites
 
-| Tool | Version | Used for |
-|---|---|---|
-| Go | 1.27 (see `go.mod`) | API, ingestor, tests |
-| Node.js and npm | 24 | UI |
-| Docker with Compose | recent | Cowrie, PostgreSQL, the image |
-| golangci-lint | v2.13.2 (same as the CI) | Go lint |
-| git, make | any | |
+| Tool                | Version                  | Used for                      |
+|---------------------|--------------------------|-------------------------------|
+| Go                  | 1.27 (see `go.mod`)      | API, ingestor, tests          |
+| Node.js and npm     | 24                       | UI                            |
+| Docker with Compose | recent                   | Cowrie, PostgreSQL, the image |
+| golangci-lint       | v2.13.2 (same as the CI) | Go lint                       |
+| git, make           | any                      |                               |
 
-No C compiler is needed: the SQLite driver is pure Go. The race detector
-(`go test -race`) does need one (gcc or clang).
+No C compiler is needed: the SQLite driver is pure Go. The race detector (`go test -race`) does need one (gcc or clang).
 
 ```sh
 go version && node --version && docker compose version && golangci-lint version
@@ -45,15 +44,21 @@ go version && node --version && docker compose version && golangci-lint version
 
 ## First setup
 
-Once per clone.
+Once per clone:
 
 ```sh
 git clone <repository URL> cauri && cd cauri
+make init-dev
+```
 
-# UI dependencies
-cd ui && npm install && cd ..
+`make init-dev` checks the tools, installs the UI dependencies, prepares
+and starts a local Cowrie, and creates the dev token. It can be run again
+at any time: it keeps what exists (the token, Cowrie's data) and restarts
+Cowrie if it was stopped. The two sections below explain what it does.
 
-# Check that everything builds and passes
+Then check that everything builds and passes:
+
+```sh
 make test && make lint
 cd ui && npm run lint && npm run typecheck && cd ..
 ```
@@ -76,12 +81,13 @@ docker compose -f deploy/compose.dev.yml up -d cowrie
 ```
 
 SSH is on `127.0.0.1:22222` (`COWRIE_DEV_PORT` to change it), so it does
-not clash with a Cowrie already running on 2222.
+not clash with a Cowrie already running on 2222. `make dev-down` stops
+the dev containers.
 
 ### An ingestor token
 
 The API creates its database on first use, so this works before the API
-ever ran:
+ever ran (`make init-dev` does it when `data/dev.token` is missing):
 
 ```sh
 go run ./cmd/cauri token create --sensor dev > data/dev.token
@@ -90,21 +96,35 @@ go run ./cmd/cauri token create --sensor dev > data/dev.token
 ## Daily work: three terminals
 
 ```sh
-# Terminal 1: API
-CAURI_LISTEN=:8090 go run ./cmd/cauri api --log-level debug
-
-# Terminal 2: ingestor
-go run ./cmd/cauri ingestor --api-url http://localhost:8090 \
-  --token-file data/dev.token --sensor-id dev \
-  --cowrie-log-dir data/cowrie/log/cowrie \
-  --cowrie-tty-dir data/cowrie/lib/cowrie/tty
-
-# Terminal 3: UI
-cd ui && CAURI_API_URL=http://localhost:8090 npm run dev
+make dev-api         # terminal 1: API on :8090
+make dev-ingestor    # terminal 2: reads data/cowrie, sends to the API
+make dev-ui          # terminal 3: UI on http://localhost:5173
 ```
+
+In VS Code, the task "dev: all" starts the three, or "Full stack" in Run
+and Debug starts them under the debugger (see [VS Code](#vs-code)).
 
 Open http://localhost:5173. The ingestor may log `log directory does not
 exist yet`: it waits, and starts reading as soon as Cowrie writes.
+
+The targets run these commands. Their settings can be changed on the
+command line, for example `make dev-api DEV_API_PORT=8091`; pass the same
+value to the three targets.
+
+```sh
+# make dev-api
+CAURI_LISTEN=:8090 go run ./cmd/cauri api --log-level debug
+
+# make dev-ingestor
+go run ./cmd/cauri ingestor --api-url http://localhost:8090 \
+  --token-file data/dev.token --sensor-id dev \
+  --cowrie-log-dir data/cowrie/log/cowrie \
+  --cowrie-tty-dir data/cowrie/lib/cowrie/tty \
+  --state-dir data/ingestor --log-level debug
+
+# make dev-ui (Vite uses port 5173 only and stops if it is taken)
+cd ui && CAURI_API_URL=http://localhost:8090 npm run dev
+```
 
 ### Producing data
 
@@ -142,24 +162,23 @@ same way; a second sensor id also lets you try the sensor filter.
 
 ### What to restart after a change
 
-| You change | You do |
-|---|---|
-| Vue or TypeScript code in `ui/` | Nothing: the page reloads |
-| Go code of the API (`internal/api`, `ingest`, `store`, `auth`…) | Ctrl+C and restart terminal 1 |
-| Go code of the ingestor (`internal/ingestor`) | Ctrl+C and restart terminal 2 |
-| The database schema | Add a migration (see below), restart the API |
-| The protocol (`pkg/`) | Restart both; it is public, keep it compatible |
+| You change                                                      | You do                                         |
+|-----------------------------------------------------------------|------------------------------------------------|
+| Vue or TypeScript code in `ui/`                                 | Nothing: the page reloads                      |
+| Go code of the API (`internal/api`, `ingest`, `store`, `auth`…) | Ctrl+C and `make dev-api` again                |
+| Go code of the ingestor (`internal/ingestor`)                   | Ctrl+C and `make dev-ingestor` again           |
+| The database schema                                             | Add a migration (see below), restart the API   |
+| The protocol (`pkg/`)                                           | Restart both; it is public, keep it compatible |
 
 ### Starting over
 
 Stop the API and the ingestor, then:
 
 ```sh
-rm -rf data/cauri.db* data/tty data/ingestor     # cauri data only
-rm -rf data                                      # everything, Cowrie included
+make dev-reset && make init-dev                   # cauri data only: database, recordings, ingestor state, token
+make dev-down && rm -rf data && make init-dev     # everything, Cowrie included
 ```
 
-After `rm -rf data`, create the Cowrie directories and the token again.
 Removing only the ingestor state (`data/ingestor`) makes it send
 everything again: the API drops the duplicates, which is a quick way to
 see deduplication at work.
@@ -184,13 +203,13 @@ go test -race ./...
 
 Where tests live:
 
-| Package | What they cover |
-|---|---|
-| `internal/ingest` | Ingestion service: projection, deduplication, merge order, hostile strings, TTY storage, the real Cowrie capture |
-| `internal/store` | Migrations, time handling, read queries and filters |
-| `internal/api` | HTTP layer, through `pkg/client` |
-| `internal/ingestor`, `tail/` | Rotation, restart, API down, stable ids, TTY queue, confinement; `e2e_test.go` runs files → ingestor → API → database |
-| `internal/auth`, `ttystore`, `webui`, `pkg/*` | Their own unit |
+| Package                                       | What they cover                                                                                                       |
+|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `internal/ingest`                             | Ingestion service: projection, deduplication, merge order, hostile strings, TTY storage, the real Cowrie capture      |
+| `internal/store`                              | Migrations, time handling, read queries and filters                                                                   |
+| `internal/api`                                | HTTP layer, through `pkg/client`                                                                                      |
+| `internal/ingestor`, `tail/`                  | Rotation, restart, API down, stable ids, TTY queue, confinement; `e2e_test.go` runs files → ingestor → API → database |
+| `internal/auth`, `ttystore`, `webui`, `pkg/*` | Their own unit                                                                                                        |
 
 ## Running cauri on PostgreSQL
 
@@ -213,8 +232,7 @@ CAURI_LISTEN=:8090 go run ./cmd/cauri api --log-level debug
 2. Keep the SQL portable: no auto-increment, no PostgreSQL-only types or
    functions, `TIMESTAMPTZ` for times, `TEXT` for JSON.
 3. Update the bun models in `internal/store/models.go`, then the
-   ingestion (`internal/ingest/batch.go`) or the queries
-   (`internal/store/query.go`).
+   ingestion (`internal/ingest/batch.go`) or the queries (`internal/store/query.go`).
 4. Run the tests on both databases. The migration runs when the API
    starts.
 
@@ -269,6 +287,32 @@ cd ui && npm run lint && npm run typecheck && npm run build
 
 Commit conventions are in `AGENTS.md`.
 
+## VS Code
+
+The repository has a shared configuration in `.vscode/`; accept the
+recommended extensions (Go, Vue, ESLint) when VS Code offers them. The Go
+extension installs its tools (gopls, Delve) on first use.
+
+| Where                | Entry                                  | What it does                                                                     |
+|----------------------|----------------------------------------|----------------------------------------------------------------------------------|
+| Terminal > Run Task  | `dev: init`                            | `make init-dev`                                                                  |
+|                      | `dev: api`, `dev: ingestor`, `dev: ui` | One `make dev-*` each, in its own terminal                                       |
+|                      | `dev: all`                             | The three together                                                               |
+|                      | `dev: stop containers`                 | `make dev-down`                                                                  |
+|                      | `check: go`, `check: ui`               | The checks of [Before committing](#before-committing)                            |
+| Run and Debug        | `API (debug)`, `Ingestor (debug)`      | Same commands as `make dev-api` and `make dev-ingestor`, under Delve             |
+|                      | `UI (Chrome)`                          | Starts `dev: ui` and opens Chrome on it, with breakpoints in Vue and TypeScript  |
+|                      | `Full stack`                           | The three; stopping one stops all                                                |
+
+Settings: Go files are formatted and their imports organised on save,
+golangci-lint runs on save, ESLint fixes Vue and TypeScript files on
+save, and the editor uses the project's TypeScript. To run Go tests from
+the editor on PostgreSQL too, uncomment `CAURI_TEST_PG_DSN` in
+`.vscode/settings.json`.
+
+The debug configurations repeat the arguments of the Makefile targets:
+change both together.
+
 ## IDE notes
 
 - `ui/go.mod` is there on purpose: it keeps `ui/node_modules`, where some
@@ -282,14 +326,15 @@ Commit conventions are in `AGENTS.md`.
 
 ## Troubleshooting
 
-| Symptom | Cause and fix |
-|---|---|
-| `listen tcp :8090: bind: address already in use` | Port taken: choose another `CAURI_LISTEN`, and update `--api-url` and `CAURI_API_URL` |
-| `Bind for 127.0.0.1:22222 failed: port is already allocated` | Set `COWRIE_DEV_PORT` to a free port |
-| `required variable DEV_UID is missing` | `export DEV_UID=$(id -u) DEV_GID=$(id -g)` in this shell |
-| Cowrie logs `No such file or directory: 'var/lib/cowrie/tty/…'`, no `cowrie.json` | Its directories were not created before the start: create them (First setup), restart Cowrie |
-| Files in `data/cowrie` belong to uid 999 and cannot be deleted | Cowrie was started without `DEV_UID`. Delete them through a container: `docker run --rm -v "$PWD/data:/d" alpine rm -rf /d/cowrie` |
-| The ingestor logs `401 Unauthorized` | The token is not in the database the API uses (database reset, other driver): create it again |
-| The UI shows "The API did not answer" | API not running, or `CAURI_API_URL` of the Vite server does not match `CAURI_LISTEN` |
-| `/` of the binary says the UI is not part of the build | Run `make ui`, then rebuild |
-| `go test ./...` picks up a package under `ui/node_modules` | `ui/go.mod` is missing; restore it |
+| Symptom                                                                           | Cause and fix                                                                                                                      |
+|-----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `listen tcp :8090: bind: address already in use` | An API is already running; stop it, or pass `DEV_API_PORT=<port>` to the three `make dev-*` targets |
+| `Error: Port 5173 is already in use` | A UI dev server is already running (another terminal, or VS Code): stop it, or use it |
+| `Bind for 127.0.0.1:22222 failed: port is already allocated`                      | Set `COWRIE_DEV_PORT` to a free port                                                                                               |
+| `required variable DEV_UID is missing`                                            | `export DEV_UID=$(id -u) DEV_GID=$(id -g)` in this shell                                                                           |
+| Cowrie logs `No such file or directory: 'var/lib/cowrie/tty/…'`, no `cowrie.json` | Its directories were not created before the start: create them (First setup), restart Cowrie                                       |
+| Files in `data/cowrie` belong to uid 999 and cannot be deleted                    | Cowrie was started without `DEV_UID`. Delete them through a container: `docker run --rm -v "$PWD/data:/d" alpine rm -rf /d/cowrie` |
+| The ingestor logs `401 Unauthorized` | The token is not in the database the API uses (database reset, other driver): `rm data/dev.token && make init-dev` |
+| The UI shows "The API did not answer"                                             | API not running, or `CAURI_API_URL` of the Vite server does not match `CAURI_LISTEN`                                               |
+| `/` of the binary says the UI is not part of the build                            | Run `make ui`, then rebuild                                                                                                        |
+| `go test ./...` picks up a package under `ui/node_modules`                        | `ui/go.mod` is missing; restore it                                                                                                 |

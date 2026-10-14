@@ -104,6 +104,8 @@ Full development setup (local Cowrie, API, ingestor and UI dev server,
 PostgreSQL, troubleshooting): `docs/development.md`.
 
 ```sh
+make init-dev                  # once: UI deps, local Cowrie, dev token (idempotent)
+make dev-api / dev-ingestor / dev-ui    # the dev stack, one terminal each (VS Code: task "dev: all")
 make test                      # go test ./... (SQLite)
 make lint                      # golangci-lint (config: .golangci.yml)
 make ui                        # npm ci && npm run build in ui/

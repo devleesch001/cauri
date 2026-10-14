@@ -1,0 +1,83 @@
+{
+  // Every task runs a Makefile target, so the terminal and VS Code behave
+  // the same. See docs/development.md.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: init",
+      "detail": "make init-dev: UI dependencies, local Cowrie, dev token",
+      "type": "shell",
+      "command": "make init-dev",
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: api",
+      "detail": "make dev-api: API on :8090",
+      "type": "shell",
+      "command": "make dev-api",
+      "isBackground": true,
+      "presentation": { "group": "dev", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "cauri",
+        "pattern": { "regexp": "^cauri: (.*)$", "message": 1 },
+        "background": { "beginsPattern": "go run", "endsPattern": "\"msg\":\"listening\"" }
+      }
+    },
+    {
+      "label": "dev: ingestor",
+      "detail": "make dev-ingestor: reads data/cowrie, sends to the API",
+      "type": "shell",
+      "command": "make dev-ingestor",
+      "isBackground": true,
+      "presentation": { "group": "dev", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "cauri",
+        "pattern": { "regexp": "^cauri: (.*)$", "message": 1 },
+        "background": { "beginsPattern": "go run", "endsPattern": "\"msg\":\"ingestor started\"" }
+      }
+    },
+    {
+      "label": "dev: ui",
+      "detail": "make dev-ui: Vite dev server on :5173, /api proxied to :8090",
+      "type": "shell",
+      "command": "make dev-ui",
+      "isBackground": true,
+      "presentation": { "group": "dev", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": { "regexp": "^(.*error.*)$", "message": 1 },
+        "background": { "beginsPattern": "> vite", "endsPattern": "ready in" }
+      }
+    },
+    {
+      "label": "dev: all",
+      "detail": "API, ingestor and UI, each in its terminal",
+      "dependsOn": ["dev: api", "dev: ingestor", "dev: ui"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: stop containers",
+      "detail": "make dev-down: stops the local Cowrie (and PostgreSQL)",
+      "type": "shell",
+      "command": "make dev-down",
+      "problemMatcher": []
+    },
+    {
+      "label": "check: go",
+      "detail": "gofmt, vet, race tests, golangci-lint",
+      "type": "shell",
+      "command": "test -z \"$(gofmt -l .)\" && go vet ./... && go test -race ./... && make lint",
+      "group": "test",
+      "problemMatcher": ["$go"]
+    },
+    {
+      "label": "check: ui",
+      "detail": "ESLint, type-check, build",
+      "type": "shell",
+      "command": "npm run lint && npm run build",
+      "options": { "cwd": "${workspaceFolder}/ui" },
+      "group": "test",
+      "problemMatcher": ["$tsc", "$eslint-stylish"]
+    }
+  ]
+}
