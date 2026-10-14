@@ -256,7 +256,7 @@ func retry[T any](ctx context.Context, in *ingestor, what string, f func() (T, e
 		if errors.Is(err, ErrPermanent) {
 			level = slog.LevelError
 		}
-		in.Logger.Log(ctx, level, what+" failed, retrying", "err", err, "in", delay)
+		in.Logger.Log(ctx, level, what+" failed, retrying", "err", err, "in", delay.String())
 		select {
 		case <-ctx.Done():
 			return v, ctx.Err()
@@ -296,7 +296,7 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	if err := in.openTTYRoot(); err != nil {
 		// Misconfiguration or directory not created yet: keep the job.
 		delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
-		log.Warn("tty directory unavailable, retrying", "err", err, "in", delay)
+		log.Warn("tty directory unavailable, retrying", "err", err, "in", delay.String())
 		return in.queue.retry(job.Session, time.Now().Add(delay))
 	}
 	f, m, err := in.openTTY(job)
@@ -318,7 +318,7 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 		return in.queue.done(job.Session)
 	}
 	delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
-	log.Warn("tty upload failed, retrying", "err", err, "in", delay)
+	log.Warn("tty upload failed, retrying", "err", err, "in", delay.String())
 	return in.queue.retry(job.Session, time.Now().Add(delay))
 }
 

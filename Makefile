@@ -46,10 +46,12 @@ init-dev:
 	@# Cowrie does not create these and fails without them.
 	mkdir -p $(COWRIE_DIR)/log/cowrie $(COWRIE_DIR)/lib/cowrie/tty $(COWRIE_DIR)/lib/cowrie/downloads
 	$(DEV_COMPOSE) up -d cowrie
-	@if [ -s $(DEV_TOKEN) ]; then \
-		echo "$(DEV_TOKEN) exists, kept"; \
+	@# Keep the token only if the database still knows it (it may have been reset).
+	@if [ -s $(DEV_TOKEN) ] && go run ./cmd/cauri token verify --token-file $(DEV_TOKEN); then \
+		echo "$(DEV_TOKEN) kept"; \
 	else \
 		go run ./cmd/cauri token create --sensor $(DEV_SENSOR) > $(DEV_TOKEN).tmp && mv $(DEV_TOKEN).tmp $(DEV_TOKEN); \
+		echo "restart make dev-ingestor if it is running: it reads the token at start"; \
 	fi
 	@echo; echo "Ready. In three terminals: make dev-api, make dev-ingestor, make dev-ui"; \
 	echo "then open http://localhost:5173 and connect to Cowrie: ssh -p $${COWRIE_DEV_PORT:-22222} admin@127.0.0.1 (password admin)"

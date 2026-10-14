@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -22,6 +23,7 @@ const tokenUsage = `Usage:
   cauri token create --sensor <id> [--name <label>]
   cauri token list
   cauri token revoke <token id>
+  cauri token verify --token-file <file>    exits 1 if the token is unknown or revoked
 
 Database options (--db-driver, --db-dsn) are the same as for "cauri api".`
 
@@ -36,6 +38,7 @@ func runToken(ctx context.Context, args []string) error {
 	db.register(fs)
 	sensor := fs.String("sensor", "", "sensor identifier the token belongs to (create)")
 	name := fs.String("name", "", "free label, such as the host of the sensor (create)")
+	tokenFile := fs.String("token-file", "", "file holding the token to check (verify)")
 	if err := envflag.Parse(fs, args); err != nil {
 		return err
 	}
@@ -79,6 +82,20 @@ func runToken(ctx context.Context, args []string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Token %s revoked.\n", fs.Arg(0))
+		return nil
+	case "verify":
+		if *tokenFile == "" {
+			return errors.New("--token-file is required")
+		}
+		data, err := os.ReadFile(*tokenFile) //nolint:gosec // G703: path given by the operator
+		if err != nil {
+			return err
+		}
+		sensor, err := tokens.Authenticate(ctx, strings.TrimSpace(string(data)))
+		if err != nil {
+			return fmt.Errorf("%s: %w", *tokenFile, err)
+		}
+		fmt.Fprintf(os.Stderr, "%s: valid token of sensor %s.\n", *tokenFile, sensor)
 		return nil
 	default:
 		fmt.Fprintln(os.Stderr, tokenUsage)

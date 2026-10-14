@@ -334,7 +334,7 @@ change both together.
 | `required variable DEV_UID is missing`                                            | `export DEV_UID=$(id -u) DEV_GID=$(id -g)` in this shell                                                                           |
 | Cowrie logs `No such file or directory: 'var/lib/cowrie/tty/…'`, no `cowrie.json` | Its directories were not created before the start: create them (First setup), restart Cowrie                                       |
 | Files in `data/cowrie` belong to uid 999 and cannot be deleted                    | Cowrie was started without `DEV_UID`. Delete them through a container: `docker run --rm -v "$PWD/data:/d" alpine rm -rf /d/cowrie` |
-| The ingestor logs `401 Unauthorized` | The token is not in the database the API uses (database reset, other driver): `rm data/dev.token && make init-dev` |
+| The ingestor logs `401 Unauthorized` | The token is not in the database the API uses (database reset, other driver): `make init-dev` creates a new one, then restart `make dev-ingestor` |
 | The UI shows "The API did not answer"                                             | API not running, or `CAURI_API_URL` of the Vite server does not match `CAURI_LISTEN`                                               |
 | `/` of the binary says the UI is not part of the build                            | Run `make ui`, then rebuild                                                                                                        |
 | `go test ./...` picks up a package under `ui/node_modules`                        | `ui/go.mod` is missing; restore it                                                                                                 |

@@ -149,6 +149,7 @@ is stored.
 cauri token create --sensor hp-01 --name "vps-paris"   # prints the token once
 cauri token list
 cauri token revoke <id>                                # effective immediately
+cauri token verify --token-file <file>                 # is this token valid? (exit code 1 if not)
 ```
 
 With Docker: `docker compose exec api cauri token create --sensor hp-01`.

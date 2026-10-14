@@ -13,7 +13,7 @@ services:
     # Run as the developer, so that the files written in ./data/cowrie are
     # yours. Cowrie does not create its log and tty directories: create
     # them first, see docs/development.md.
-    user: "${DEV_UID:?run with DEV_UID=$(id -u) DEV_GID=$(id -g)}:${DEV_GID:?}"
+    user: "${DEV_UID:-999}:${DEV_GID:-999}"
     volumes:
       - ../data/cowrie:/cowrie/cowrie-git/var
     ports:
