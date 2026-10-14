@@ -19,6 +19,7 @@ import (
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/store/storetest"
 	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/internal/verdict"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
@@ -517,6 +518,55 @@ func TestLocateSessions(t *testing.T) {
 		}
 		if n, err := svc.LocateSessions(ctx); n != 0 || err != nil {
 			t.Errorf("second run located %d, %v", n, err)
+		}
+	})
+}
+
+// Sessions are judged as they are stored, and again by JudgeSessions when
+// the criteria change.
+func TestJudgeSessions(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		for _, sess := range []string{"a", "b", "c"} {
+			if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, sess, 0, nil))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor,
+			line("cowrie.command.input", "c", 1, map[string]any{"input": "uname -a"}))); err != nil {
+			t.Fatal(err)
+		}
+		s := getSession(t, db, sensor, "a")
+		if s.Verdict == nil || *s.Verdict != "no_interaction" || s.VerdictVersion == nil || *s.VerdictVersion != verdict.Version {
+			t.Fatalf("session a = %v %v", s.Verdict, s.VerdictVersion)
+		}
+		// A command without a terminal.
+		if s := getSession(t, db, sensor, "c"); *s.Verdict != "uncertain" || *s.VerdictScore != -2 {
+			t.Errorf("session c = %v %v", *s.Verdict, *s.VerdictScore)
+		}
+		if n, err := svc.JudgeSessions(ctx); n != 0 || err != nil {
+			t.Fatalf("up to date: %d, %v", n, err)
+		}
+
+		// Older criteria, and a session stored before verdicts were.
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("verdict_version = ?", "0").
+			Where("id = ?", store.SessionID(sensor, "a")).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).
+			Set("verdict = NULL").Set("verdict_score = NULL").Set("verdict_version = NULL").
+			Where("id = ?", store.SessionID(sensor, "c")).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := svc.JudgeSessions(ctx); n != 2 || err != nil {
+			t.Fatalf("judged %d, %v", n, err)
+		}
+		if s := getSession(t, db, sensor, "c"); s.Verdict == nil || *s.Verdict != "uncertain" || *s.VerdictVersion != verdict.Version {
+			t.Errorf("session c = %v", s.Verdict)
+		}
+		if n, err := svc.JudgeSessions(ctx); n != 0 || err != nil {
+			t.Errorf("second run judged %d, %v", n, err)
 		}
 	})
 }

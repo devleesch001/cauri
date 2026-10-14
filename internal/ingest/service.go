@@ -144,7 +144,10 @@ func (s *Service) IngestEvents(ctx context.Context, sensorID string, b protocol.
 			w.add(e.id, e.raw, e.ev)
 			res.Accepted++
 		}
-		return w.write(ctx, tx)
+		if err := w.write(ctx, tx); err != nil {
+			return err
+		}
+		return s.storeVerdict(ctx, tx, w.order...)
 	})
 	if err != nil {
 		return protocol.EventBatchResult{}, err
@@ -206,7 +209,11 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 				Set("tty_sha256 = ?", m.SHA256).
 				Set("tty_size = ?", m.Size).
 				Where("id = ?", sess.ID).Exec(ctx)
-			return err
+			if err != nil {
+				return err
+			}
+			// The recording tells how the keys were typed.
+			return s.storeVerdict(ctx, tx, sess.ID)
 		}
 		return nil
 	})

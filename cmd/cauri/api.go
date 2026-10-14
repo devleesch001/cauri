@@ -11,6 +11,7 @@ import (
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/ingest"
 	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/internal/verdict"
 	"github.com/devleesch001/cauri/internal/webui"
 )
 
@@ -76,6 +77,16 @@ func runAPI(ctx context.Context, args []string) error {
 			}
 		}()
 	}
+	// Sessions judged by older criteria, or before verdicts were stored.
+	go func() {
+		n, err := svc.JudgeSessions(ctx)
+		if err != nil && ctx.Err() == nil {
+			log.Error("judging stored sessions", "err", err)
+		}
+		if n > 0 {
+			log.Info("judged stored sessions", "sessions", n, "criteria", verdict.Version)
+		}
+	}()
 	if *withUI {
 		cfg.UI = webui.Handler()
 	}
