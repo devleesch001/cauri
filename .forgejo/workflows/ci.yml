@@ -26,8 +26,8 @@ jobs:
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Check formatting
@@ -35,7 +35,7 @@ jobs:
       - run: go vet ./...
       - name: Test (SQLite)
         run: go test -race ./...
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0 # at least: older versions cannot read Go 1.27.2 packages
 
@@ -45,8 +45,8 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -60,7 +60,7 @@ jobs:
     needs: [go, ui]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Image name
         id: image
         run: |
@@ -72,7 +72,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Image tags and labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.image }}
           # Stable vX.Y.Z: X.Y.Z, X.Y, X (not while X is 0: every 0.Y may
@@ -88,13 +88,13 @@ jobs:
             type=sha,prefix=sha-,enable=${{ github.ref_type == 'branch' }}
           flavor: |
             latest=false
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ${{ steps.image.outputs.registry }}
           username: ${{ vars.REGISTRY_USER || github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -108,16 +108,18 @@ jobs:
     needs: [go, ui]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - uses: goreleaser/goreleaser-action@v6
+      # Not mirrored on data.forgejo.org (the default actions source): a full
+      # URL fetches it from GitHub whatever the instance's DEFAULT_ACTIONS_URL.
+      - uses: https://github.com/goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean --skip=docker

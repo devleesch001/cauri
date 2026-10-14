@@ -185,7 +185,11 @@ referenced by their major version tag (`@v7`) and GoReleaser by
 pin them to SHAs or exact versions. Jobs run on `ubuntu-latest` with the
 least permissions (read-only by default). On
 GitHub, jobs run on the runner itself: services are reached on
-`localhost`; on Forgejo, jobs run in a container: services by name.
+`localhost`; on Forgejo, jobs run in a container: services by name. Both
+use the same actions at the same, latest, major versions. On Forgejo,
+short names resolve on data.forgejo.org; an action missing there
+(goreleaser-action) is referenced by full URL, valid on Forgejo though
+actionlint, which knows GitHub only, reports it.
 
 ## Way of working
 
