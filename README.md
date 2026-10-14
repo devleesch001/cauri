@@ -77,9 +77,11 @@ the name Cowrie gives a recording is a hash of the terminal output, not of
 the file: cauri keeps it in `sessions.tty_log` and checks uploads against
 the real digest.
 
-The schema is portable: the same SQL runs on SQLite (pure Go driver, no
-CGO) and PostgreSQL. Migrations (goose) are embedded and applied when the
-API starts.
+cauri is built for SQLite first (pure Go driver, no CGO): it is the
+default, the configuration tested by the CI, and enough for most
+deployments. Through the bun ORM, PostgreSQL is supported too for those
+who prefer it: the schema and queries stay portable between both.
+Migrations (goose) are embedded and applied when the API starts.
 
 ### Repository
 
@@ -252,7 +254,8 @@ sensor. TLS is handled by the reverse proxy in front of the API.
 
 ### PostgreSQL
 
-SQLite suits a single host. For PostgreSQL, set
+SQLite is the default and the recommended choice. PostgreSQL is
+supported as an option: set
 `CAURI_DB_DRIVER=postgres`, `CAURI_DB_DSN` and `POSTGRES_PASSWORD`, then
 start with `--profile postgres`, or point `CAURI_DB_DSN` at an existing
 server.
@@ -296,7 +299,7 @@ make build    # bin/cauri, static, UI embedded if built
 make test
 make lint
 
-# PostgreSQL tests in addition to SQLite:
+# Optional, when changing SQL: run the tests on PostgreSQL too
 docker run -d --rm -p 127.0.0.1:55432:5432 -e POSTGRES_PASSWORD=test postgres:17-alpine
 CAURI_TEST_PG_DSN='postgres://postgres:test@127.0.0.1:55432/postgres?sslmode=disable' make test
 
@@ -314,8 +317,8 @@ TypeScript, registered in `ui/src/i18n.ts`.
 ### CI and releases
 
 Two equivalent workflows run the checks above (gofmt, vet, race tests on
-SQLite and PostgreSQL, golangci-lint, UI lint and build) on every push and
-pull request, then publish:
+SQLite, golangci-lint, UI lint and build) on every push and pull request,
+then publish:
 
 | | GitHub (`.github/workflows/ci.yml`) | Forgejo (`.forgejo/workflows/ci.yml`) |
 |---|---|---|

@@ -191,9 +191,11 @@ go test -race ./...       # what the CI runs
 go test ./internal/ingestor/... -run Rotation -v   # one test
 ```
 
-Tests touching the database run on SQLite, and also on PostgreSQL when
-`CAURI_TEST_PG_DSN` is set; each test gets its own schema. The dev
-compose file has a PostgreSQL for that:
+Tests run on SQLite, the database cauri is built for and the only one the
+CI tests. When a change touches SQL (migrations, queries, ingestion), run
+them on PostgreSQL too: tests touching the database also run on it when
+`CAURI_TEST_PG_DSN` is set, each in its own schema. The dev compose file
+has a PostgreSQL for that:
 
 ```sh
 docker compose -f deploy/compose.dev.yml --profile postgres up -d postgres
@@ -213,7 +215,8 @@ Where tests live:
 
 ## Running cauri on PostgreSQL
 
-With the dev PostgreSQL started as above, give the same database settings
+SQLite is the default; PostgreSQL is an option for users who prefer it.
+To try cauri on it, with the dev PostgreSQL started as above, give the same database settings
 to the API and to `cauri token`:
 
 ```sh
@@ -233,8 +236,8 @@ CAURI_LISTEN=:8090 go run ./cmd/cauri api --log-level debug
    functions, `TIMESTAMPTZ` for times, `TEXT` for JSON.
 3. Update the bun models in `internal/store/models.go`, then the
    ingestion (`internal/ingest/batch.go`) or the queries (`internal/store/query.go`).
-4. Run the tests on both databases. The migration runs when the API
-   starts.
+4. Run the tests on SQLite, and on PostgreSQL too since the SQL changed.
+   The migration runs when the API starts.
 
 ### Supporting a new Cowrie event
 
@@ -280,7 +283,7 @@ To try a deployment mode locally, use the files of `deploy/` with an
 ```sh
 gofmt -l .                 # must print nothing
 go vet ./...
-go test -race ./...        # with CAURI_TEST_PG_DSN set
+go test -race ./...        # add CAURI_TEST_PG_DSN if the change touches SQL
 make lint
 cd ui && npm run lint && npm run typecheck && npm run build
 ```

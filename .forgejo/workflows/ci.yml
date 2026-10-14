@@ -25,13 +25,6 @@ on:
 jobs:
   go:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_PASSWORD: test
-    env:
-      CAURI_TEST_PG_DSN: postgres://postgres:test@postgres:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -40,7 +33,7 @@ jobs:
       - name: Check formatting
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go vet ./...
-      - name: Test (SQLite and PostgreSQL)
+      - name: Test (SQLite)
         run: go test -race ./...
       - uses: golangci/golangci-lint-action@v8
         with:

@@ -52,8 +52,9 @@ anything (events, recordings) must not change the result.
 **Files are identified by inode and fingerprint, not by name** (rotation
 renames `cowrie.json` to `cowrie.json.YYYY-MM-DD`).
 
-**Database.** SQLite (`modernc.org/sqlite`, no CGO) or PostgreSQL, chosen
-by configuration, through bun. SQL must run unchanged on both: no
+**Database.** SQLite first (`modernc.org/sqlite`, no CGO): the default,
+what the CI tests, what the project is built and tuned for. The bun ORM
+lets users choose PostgreSQL instead, so SQL must run unchanged on both: no
 auto-increment, no PostgreSQL-only features, no SQLite-only functions
 (use `CASE`, not `MIN(a,b)`/`LEAST`). Ids are computed by the application.
 Times are stored in UTC (SQLite compares them as text). The API is the
@@ -117,7 +118,7 @@ make lint                      # golangci-lint (config: .golangci.yml)
 make ui                        # npm ci && npm run build in ui/
 make build                     # bin/cauri, static, UI embedded if built
 
-# PostgreSQL too: every store/ingest/api/auth test then runs on both.
+# Optional, when changing SQL: store/ingest/api/auth tests then also run on PostgreSQL.
 docker run -d --rm -p 127.0.0.1:55432:5432 -e POSTGRES_PASSWORD=test postgres:17-alpine
 CAURI_TEST_PG_DSN='postgres://postgres:test@127.0.0.1:55432/postgres?sslmode=disable' go test -race ./...
 
@@ -128,7 +129,8 @@ docker build -t cauri:dev .
 ```
 
 Before considering a change done: `gofmt -l .` empty, `go vet ./...`,
-race tests on SQLite and PostgreSQL, `golangci-lint run ./...`, and for UI
+race tests (SQLite; also PostgreSQL if the change touches SQL),
+`golangci-lint run ./...`, and for UI
 changes lint, typecheck and build. For visible UI changes, look at the
 result in a browser.
 
