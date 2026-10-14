@@ -81,6 +81,15 @@ func seed(t *testing.T, db *bun.DB) *ingest.Service {
 
 func ptr[T any](v T) *T { return &v }
 
+func lookup(t *testing.T, db *bun.DB, sensor, cowrieSession string) int64 {
+	t.Helper()
+	id, err := store.LookupSession(context.Background(), db, sensor, cowrieSession)
+	if err != nil {
+		t.Fatalf("session %s/%s: %v", sensor, cowrieSession, err)
+	}
+	return id
+}
+
 func sessions(t *testing.T, db *bun.DB, f store.SessionFilter) ([]store.SessionSummary, string) {
 	t.Helper()
 	rows, total, err := store.ListSessions(context.Background(), db, f)
@@ -89,7 +98,7 @@ func sessions(t *testing.T, db *bun.DB, f store.SessionFilter) ([]store.SessionS
 	}
 	var b strings.Builder
 	for _, r := range rows {
-		b.WriteString(r.Session.Session)
+		b.WriteString(r.CowrieSession)
 	}
 	if f.Limit == 0 && total != len(rows) {
 		t.Errorf("total = %d, rows = %d", total, len(rows))
@@ -105,7 +114,7 @@ func TestListSessions(t *testing.T) {
 			want string // Cowrie session ids, in order
 		}{
 			"all, latest first": {store.SessionFilter{}, "321"},
-			"sensor":            {store.SessionFilter{SensorID: "hp-01"}, "21"},
+			"sensor":            {store.SessionFilter{Sensor: "hp-01"}, "21"},
 			"ip":                {store.SessionFilter{SrcIP: "203.0.113.2"}, "2"},
 			"login success":     {store.SessionFilter{Login: store.LoginSuccess}, "1"},
 			"login failed":      {store.SessionFilter{Login: store.LoginFailed}, "32"},
@@ -140,13 +149,13 @@ func TestListSessionsPageAndSummary(t *testing.T) {
 			t.Fatalf("page: %d rows, total %d, %v", len(rows), total, err)
 		}
 		s := rows[0]
-		if s.Session.Session != "1" || s.LoginAttempts != 2 || s.Commands != 2 || !s.TTYAvailable || !s.LoginSuccess {
+		if s.CowrieSession != "1" || s.LoginAttempts != 2 || s.Commands != 2 || !s.TTYAvailable || !s.LoginSuccess {
 			t.Fatalf("summary = %+v", s)
 		}
 		if len(s.Credentials) != 2 || s.Credentials[1] != (store.Credential{Username: "root", Password: "123456", Success: true}) {
 			t.Errorf("credentials = %+v", s.Credentials)
 		}
-		if *s.ClientVersion != "SSH-2.0-OpenSSH_9.6" || *s.Duration != 7 {
+		if *s.ClientVersion != "SSH-2.0-OpenSSH_9.6" || *s.DurationMS != 7000 || s.Sensor != "hp-01" || *s.TTYSize != 9 {
 			t.Errorf("fields = %+v", s.Session)
 		}
 	})
@@ -156,7 +165,7 @@ func TestGetSession(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		seed(t, db)
 		ctx := context.Background()
-		d, err := store.GetSession(ctx, db, store.SessionID("hp-01", "1"))
+		d, err := store.GetSession(ctx, db, lookup(t, db, "hp-01", "1"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -170,7 +179,7 @@ func TestGetSession(t *testing.T) {
 		if len(d.CommandList) != 2 || d.CommandList[0].Input != "uname -a" || len(d.LoginAttemptList) != 2 {
 			t.Errorf("lists = %+v / %+v", d.CommandList, d.LoginAttemptList)
 		}
-		if _, err := store.GetSession(ctx, db, "missing"); !errors.Is(err, store.ErrNotFound) {
+		if _, err := store.GetSession(ctx, db, 999); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("missing: err = %v", err)
 		}
 	})
@@ -190,14 +199,14 @@ func TestListLoginAttempts(t *testing.T) {
 			}
 			var b strings.Builder
 			for _, r := range rows {
-				b.WriteString(r.Username + "/" + r.Password + "@" + r.SensorID + " ")
+				b.WriteString(r.Username + "/" + r.Password + "@" + r.Sensor + " ")
 			}
 			return b.String()
 		}
 		if got := get(store.LoginAttemptFilter{Success: ptr(false), Interactive: ptr(false)}); got != "test/test@hp-02 admin/admin@hp-01 " {
 			t.Errorf("failed, no shell: %q", got)
 		}
-		if got := get(store.LoginAttemptFilter{SensorID: "hp-01", Username: "root"}); got != "root/123456@hp-01 root/admin@hp-01 " {
+		if got := get(store.LoginAttemptFilter{Sensor: "hp-01", Username: "root"}); got != "root/123456@hp-01 root/admin@hp-01 " {
 			t.Errorf("root on hp-01: %q", got)
 		}
 		if got := get(store.LoginAttemptFilter{Interactive: ptr(true), Success: ptr(false)}); got != "root/admin@hp-01 " {
@@ -210,7 +219,7 @@ func TestListSensors(t *testing.T) {
 	db := storetest.SQLite(t)
 	seed(t, db)
 	sensors, err := store.ListSensors(context.Background(), db)
-	if err != nil || len(sensors) != 2 || sensors[0].ID != "hp-01" {
+	if err != nil || len(sensors) != 2 || sensors[0].Name != "hp-01" {
 		t.Fatalf("sensors = %+v, %v", sensors, err)
 	}
 }
@@ -226,7 +235,7 @@ func TestCountries(t *testing.T) {
 				sensor = "hp-02"
 			}
 			if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("geo_country = ?", c).
-				Where("id = ?", store.SessionID(sensor, sess)).Exec(ctx); err != nil {
+				Where("id = ?", lookup(t, db, sensor, sess)).Exec(ctx); err != nil {
 				t.Fatal(err)
 			}
 		}

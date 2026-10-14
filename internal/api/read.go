@@ -35,7 +35,7 @@ func (s *server) listSensors(w http.ResponseWriter, r *http.Request) {
 func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
 	f := store.SessionFilter{
-		SensorID:    q.str("sensor"),
+		Sensor:      q.str("sensor"),
 		SrcIP:       q.str("ip"),
 		Country:     q.country("country"),
 		Username:    q.str("username"),
@@ -61,8 +61,18 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newList(rows, total, f.Page))
 }
 
+// sessionID returns the session id of the URL. An invalid one is 0,
+// which no session has: the same "not found" as an unknown id.
+func sessionID(r *http.Request) int64 {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
 func (s *server) getSession(w http.ResponseWriter, r *http.Request) {
-	d, err := store.GetSession(r.Context(), s.DB, chi.URLParam(r, "id"))
+	d, err := store.GetSession(r.Context(), s.DB, sessionID(r))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "session not found")
 		return
@@ -77,7 +87,7 @@ func (s *server) getSession(w http.ResponseWriter, r *http.Request) {
 func (s *server) listLoginAttempts(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
 	f := store.LoginAttemptFilter{
-		SensorID:    q.str("sensor"),
+		Sensor:      q.str("sensor"),
 		SrcIP:       q.str("ip"),
 		Country:     q.country("country"),
 		Username:    q.str("username"),

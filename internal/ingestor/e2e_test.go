@@ -91,11 +91,15 @@ func TestEndToEnd(t *testing.T) {
 	}
 	run()
 
-	d, err := store.GetSession(ctx, db, store.SessionID("hp-01", "a1b2c3d4e5f6"))
+	id, err := store.LookupSession(ctx, db, "hp-01", "a1b2c3d4e5f6")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Events) != 5 || len(d.CommandList) != 1 || !d.LoginSuccess || *d.TTYSHA256 != sha || *d.TTYLog != name || *d.Duration != 4 || *d.TTYDuration != 2.5 {
+	d, err := store.GetSession(ctx, db, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Events) != 5 || len(d.CommandList) != 1 || !d.LoginSuccess || *d.TTYSHA256 != sha || *d.TTYLog != name || *d.DurationMS != 4000 || *d.TTYDurationMS != 2500 {
 		t.Fatalf("session = %+v", d)
 	}
 	f, err := tty.Open(sha)
@@ -111,7 +115,7 @@ func TestEndToEnd(t *testing.T) {
 	// Lost state: everything is sent again and deduplicated by the API.
 	_ = os.RemoveAll(stateDir)
 	run()
-	if n, _ := db.NewSelect().Model((*store.RawEvent)(nil)).Count(ctx); n != 5 {
-		t.Fatalf("raw events = %d after resend, want 5", n)
+	if n, _ := db.NewSelect().Model((*store.Event)(nil)).Count(ctx); n != 5 {
+		t.Fatalf("events = %d after resend, want 5", n)
 	}
 }

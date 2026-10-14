@@ -7,6 +7,7 @@ package ingest
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -120,34 +121,34 @@ func (s *Service) IngestEvents(ctx context.Context, sensorID string, b protocol.
 	}
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Drop events already stored.
-		ids := make([]string, len(events))
+		// Events already stored do not touch their session again.
+		hashes := make([][]byte, len(events))
 		for i, e := range events {
-			ids[i] = e.id
+			hashes[i], _ = hex.DecodeString(e.id) // checked by ValidSHA256
 		}
-		var known []string
-		if err := tx.NewSelect().Model((*store.RawEvent)(nil)).Column("id").
-			Where("id IN (?)", bun.List(ids)).Scan(ctx, &known); err != nil {
+		var known [][]byte
+		if err := tx.NewSelect().Model((*store.Event)(nil)).Column("hash").
+			Where("hash IN (?)", bun.List(hashes)).Scan(ctx, &known); err != nil {
 			return err
 		}
 		isKnown := make(map[string]bool, len(known))
-		for _, id := range known {
-			isKnown[id] = true
+		for _, h := range known {
+			isKnown[string(h)] = true
 		}
 
-		w := newBatchWriter(sensorID, s.now().UTC(), s.locator)
-		for _, e := range events {
-			if isKnown[e.id] {
-				res.Duplicates++
-				continue
+		w := newBatchWriter(sensorID, s.now(), s.locator)
+		for i, e := range events {
+			if !isKnown[string(hashes[i])] {
+				w.add(hashes[i], e.raw, e.ev)
 			}
-			w.add(e.id, e.raw, e.ev)
-			res.Accepted++
 		}
-		if err := w.write(ctx, tx); err != nil {
+		accepted, err := w.write(ctx, tx)
+		if err != nil {
 			return err
 		}
-		return s.storeVerdict(ctx, tx, w.order...)
+		res.Accepted = accepted
+		res.Duplicates += len(events) - accepted
+		return s.storeVerdict(ctx, tx, w.sessionIDs...)
 	})
 	if err != nil {
 		return protocol.EventBatchResult{}, err
@@ -170,8 +171,15 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 		return res, fmt.Errorf("%w: %d bytes, limit %d", ErrTooLarge, m.Size, s.maxTTYSize)
 	}
 
-	sess := new(store.Session)
-	err := s.db.NewSelect().Model(sess).Where("id = ?", store.SessionID(sensorID, m.Session)).Scan(ctx)
+	var sess struct {
+		ID        int64   `bun:"id"`
+		TTYSHA256 *string `bun:"tty_sha256"`
+	}
+	err := s.db.NewSelect().Model((*store.Session)(nil)).
+		ColumnExpr("s.id, t.sha256 AS tty_sha256").
+		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
+		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
+		Where("sn.name = ?", sensorID).Where("s.cowrie_session = ?", m.Session).Scan(ctx, &sess)
 	if errors.Is(err, sql.ErrNoRows) {
 		return res, ErrUnknownSession
 	}
@@ -199,15 +207,19 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 
 	err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if !exists {
-			f := &store.TTYFile{SHA256: m.SHA256, Size: m.Size, Path: rel, StoredAt: s.now().UTC()}
+			f := &store.TTYFile{SHA256: m.SHA256, Size: m.Size, Path: rel, StoredAt: store.NewTime(s.now())}
 			if _, err := tx.NewInsert().Model(f).On("CONFLICT (sha256) DO NOTHING").Exec(ctx); err != nil {
 				return err
 			}
 		}
 		if sess.TTYSHA256 == nil {
+			var fileID int64
+			if err := tx.NewSelect().Model((*store.TTYFile)(nil)).Column("id").
+				Where("sha256 = ?", m.SHA256).Scan(ctx, &fileID); err != nil {
+				return err
+			}
 			_, err := tx.NewUpdate().Model((*store.Session)(nil)).
-				Set("tty_sha256 = ?", m.SHA256).
-				Set("tty_size = ?", m.Size).
+				Set("tty_file_id = ?", fileID).
 				Where("id = ?", sess.ID).Exec(ctx)
 			if err != nil {
 				return err

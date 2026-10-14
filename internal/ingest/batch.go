@@ -2,6 +2,9 @@ package ingest
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -9,74 +12,74 @@ import (
 	"github.com/devleesch001/cauri/internal/store"
 )
 
-// batchWriter accumulates the rows produced by the new events of a batch,
-// then writes them table by table.
+// batchWriter accumulates the new events of a batch and the sessions
+// they belong to, then writes them (see write).
 //
 // Sessions are merged with rules that do not depend on arrival order, in
 // memory within a batch and in SQL across batches (see upsertSessions):
 // connection details keep their first value, started_at the earliest
 // timestamp, end and recording details their last value, login_success
-// becomes true once any login succeeded. The digest and size of the
-// recording are only set by StoreTTY, from the uploaded file.
+// becomes true once any login succeeded. The recording file is only set by
+// StoreTTY, from the uploaded file.
 type batchWriter struct {
-	now      time.Time
+	now      store.Time
 	locator  Locator // optional
 	sensor   store.Sensor
-	sessions map[string]*store.Session
-	order    []string // session ids, in order of appearance
-	raw      []store.RawEvent
-	logins   []store.LoginAttempt
-	commands []store.Command
-	xfers    []store.Transfer
+	sessions map[string]*store.Session // by Cowrie session id
+	order    []string                  // Cowrie session ids, in order of appearance
+	events   []pendingEvent
+	// sessionIDs are the sessions written, once write returned.
+	sessionIDs []int64
 }
 
-func newBatchWriter(sensorID string, now time.Time, locator Locator) *batchWriter {
+// pendingEvent is a Cowrie line not stored yet.
+type pendingEvent struct {
+	hash []byte
+	raw  string
+	ev   *cowrieEvent
+}
+
+func newBatchWriter(sensor string, now time.Time, locator Locator) *batchWriter {
 	return &batchWriter{
-		now:      now,
+		now:      store.NewTime(now),
 		locator:  locator,
-		sensor:   store.Sensor{ID: sensorID},
+		sensor:   store.Sensor{Name: sensor},
 		sessions: map[string]*store.Session{},
 	}
 }
 
-func (w *batchWriter) add(id, raw string, ev *cowrieEvent) {
-	if w.sensor.FirstSeen.IsZero() || ev.ts.Before(w.sensor.FirstSeen) {
-		w.sensor.FirstSeen = ev.ts
+func (w *batchWriter) add(hash []byte, raw string, ev *cowrieEvent) {
+	ts := store.NewTime(ev.ts)
+	if w.sensor.FirstSeen == nil || ts.Before(w.sensor.FirstSeen.Time) {
+		w.sensor.FirstSeen = &ts
 	}
-	if ev.ts.After(w.sensor.LastSeen) {
-		w.sensor.LastSeen = ev.ts
+	if w.sensor.LastSeen == nil || ts.After(w.sensor.LastSeen.Time) {
+		w.sensor.LastSeen = &ts
 	}
-
-	var sessionID *string
 	if ev.Session != "" {
-		s := w.session(ev)
-		sessionID = &s.ID
-		w.project(id, s, ev)
+		w.merge(w.session(ev), ev)
 	}
-	w.raw = append(w.raw, store.RawEvent{
-		ID: id, SensorID: w.sensor.ID, SessionID: sessionID, EventID: ev.EventID,
-		TS: ev.ts, SrcIP: ev.SrcIP, Data: raw, ReceivedAt: w.now,
-	})
+	w.events = append(w.events, pendingEvent{hash: hash, raw: raw, ev: ev})
 }
 
 // session returns the pending session row of ev, created on first use.
 func (w *batchWriter) session(ev *cowrieEvent) *store.Session {
-	id := store.SessionID(w.sensor.ID, ev.Session)
-	s, ok := w.sessions[id]
+	ts := store.NewTime(ev.ts)
+	s, ok := w.sessions[ev.Session]
 	if !ok {
-		s = &store.Session{ID: id, SensorID: w.sensor.ID, Session: ev.Session, StartedAt: ev.ts}
-		w.sessions[id] = s
-		w.order = append(w.order, id)
+		s = &store.Session{CowrieSession: ev.Session, StartedAt: ts}
+		w.sessions[ev.Session] = s
+		w.order = append(w.order, ev.Session)
 	}
-	if ev.ts.Before(s.StartedAt) {
-		s.StartedAt = ev.ts
+	if ts.Before(s.StartedAt.Time) {
+		s.StartedAt = ts
 	}
 	firstStr(&s.SrcIP, ev.SrcIP)
 	return s
 }
 
-// project turns a known event into session fields and table rows.
-func (w *batchWriter) project(id string, s *store.Session, ev *cowrieEvent) {
+// merge turns a known event into session fields.
+func (w *batchWriter) merge(s *store.Session, ev *cowrieEvent) {
 	switch ev.EventID {
 	case evConnect:
 		firstInt(&s.SrcPort, ev.SrcPort)
@@ -87,83 +90,147 @@ func (w *batchWriter) project(id string, s *store.Session, ev *cowrieEvent) {
 		firstStr(&s.ClientVersion, ev.Version)
 	case evClientKex:
 		firstStr(&s.HASSH, ev.HASSH)
-	case evLoginSuccess, evLoginFailed:
-		success := ev.EventID == evLoginSuccess
-		if success {
-			s.LoginSuccess = true
-		}
-		w.logins = append(w.logins, store.LoginAttempt{
-			ID: id, SessionID: s.ID, TS: ev.ts,
-			Username: deref(ev.Username), Password: deref(ev.Password), Success: success,
-		})
-	case evCommandInput:
-		w.commands = append(w.commands, store.Command{ID: id, SessionID: s.ID, TS: ev.ts, Input: deref(ev.Input)})
-	case evFileDownload:
-		w.xfers = append(w.xfers, store.Transfer{
-			ID: id, SessionID: s.ID, TS: ev.ts, Direction: store.Download,
-			URL: ev.URL, Filename: ev.DestFile, SHA256: ev.Shasum,
-		})
-	case evFileUpload:
-		w.xfers = append(w.xfers, store.Transfer{
-			ID: id, SessionID: s.ID, TS: ev.ts, Direction: store.Upload,
-			Filename: ev.Filename, SHA256: ev.Shasum,
-		})
+	case evLoginSuccess:
+		s.LoginSuccess = true
 	case evLogClosed:
 		if name := ev.ttyName(); name != nil {
 			s.TTYLog = name
 		}
-		if d := ev.seconds(); d != nil {
-			s.TTYDuration = d
+		if d := ev.durationMS; d != nil {
+			s.TTYDurationMS = d
 		}
 	case evSessionClosed:
-		ts := ev.ts
+		ts := store.NewTime(ev.ts)
 		s.EndedAt = &ts
-		if d := ev.seconds(); d != nil {
-			s.Duration = d
+		if d := ev.durationMS; d != nil {
+			s.DurationMS = d
 		}
 	}
 }
 
-func (w *batchWriter) write(ctx context.Context, tx bun.Tx) error {
-	if _, err := tx.NewInsert().Model(&w.sensor).
-		On("CONFLICT (id) DO UPDATE").
-		Set("first_seen = CASE WHEN EXCLUDED.first_seen < ?TableAlias.first_seen THEN EXCLUDED.first_seen ELSE ?TableAlias.first_seen END").
-		Set("last_seen = CASE WHEN EXCLUDED.last_seen > ?TableAlias.last_seen THEN EXCLUDED.last_seen ELSE ?TableAlias.last_seen END").
-		Exec(ctx); err != nil {
-		return err
-	}
-	if err := w.upsertSessions(ctx, tx); err != nil {
-		return err
-	}
-	// Concurrent duplicates are possible on PostgreSQL: ignore conflicts.
-	if err := insertIgnore(ctx, tx, &w.raw); err != nil {
-		return err
-	}
-	if err := insertIgnore(ctx, tx, &w.logins); err != nil {
-		return err
-	}
-	if err := insertIgnore(ctx, tx, &w.commands); err != nil {
-		return err
-	}
-	return insertIgnore(ctx, tx, &w.xfers)
+// rows are the table rows of a known event of a session.
+type rows struct {
+	logins   []store.LoginAttempt
+	commands []store.Command
+	xfers    []store.Transfer
 }
 
-func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) error {
+func (r *rows) add(sessionID int64, ev *cowrieEvent) {
+	ts := store.NewTime(ev.ts)
+	switch ev.EventID {
+	case evLoginSuccess, evLoginFailed:
+		r.logins = append(r.logins, store.LoginAttempt{
+			SessionID: sessionID, TS: ts,
+			Username: deref(ev.Username), Password: deref(ev.Password), Success: ev.EventID == evLoginSuccess,
+		})
+	case evCommandInput:
+		r.commands = append(r.commands, store.Command{SessionID: sessionID, TS: ts, Input: deref(ev.Input)})
+	case evFileDownload:
+		r.xfers = append(r.xfers, store.Transfer{
+			SessionID: sessionID, TS: ts, Direction: store.Download,
+			URL: ev.URL, Filename: ev.DestFile, SHA256: ev.Shasum,
+		})
+	case evFileUpload:
+		r.xfers = append(r.xfers, store.Transfer{
+			SessionID: sessionID, TS: ts, Direction: store.Upload,
+			Filename: ev.Filename, SHA256: ev.Shasum,
+		})
+	}
+}
+
+// write stores the batch and returns how many events were new. Events are
+// inserted with ON CONFLICT DO NOTHING: only the lines no other batch
+// stored come back, and only those get their raw data and table rows, so
+// a batch sent twice, even concurrently, is stored once.
+func (w *batchWriter) write(ctx context.Context, tx bun.Tx) (int, error) {
+	if err := tx.NewInsert().Model(&w.sensor).
+		On("CONFLICT (name) DO UPDATE").
+		Set("first_seen = CASE WHEN ?TableAlias.first_seen IS NULL OR EXCLUDED.first_seen < ?TableAlias.first_seen THEN EXCLUDED.first_seen ELSE ?TableAlias.first_seen END").
+		Set("last_seen = CASE WHEN ?TableAlias.last_seen IS NULL OR EXCLUDED.last_seen > ?TableAlias.last_seen THEN EXCLUDED.last_seen ELSE ?TableAlias.last_seen END").
+		Returning("id").Scan(ctx); err != nil {
+		return 0, fmt.Errorf("sensor: %w", err)
+	}
+	sessionIDs, err := w.upsertSessions(ctx, tx)
+	if err != nil {
+		return 0, fmt.Errorf("sessions: %w", err)
+	}
+	if len(w.events) == 0 {
+		return 0, nil
+	}
+
+	events := make([]store.Event, len(w.events))
+	for i, p := range w.events {
+		events[i] = store.Event{
+			Hash: p.hash, SensorID: w.sensor.ID, Type: p.ev.EventID,
+			TS: store.NewTime(p.ev.ts), ReceivedAt: w.now,
+		}
+		if id, ok := sessionIDs[p.ev.Session]; ok {
+			events[i].SessionID = &id
+		}
+	}
+	var stored []struct {
+		ID   int64  `bun:"id"`
+		Hash []byte `bun:"hash"`
+	}
+	if err := tx.NewInsert().Model(&events).On("CONFLICT (hash) DO NOTHING").
+		Returning("id, hash").Scan(ctx, &stored); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("events: %w", err)
+	}
+	if len(stored) == 0 {
+		return 0, nil
+	}
+	ids := make(map[string]int64, len(stored))
+	for _, e := range stored {
+		ids[string(e.Hash)] = e.ID
+	}
+
+	data := make([]store.EventData, 0, len(stored))
+	var r rows
+	for _, p := range w.events {
+		id, ok := ids[string(p.hash)]
+		if !ok {
+			continue // stored by another batch meanwhile
+		}
+		data = append(data, store.EventData{EventID: id, Data: p.raw})
+		if sid, ok := sessionIDs[p.ev.Session]; ok {
+			r.add(sid, p.ev)
+		}
+	}
+	if err := insert(ctx, tx, &data); err != nil {
+		return 0, fmt.Errorf("event data: %w", err)
+	}
+	if err := insert(ctx, tx, &r.logins); err != nil {
+		return 0, fmt.Errorf("login attempts: %w", err)
+	}
+	if err := insert(ctx, tx, &r.commands); err != nil {
+		return 0, fmt.Errorf("commands: %w", err)
+	}
+	if err := insert(ctx, tx, &r.xfers); err != nil {
+		return 0, fmt.Errorf("transfers: %w", err)
+	}
+	return len(stored), nil
+}
+
+// upsertSessions writes the sessions of the batch and returns their ids
+// by Cowrie session id.
+func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string]int64, error) {
+	ids := map[string]int64{}
 	if len(w.order) == 0 {
-		return nil
+		return ids, nil
 	}
 	rows := make([]store.Session, len(w.order))
-	for i, id := range w.order {
-		rows[i] = *w.sessions[id]
+	for i, cs := range w.order {
+		rows[i] = *w.sessions[cs]
+		rows[i].SensorID = w.sensor.ID
 		w.locate(&rows[i])
 	}
-	q := tx.NewInsert().Model(&rows).On("CONFLICT (id) DO UPDATE").
+	q := tx.NewInsert().Model(&rows).On("CONFLICT (sensor_id, cowrie_session) DO UPDATE").
 		Set("started_at = CASE WHEN EXCLUDED.started_at < ?TableAlias.started_at THEN EXCLUDED.started_at ELSE ?TableAlias.started_at END").
 		Set("login_success = (?TableAlias.login_success OR EXCLUDED.login_success)")
 	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "hassh"} {
 		q = q.Set(col + " = COALESCE(?TableAlias." + col + ", EXCLUDED." + col + ")")
 	}
-	for _, col := range []string{"ended_at", "duration", "tty_log", "tty_duration"} {
+	for _, col := range []string{"ended_at", "duration_ms", "tty_log", "tty_duration_ms"} {
 		q = q.Set(col + " = COALESCE(EXCLUDED." + col + ", ?TableAlias." + col + ")")
 	}
 	// A located session keeps its location: the three columns come from
@@ -171,8 +238,18 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) error {
 	for _, col := range []string{"geo_country", "geo_city", "geo_source"} {
 		q = q.Set(col + " = CASE WHEN ?TableAlias.geo_source IS NULL THEN EXCLUDED." + col + " ELSE ?TableAlias." + col + " END")
 	}
-	_, err := q.Exec(ctx)
-	return err
+	var out []struct {
+		ID            int64  `bun:"id"`
+		CowrieSession string `bun:"cowrie_session"`
+	}
+	if err := q.Returning("id, cowrie_session").Scan(ctx, &out); err != nil {
+		return nil, err
+	}
+	for _, o := range out {
+		ids[o.CowrieSession] = o.ID
+		w.sessionIDs = append(w.sessionIDs, o.ID)
+	}
+	return ids, nil
 }
 
 // locate sets the location of a session row from its source address.
@@ -188,11 +265,11 @@ func (w *batchWriter) locate(s *store.Session) {
 	}
 }
 
-func insertIgnore[T any](ctx context.Context, tx bun.Tx, rows *[]T) error {
+func insert[T any](ctx context.Context, tx bun.Tx, rows *[]T) error {
 	if len(*rows) == 0 {
 		return nil
 	}
-	_, err := tx.NewInsert().Model(rows).On("CONFLICT (id) DO NOTHING").Exec(ctx)
+	_, err := tx.NewInsert().Model(rows).Exec(ctx)
 	return err
 }
 

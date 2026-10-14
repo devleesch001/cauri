@@ -12,11 +12,11 @@ import (
 // JudgeSession tells whether a session looks typed by a human or run by a
 // bot, from its recording and its events (see package verdict). It returns
 // store.ErrNotFound for an unknown session.
-func (s *Service) JudgeSession(ctx context.Context, id string) (verdict.Result, error) {
+func (s *Service) JudgeSession(ctx context.Context, id int64) (verdict.Result, error) {
 	return s.judge(ctx, s.db, id)
 }
 
-func (s *Service) judge(ctx context.Context, db bun.IDB, id string) (verdict.Result, error) {
+func (s *Service) judge(ctx context.Context, db bun.IDB, id int64) (verdict.Result, error) {
 	facts, err := store.GetSessionFacts(ctx, db, id)
 	if err != nil {
 		return verdict.Result{}, err
@@ -41,7 +41,7 @@ func (s *Service) judge(ctx context.Context, db bun.IDB, id string) (verdict.Res
 // storeVerdict judges sessions and stores their verdict, to filter the
 // session list. It runs in the transaction that changed them, after the
 // change: the row lock taken by the change orders concurrent judgements.
-func (s *Service) storeVerdict(ctx context.Context, db bun.IDB, ids ...string) error {
+func (s *Service) storeVerdict(ctx context.Context, db bun.IDB, ids ...int64) error {
 	for _, id := range ids {
 		res, err := s.judge(ctx, db, id)
 		if err != nil {
@@ -67,7 +67,7 @@ const judgeBatch = 200
 func (s *Service) JudgeSessions(ctx context.Context) (int, error) {
 	total := 0
 	for {
-		var ids []string
+		var ids []int64
 		err := s.db.NewSelect().Model((*store.Session)(nil)).Column("id").
 			Where("verdict_version IS NULL OR verdict_version <> ?", verdict.Version).
 			OrderExpr("s.id").Limit(judgeBatch).Scan(ctx, &ids)

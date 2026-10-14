@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"path"
 	"strconv"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 // Cowrie event identifiers projected into dedicated tables. Every other
-// event is only kept in raw_events.
+// event is only kept in events and event_data.
 const (
 	evConnect       = "cowrie.session.connect"
 	evClientVersion = "cowrie.client.version"
@@ -53,15 +54,13 @@ type cowrieEvent struct {
 
 	TTYLog *string // log.closed
 	Size   *int64
-	// log.closed and session.closed: Cowrie 3 writes duration_ms, older
-	// versions duration in seconds, as a number or a string.
-	durationSeconds *float64
+	// log.closed and session.closed, in milliseconds: Cowrie 3 writes
+	// duration_ms, older versions duration in seconds, as a number or a
+	// string.
+	durationMS *int64
 
 	ts time.Time
 }
-
-// seconds returns the duration of the event in seconds, if it has one.
-func (ev *cowrieEvent) seconds() *float64 { return ev.durationSeconds }
 
 // parseEvent validates a raw cowrie.json object and extracts its fields.
 func parseEvent(raw []byte) (*cowrieEvent, error) {
@@ -82,10 +81,9 @@ func parseEvent(raw []byte) (*cowrieEvent, error) {
 		TTYLog: m.str("ttylog"), Size: m.int64("size"),
 	}
 	if ms := m.float("duration_ms"); ms != nil {
-		v := *ms / 1000
-		ev.durationSeconds = &v
-	} else {
-		ev.durationSeconds = m.float("duration")
+		ev.durationMS = millis(*ms)
+	} else if sec := m.float("duration"); sec != nil {
+		ev.durationMS = millis(*sec * 1000)
 	}
 	if p := m.str("eventid"); p != nil {
 		ev.EventID = *p
@@ -107,6 +105,15 @@ func parseEvent(raw []byte) (*cowrieEvent, error) {
 	ev.ts = ts.UTC()
 	ev.sanitize()
 	return ev, nil
+}
+
+// millis rounds a duration in milliseconds; nil if out of range.
+func millis(ms float64) *int64 {
+	if math.IsNaN(ms) || ms < 0 || ms > math.MaxInt64/2 {
+		return nil
+	}
+	v := int64(math.Round(ms))
+	return &v
 }
 
 // fields are the members of a JSON object, decoded on demand.

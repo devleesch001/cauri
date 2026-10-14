@@ -6,12 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/devleesch001/cauri/internal/auth"
 	"github.com/devleesch001/cauri/internal/envflag"
+	"github.com/devleesch001/cauri/internal/store"
 )
 
 func init() {
@@ -59,7 +61,7 @@ func runToken(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Token %s created for sensor %s. It is shown only once:\n", rec.ID, rec.SensorID)
+		fmt.Fprintf(os.Stderr, "Token %d created for sensor %s. It is shown only once:\n", rec.ID, rec.Sensor)
 		fmt.Println(secret)
 		return nil
 	case "list":
@@ -70,7 +72,7 @@ func runToken(ctx context.Context, args []string) error {
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "ID\tSENSOR\tNAME\tCREATED\tLAST USED\tREVOKED")
 		for _, r := range recs {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", r.ID, r.SensorID, r.Name,
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", r.ID, r.Sensor, r.Name,
 				fmtTime(&r.CreatedAt), fmtTime(r.LastUsedAt), fmtTime(r.RevokedAt))
 		}
 		return w.Flush()
@@ -78,7 +80,11 @@ func runToken(ctx context.Context, args []string) error {
 		if fs.NArg() != 1 {
 			return errors.New("usage: cauri token revoke <token id>")
 		}
-		if err := tokens.Revoke(ctx, fs.Arg(0)); err != nil {
+		id, err := strconv.ParseInt(fs.Arg(0), 10, 64)
+		if err != nil {
+			return fmt.Errorf("token id %q: want the number shown by \"cauri token list\"", fs.Arg(0))
+		}
+		if err := tokens.Revoke(ctx, id); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Token %s revoked.\n", fs.Arg(0))
@@ -103,9 +109,9 @@ func runToken(ctx context.Context, args []string) error {
 	}
 }
 
-func fmtTime(t *time.Time) string {
+func fmtTime(t *store.Time) string {
 	if t == nil {
 		return "-"
 	}
-	return t.UTC().Format(time.RFC3339)
+	return t.Format(time.RFC3339)
 }

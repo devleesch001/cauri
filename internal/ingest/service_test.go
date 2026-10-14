@@ -69,10 +69,22 @@ func sum(s string) string {
 func getSession(t *testing.T, db *bun.DB, sensorID, sess string) *store.Session {
 	t.Helper()
 	s := new(store.Session)
-	if err := db.NewSelect().Model(s).Where("id = ?", store.SessionID(sensorID, sess)).Scan(context.Background()); err != nil {
+	err := db.NewSelect().Model(s).ColumnExpr("s.*, t.sha256 AS tty_sha256, t.size AS tty_size").
+		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
+		Where("s.id = ?", sessionID(t, db, sensorID, sess)).Scan(context.Background())
+	if err != nil {
 		t.Fatalf("session %s/%s: %v", sensorID, sess, err)
 	}
 	return s
+}
+
+func sessionID(t *testing.T, db *bun.DB, sensorID, sess string) int64 {
+	t.Helper()
+	id, err := store.LookupSession(context.Background(), db, sensorID, sess)
+	if err != nil {
+		t.Fatalf("session %s/%s: %v", sensorID, sess, err)
+	}
+	return id
 }
 
 func count(t *testing.T, db *bun.DB, model any) int {
@@ -121,9 +133,9 @@ func TestIngestFullSession(t *testing.T) {
 			t.Errorf("client fields: %+v", s)
 		case !s.LoginSuccess:
 			t.Error("login_success = false")
-		case !s.StartedAt.Equal(t0), !s.EndedAt.Equal(t0.Add(9500 * time.Millisecond)), *s.Duration != 9.5:
-			t.Errorf("times: %v %v %v", s.StartedAt, s.EndedAt, *s.Duration)
-		case *s.TTYLog != sum("tty"), *s.TTYDuration != 8.9, s.TTYSHA256 != nil, s.TTYSize != nil:
+		case !s.StartedAt.Equal(t0), !s.EndedAt.Equal(t0.Add(9500 * time.Millisecond)), *s.DurationMS != 9500:
+			t.Errorf("times: %v %v %v", s.StartedAt, s.EndedAt, *s.DurationMS)
+		case *s.TTYLog != sum("tty"), *s.TTYDurationMS != 8900, s.TTYSHA256 != nil, s.TTYSize != nil:
 			t.Errorf("tty fields: %+v", s)
 		}
 		if n := count(t, db, (*store.LoginAttempt)(nil)); n != 2 {
@@ -136,11 +148,14 @@ func TestIngestFullSession(t *testing.T) {
 		if err := db.NewSelect().Model(&x).Scan(ctx); err != nil || x.Direction != store.Download || *x.Filename != "/tmp/x.sh" {
 			t.Errorf("transfer = %+v, %v", x, err)
 		}
-		if n := count(t, db, (*store.RawEvent)(nil)); n != len(lines) {
-			t.Errorf("raw events = %d, want all including unprojected ones", n)
+		if n := count(t, db, (*store.Event)(nil)); n != len(lines) {
+			t.Errorf("events = %d, want all including unprojected ones", n)
+		}
+		if n := count(t, db, (*store.EventData)(nil)); n != len(lines) {
+			t.Errorf("event data = %d, want one per event", n)
 		}
 		var sn store.Sensor
-		if err := db.NewSelect().Model(&sn).Scan(ctx); err != nil || sn.ID != sensor || !sn.LastSeen.Equal(t0.Add(9500*time.Millisecond)) {
+		if err := db.NewSelect().Model(&sn).Scan(ctx); err != nil || sn.Name != sensor || !sn.LastSeen.Equal(t0.Add(9500*time.Millisecond)) {
 			t.Errorf("sensor = %+v, %v", sn, err)
 		}
 	})
@@ -165,8 +180,46 @@ func TestIngestDuplicates(t *testing.T) {
 		if n := count(t, db, (*store.LoginAttempt)(nil)); n != 2 {
 			t.Errorf("login attempts = %d after resend", n)
 		}
-		if n := count(t, db, (*store.RawEvent)(nil)); n != len(lines) {
+		if n := count(t, db, (*store.Event)(nil)); n != len(lines) {
 			t.Errorf("raw events = %d after resend", n)
+		}
+	})
+}
+
+// The same batch sent concurrently is stored once: on PostgreSQL both
+// transactions can miss each other's events when checking, and only the
+// insert of events decides which one projects them.
+func TestIngestConcurrentDuplicates(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		lines := fullSession("a1b2c3d4e5f6", "tty")
+		const senders = 4
+		results := make(chan protocol.EventBatchResult, senders)
+		errs := make(chan error, senders)
+		for range senders {
+			go func() {
+				res, err := svc.IngestEvents(context.Background(), sensor, batch(sensor, lines...))
+				results <- res
+				errs <- err
+			}()
+		}
+		accepted := 0
+		for range senders {
+			if err := <-errs; err != nil {
+				t.Fatal(err)
+			}
+			accepted += (<-results).Accepted
+		}
+		if accepted != len(lines) {
+			t.Errorf("accepted %d events in all, want %d", accepted, len(lines))
+		}
+		for model, want := range map[any]int{
+			(*store.Event)(nil): len(lines), (*store.EventData)(nil): len(lines),
+			(*store.LoginAttempt)(nil): 2, (*store.Command)(nil): 1, (*store.Session)(nil): 1,
+		} {
+			if n := count(t, db, model); n != want {
+				t.Errorf("%T: %d rows, want %d", model, n, want)
+			}
 		}
 	})
 }
@@ -405,8 +458,8 @@ func TestIngestRealCowrieLog(t *testing.T) {
 		switch {
 		case !s.LoginSuccess, *s.ClientVersion != "SSH-2.0-Go", *s.HASSH != "16443846184eafde36765c9bab2f4397":
 			t.Errorf("session = %+v", s)
-		case s.Duration == nil || *s.Duration != 0.991, s.TTYDuration == nil || *s.TTYDuration != 0.91:
-			t.Errorf("durations from duration_ms: %v %v", s.Duration, s.TTYDuration)
+		case s.DurationMS == nil || *s.DurationMS != 991, s.TTYDurationMS == nil || *s.TTYDurationMS != 910:
+			t.Errorf("durations from duration_ms: %v %v", s.DurationMS, s.TTYDurationMS)
 		case *s.TTYLog != "5d07941f09498a4f65d7453a8d25cabda2a265b3da7eb2b80a7a4fa923c5e12a", s.TTYSHA256 != nil:
 			t.Errorf("tty = %v %v", *s.TTYLog, s.TTYSHA256)
 		}
@@ -421,14 +474,15 @@ func TestIngestRealCowrieLog(t *testing.T) {
 }
 
 func TestDurations(t *testing.T) {
-	for raw, want := range map[string]float64{
-		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration_ms":1500}`:  1.5,
-		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration":"2.5"}`:    2.5,
-		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration":3}`:        3,
-		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration_ms":"250"}`: 0.25,
+	for raw, want := range map[string]int64{
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration_ms":1500}`:  1500,
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration":"2.5"}`:    2500,
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration":3}`:        3000,
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration_ms":"250"}`: 250,
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration":0.0004}`:   0,
 	} {
 		ev, err := parseEvent([]byte(raw))
-		if err != nil || ev.seconds() == nil || *ev.seconds() != want {
+		if err != nil || ev.durationMS == nil || *ev.durationMS != want {
 			t.Errorf("%s: %v, %v", raw, ev, err)
 		}
 	}
@@ -441,7 +495,7 @@ func TestParseLenient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ev.SrcPort != nil || ev.seconds() != nil || ev.Username != nil || ev.Session != "s1" {
+	if ev.SrcPort != nil || ev.durationMS != nil || ev.Username != nil || ev.Session != "s1" {
 		t.Errorf("event = %+v", ev)
 	}
 	if _, err := parseEvent([]byte(`{"eventid":42,"timestamp":"2026-10-14T09:00:00Z"}`)); err == nil {
@@ -552,12 +606,12 @@ func TestJudgeSessions(t *testing.T) {
 
 		// Older criteria, and a session stored before verdicts were.
 		if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("verdict_version = ?", "0").
-			Where("id = ?", store.SessionID(sensor, "a")).Exec(ctx); err != nil {
+			Where("id = ?", sessionID(t, db, sensor, "a")).Exec(ctx); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := db.NewUpdate().Model((*store.Session)(nil)).
 			Set("verdict = NULL").Set("verdict_score = NULL").Set("verdict_version = NULL").
-			Where("id = ?", store.SessionID(sensor, "c")).Exec(ctx); err != nil {
+			Where("id = ?", sessionID(t, db, sensor, "c")).Exec(ctx); err != nil {
 			t.Fatal(err)
 		}
 		if n, err := svc.JudgeSessions(ctx); n != 2 || err != nil {
@@ -604,7 +658,7 @@ func TestJudgeMissingRecording(t *testing.T) {
 		if n, err := svc.JudgeSessions(ctx); n != 1 || err != nil {
 			t.Fatalf("judged %d, %v", n, err)
 		}
-		if res, err := svc.JudgeSession(ctx, store.SessionID(sensor, "a1b2c3d4e5f6")); err != nil || res.Verdict == "" {
+		if res, err := svc.JudgeSession(ctx, sessionID(t, db, sensor, "a1b2c3d4e5f6")); err != nil || res.Verdict == "" {
 			t.Errorf("on read: %+v, %v", res, err)
 		}
 	})

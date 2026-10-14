@@ -245,7 +245,7 @@ func TestReadEndpoints(t *testing.T) {
 
 		var sensors []store.Sensor
 		get(t, e, "/api/sensors", http.StatusOK, &sensors)
-		if len(sensors) != 1 || sensors[0].ID != "hp-01" {
+		if len(sensors) != 1 || sensors[0].Name != "hp-01" {
 			t.Errorf("sensors = %+v", sensors)
 		}
 
@@ -265,17 +265,18 @@ func TestReadEndpoints(t *testing.T) {
 		}
 
 		var detail store.SessionDetail
-		get(t, e, "/api/sessions/"+id, http.StatusOK, &detail)
+		get(t, e, fmt.Sprint("/api/sessions/", id), http.StatusOK, &detail)
 		if len(detail.Events) != 4 || len(detail.CommandList) != 1 || *detail.SrcPort != 4242 {
 			t.Errorf("detail = %+v", detail)
 		}
 		get(t, e, "/api/sessions/unknown", http.StatusNotFound, nil)
+		get(t, e, "/api/sessions/999999", http.StatusNotFound, nil)
 
 		var attempts struct {
 			Items []store.LoginAttemptRow `json:"items"`
 		}
 		get(t, e, "/api/login-attempts?success=true", http.StatusOK, &attempts)
-		if len(attempts.Items) != 1 || attempts.Items[0].SensorID != "hp-01" {
+		if len(attempts.Items) != 1 || attempts.Items[0].Sensor != "hp-01" {
 			t.Errorf("attempts = %+v", attempts)
 		}
 
@@ -360,7 +361,7 @@ func TestCast(t *testing.T) {
 		if _, err := e.client.SendEvents(ctx, b); err != nil {
 			t.Fatal(err)
 		}
-		id := store.SessionID("hp-01", "a1b2c3d4e5f6")
+		id := sid(t, e, "hp-01", "a1b2c3d4e5f6")
 		path := "/api/sessions/" + id + "/cast"
 
 		resp, body := getRaw(t, e, path, nil)
@@ -428,7 +429,7 @@ func TestCastUnreadable(t *testing.T) {
 	if _, err := e.client.SendTTY(ctx, ttyMeta(), strings.NewReader(ttyContent)); err != nil {
 		t.Fatal(err)
 	}
-	resp, body := getRaw(t, e, "/api/sessions/"+store.SessionID("hp-01", "a1b2c3d4e5f6")+"/cast", nil)
+	resp, body := getRaw(t, e, "/api/sessions/"+sid(t, e, "hp-01", "a1b2c3d4e5f6")+"/cast", nil)
 	if resp.code != http.StatusUnprocessableEntity || resp.header.Get("ETag") != "" {
 		t.Errorf("= %d %s", resp.code, body)
 	}
@@ -436,6 +437,16 @@ func TestCastUnreadable(t *testing.T) {
 
 // realSession ingests the events of session 6f07bbfeafaa from the real
 // Cowrie capture, then its recording, and returns its internal id.
+// sid returns the id of a session, as in URLs.
+func sid(t *testing.T, e *env, sensor, cowrieSession string) string {
+	t.Helper()
+	id, err := store.LookupSession(context.Background(), e.db, sensor, cowrieSession)
+	if err != nil {
+		t.Fatalf("session %s/%s: %v", sensor, cowrieSession, err)
+	}
+	return fmt.Sprint(id)
+}
+
 func realSession(t *testing.T, e *env) string {
 	t.Helper()
 	ctx := context.Background()
@@ -455,7 +466,7 @@ func realSession(t *testing.T, e *env) string {
 	if _, err := e.client.SendTTY(ctx, m, bytes.NewReader(tty)); err != nil {
 		t.Fatal(err)
 	}
-	return store.SessionID("hp-01", "6f07bbfeafaa")
+	return sid(t, e, "hp-01", "6f07bbfeafaa")
 }
 
 func TestChapters(t *testing.T) {
@@ -534,11 +545,11 @@ func TestVerdict(t *testing.T) {
 			`"eventid":"cowrie.command.input","input":"uname -a"`)
 		send("quiet1", `"eventid":"cowrie.session.connect"`, `"eventid":"cowrie.login.failed","username":"root","password":"x"`)
 
-		get(t, e, "/api/sessions/"+store.SessionID("hp-01", "exec1")+"/verdict", http.StatusOK, &v)
+		get(t, e, "/api/sessions/"+sid(t, e, "hp-01", "exec1")+"/verdict", http.StatusOK, &v)
 		if v.Verdict != "bot" || v.Score != -3 {
 			t.Errorf("exec session = %+v", v)
 		}
-		get(t, e, "/api/sessions/"+store.SessionID("hp-01", "quiet1")+"/verdict", http.StatusOK, &v)
+		get(t, e, "/api/sessions/"+sid(t, e, "hp-01", "quiet1")+"/verdict", http.StatusOK, &v)
 		if v.Verdict != "no_interaction" || v.Reasons == nil {
 			t.Errorf("quiet session = %+v", v)
 		}
@@ -561,7 +572,7 @@ func TestVerdict(t *testing.T) {
 			t.Errorf("bots = %d, want all sessions", sessions.Total)
 		}
 		for _, it := range sessions.Items {
-			if it.ID == store.SessionID("hp-01", "6f07bbfeafaa") && (*it.Verdict != "bot" || *it.VerdictScore != -5) {
+			if fmt.Sprint(it.ID) == sid(t, e, "hp-01", "6f07bbfeafaa") && (*it.Verdict != "bot" || *it.VerdictScore != -5) {
 				t.Errorf("stored verdict of the scripted session = %s %d", *it.Verdict, *it.VerdictScore)
 			}
 		}

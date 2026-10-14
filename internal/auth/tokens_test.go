@@ -23,8 +23,13 @@ func TestTokenLifecycle(t *testing.T) {
 		if err != nil || sensor != "hp-01" {
 			t.Fatalf("Authenticate = %q, %v", sensor, err)
 		}
+		// A second token of the same sensor shares its row.
+		second, _, err := tokens.Create(ctx, "hp-01", "rotation")
+		if err != nil || second.SensorID != rec.SensorID {
+			t.Fatalf("second token = %+v, %v", second, err)
+		}
 		list, err := tokens.List(ctx)
-		if err != nil || len(list) != 1 || list[0].LastUsedAt == nil || list[0].TokenHash == secret {
+		if err != nil || len(list) != 2 || list[0].LastUsedAt == nil || list[0].TokenHash == secret || list[0].Sensor != "hp-01" {
 			t.Fatalf("List = %+v, %v", list, err)
 		}
 
@@ -37,7 +42,7 @@ func TestTokenLifecycle(t *testing.T) {
 		if _, err := tokens.Authenticate(ctx, secret); !errors.Is(err, ErrUnauthorized) {
 			t.Fatalf("revoked token: err = %v", err)
 		}
-		if err := tokens.Revoke(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+		if err := tokens.Revoke(ctx, rec.ID+1000); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("missing token: err = %v", err)
 		}
 	})

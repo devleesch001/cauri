@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/devleesch001/cauri/internal/asciicast"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttylog"
@@ -34,7 +32,7 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	rec, err := store.GetRecording(r.Context(), s.DB, chi.URLParam(r, "id"))
+	rec, err := store.GetRecording(r.Context(), s.DB, sessionID(r))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "session not found")
@@ -66,7 +64,7 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 
 	sizes := make([]ttylog.TermSize, len(rec.Sizes))
 	for i, sz := range rec.Sizes {
-		sizes[i] = ttylog.TermSize{Time: sz.TS, Cols: sz.Cols, Rows: sz.Rows}
+		sizes[i] = ttylog.TermSize{Time: sz.TS.Time, Cols: sz.Cols, Rows: sz.Rows}
 	}
 	w.Header().Set("Content-Type", asciicast.ContentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s.cast"`, rec.Session))
@@ -106,7 +104,7 @@ type chapters struct {
 // getChapters returns the commands of a session's recording with their
 // output as plain text, for the chapter list next to the replay.
 func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
-	rec, err := store.GetRecording(r.Context(), s.DB, chi.URLParam(r, "id"))
+	rec, err := store.GetRecording(r.Context(), s.DB, sessionID(r))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "session not found")
@@ -153,7 +151,7 @@ func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
 func commands(rec *store.Recording) []ttylog.Command {
 	cmds := make([]ttylog.Command, len(rec.Commands))
 	for i, c := range rec.Commands {
-		cmds[i] = ttylog.Command{Time: c.TS, Input: c.Input}
+		cmds[i] = ttylog.Command{Time: c.TS.Time, Input: c.Input}
 	}
 	return cmds
 }

@@ -4,8 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/verdict"
 )
@@ -25,7 +23,7 @@ type verdictResponse struct {
 // bot, computed on read: the stored verdict, used to filter the list, may
 // date from older criteria until the API recomputes it.
 func (s *server) getVerdict(w http.ResponseWriter, r *http.Request) {
-	res, err := s.Ingest.JudgeSession(r.Context(), chi.URLParam(r, "id"))
+	res, err := s.Ingest.JudgeSession(r.Context(), sessionID(r))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "session not found")
 		return

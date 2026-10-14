@@ -51,8 +51,8 @@ const (
 
 // SessionFilter selects sessions. Zero values do not filter.
 type SessionFilter struct {
-	SensorID string
-	SrcIP    string
+	Sensor string // name
+	SrcIP  string
 	// Username and Password match sessions with such a login attempt.
 	Username string
 	Password string
@@ -86,15 +86,23 @@ type SessionSummary struct {
 	Credentials   []Credential `json:"credentials"`
 }
 
+// selectSessions selects sessions with the sensor name and the recording
+// file, joined for the API.
+func selectSessions(db bun.IDB, dst any) *bun.SelectQuery {
+	return db.NewSelect().Model(dst).
+		ColumnExpr("s.*").
+		ColumnExpr("sn.name AS sensor, t.sha256 AS tty_sha256, t.size AS tty_size").
+		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
+		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id")
+}
+
 // ListSessions returns a page of sessions, latest first, and the number
 // of sessions matching the filter.
 func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSummary, int, error) {
-	// Aliases are fixed by the models (s for sessions); subqueries use
-	// their own so they can refer to the outer row.
 	var rows []Session
-	q := db.NewSelect().Model(&rows)
-	if f.SensorID != "" {
-		q = q.Where("s.sensor_id = ?", f.SensorID)
+	q := selectSessions(db, &rows)
+	if f.Sensor != "" {
+		q = q.Where("sn.name = ?", f.Sensor)
 	}
 	if f.SrcIP != "" {
 		q = q.Where("s.src_ip = ?", f.SrcIP)
@@ -106,10 +114,10 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 		q = q.Where(`LOWER(s.client_version) LIKE ? ESCAPE '\'`, likeContains(f.Client))
 	}
 	if f.From != nil {
-		q = q.Where("s.started_at >= ?", f.From.UTC())
+		q = q.Where("s.started_at >= ?", Micro(*f.From))
 	}
 	if f.To != nil {
-		q = q.Where("s.started_at < ?", f.To.UTC())
+		q = q.Where("s.started_at < ?", Micro(*f.To))
 	}
 	switch f.Login {
 	case LoginSuccess:
@@ -124,25 +132,30 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 		q = q.Where("s.verdict IN (?)", bun.List([]string{"bot", "no_interaction", "uncertain"}))
 	}
 	if f.Username != "" || f.Password != "" {
-		sub := db.NewSelect().TableExpr("login_attempts AS fla").ColumnExpr("1").Where("fla.session_id = s.id")
+		// IN, not a correlated EXISTS: the attempts matching the username
+		// are read once, not once per session.
+		sub := db.NewSelect().TableExpr("login_attempts AS fla").ColumnExpr("fla.session_id")
 		if f.Username != "" {
 			sub = sub.Where("fla.username = ?", f.Username)
 		}
 		if f.Password != "" {
 			sub = sub.Where("fla.password = ?", f.Password)
 		}
-		q = q.Where("EXISTS (?)", sub)
+		q = q.Where("s.id IN (?)", sub)
 	}
 	if f.HasCommands != nil {
 		sub := db.NewSelect().TableExpr("commands AS fc").ColumnExpr("1").Where("fc.session_id = s.id")
 		q = q.Where(existsExpr(*f.HasCommands), sub)
 	}
 	if f.HasTTY != nil {
-		sub := db.NewSelect().TableExpr("tty_files AS ft").ColumnExpr("1").Where("ft.sha256 = s.tty_sha256")
-		q = q.Where(existsExpr(*f.HasTTY), sub)
+		if *f.HasTTY {
+			q = q.Where("s.tty_file_id IS NOT NULL")
+		} else {
+			q = q.Where("s.tty_file_id IS NULL")
+		}
 	}
 
-	total, err := f.Page.apply(q).OrderExpr("s.started_at DESC, s.id").ScanAndCount(ctx)
+	total, err := f.Page.apply(q).OrderExpr("s.started_at DESC, s.id DESC").ScanAndCount(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -164,16 +177,12 @@ func summarize(ctx context.Context, db bun.IDB, rows []Session) ([]SessionSummar
 	if len(rows) == 0 {
 		return sums, nil
 	}
-	ids := make([]string, len(rows))
-	var shas []string
-	index := map[string]*SessionSummary{}
+	ids := make([]int64, len(rows))
+	index := map[int64]*SessionSummary{}
 	for i, r := range rows {
 		ids[i] = r.ID
-		sums[i] = SessionSummary{Session: r, Credentials: []Credential{}}
+		sums[i] = SessionSummary{Session: r, Credentials: []Credential{}, TTYAvailable: r.TTYFileID != nil}
 		index[r.ID] = &sums[i]
-		if r.TTYSHA256 != nil {
-			shas = append(shas, *r.TTYSHA256)
-		}
 	}
 
 	var logins []LoginAttempt
@@ -190,8 +199,8 @@ func summarize(ctx context.Context, db bun.IDB, rows []Session) ([]SessionSummar
 	}
 
 	var counts []struct {
-		SessionID string `bun:"session_id"`
-		N         int    `bun:"n"`
+		SessionID int64 `bun:"session_id"`
+		N         int   `bun:"n"`
 	}
 	if err := db.NewSelect().Model((*Command)(nil)).Column("session_id").ColumnExpr("COUNT(*) AS n").
 		Where("session_id IN (?)", bun.List(ids)).Group("session_id").Scan(ctx, &counts); err != nil {
@@ -200,32 +209,16 @@ func summarize(ctx context.Context, db bun.IDB, rows []Session) ([]SessionSummar
 	for _, c := range counts {
 		index[c.SessionID].Commands = c.N
 	}
-
-	if len(shas) > 0 {
-		var stored []string
-		if err := db.NewSelect().Model((*TTYFile)(nil)).Column("sha256").
-			Where("sha256 IN (?)", bun.List(shas)).Scan(ctx, &stored); err != nil {
-			return nil, err
-		}
-		have := map[string]bool{}
-		for _, s := range stored {
-			have[s] = true
-		}
-		for i := range sums {
-			if sha := sums[i].TTYSHA256; sha != nil && have[*sha] {
-				sums[i].TTYAvailable = true
-			}
-		}
-	}
 	return sums, nil
 }
 
-// EventView is a raw Cowrie event as returned by the API.
+// EventView is a Cowrie event as returned by the API. Data is the line
+// Cowrie wrote, null once purged.
 type EventView struct {
-	ID      string          `json:"id"`
-	EventID string          `json:"eventid"`
-	TS      time.Time       `json:"ts"`
-	Data    json.RawMessage `json:"data"`
+	ID      int64           `bun:"id" json:"id"`
+	EventID string          `bun:"type" json:"eventid"`
+	TS      Time            `bun:"ts" json:"ts"`
+	Data    json.RawMessage `bun:"data" json:"data"`
 }
 
 // SessionDetail is a session with everything it recorded, each list in
@@ -238,10 +231,10 @@ type SessionDetail struct {
 	Events           []EventView    `json:"events"`
 }
 
-// GetSession returns a session by its internal identifier.
-func GetSession(ctx context.Context, db bun.IDB, id string) (*SessionDetail, error) {
+// GetSession returns a session by its identifier.
+func GetSession(ctx context.Context, db bun.IDB, id int64) (*SessionDetail, error) {
 	var s Session
-	err := db.NewSelect().Model(&s).Where("id = ?", id).Scan(ctx)
+	err := selectSessions(db, &s).Where("s.id = ?", id).Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -264,19 +257,16 @@ func GetSession(ctx context.Context, db bun.IDB, id string) (*SessionDetail, err
 			return nil, err
 		}
 	}
-	var raw []RawEvent
-	if err := db.NewSelect().Model(&raw).Where("session_id = ?", id).Order("ts", "id").Scan(ctx); err != nil {
-		return nil, err
-	}
-	for _, r := range raw {
-		d.Events = append(d.Events, EventView{ID: r.ID, EventID: r.EventID, TS: r.TS, Data: json.RawMessage(r.Data)})
-	}
-	return d, nil
+	err = db.NewSelect().Model((*Event)(nil)).
+		ColumnExpr("e.id, e.type, e.ts, ed.data").
+		Join("LEFT JOIN event_data AS ed ON ed.event_id = e.id").
+		Where("e.session_id = ?", id).OrderExpr("e.ts, e.id").Scan(ctx, &d.Events)
+	return d, err
 }
 
 // LoginAttemptFilter selects login attempts. Zero values do not filter.
 type LoginAttemptFilter struct {
-	SensorID string
+	Sensor   string // name
 	SrcIP    string
 	Username string
 	Password string
@@ -291,17 +281,17 @@ type LoginAttemptFilter struct {
 
 // LoginAttemptRow is a login attempt with its session context.
 type LoginAttemptRow struct {
-	ID        string    `bun:"id" json:"id"`
-	SessionID string    `bun:"session_id" json:"session_id"`
-	TS        time.Time `bun:"ts" json:"ts"`
-	Username  string    `bun:"username" json:"username"`
-	Password  string    `bun:"password" json:"password"`
-	Success   bool      `bun:"success" json:"success"`
-	SensorID  string    `bun:"sensor_id" json:"sensor_id"`
-	Session   string    `bun:"cowrie_session" json:"session"`
-	SrcIP     *string   `bun:"src_ip" json:"src_ip"`
-	Client    *string   `bun:"client_version" json:"client_version"`
-	Country   *string   `bun:"geo_country" json:"geo_country"`
+	ID        int64   `bun:"id" json:"id"`
+	SessionID int64   `bun:"session_id" json:"session_id"`
+	TS        Time    `bun:"ts" json:"ts"`
+	Username  string  `bun:"username" json:"username"`
+	Password  string  `bun:"password" json:"password"`
+	Success   bool    `bun:"success" json:"success"`
+	Sensor    string  `bun:"sensor" json:"sensor"`
+	Session   string  `bun:"cowrie_session" json:"session"`
+	SrcIP     *string `bun:"src_ip" json:"src_ip"`
+	Client    *string `bun:"client_version" json:"client_version"`
+	Country   *string `bun:"geo_country" json:"geo_country"`
 }
 
 // ListLoginAttempts returns a page of login attempts, latest first, and
@@ -309,10 +299,11 @@ type LoginAttemptRow struct {
 func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([]LoginAttemptRow, int, error) {
 	q := db.NewSelect().Model((*LoginAttempt)(nil)).
 		ColumnExpr("la.id, la.session_id, la.ts, la.username, la.password, la.success").
-		ColumnExpr("s.sensor_id, s.session AS cowrie_session, s.src_ip, s.client_version, s.geo_country").
-		Join("JOIN sessions AS s ON s.id = la.session_id")
-	if f.SensorID != "" {
-		q = q.Where("s.sensor_id = ?", f.SensorID)
+		ColumnExpr("sn.name AS sensor, s.cowrie_session, s.src_ip, s.client_version, s.geo_country").
+		Join("JOIN sessions AS s ON s.id = la.session_id").
+		Join("JOIN sensors AS sn ON sn.id = s.sensor_id")
+	if f.Sensor != "" {
+		q = q.Where("sn.name = ?", f.Sensor)
 	}
 	if f.SrcIP != "" {
 		q = q.Where("s.src_ip = ?", f.SrcIP)
@@ -327,10 +318,10 @@ func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([
 		q = q.Where("la.password = ?", f.Password)
 	}
 	if f.From != nil {
-		q = q.Where("la.ts >= ?", f.From.UTC())
+		q = q.Where("la.ts >= ?", Micro(*f.From))
 	}
 	if f.To != nil {
-		q = q.Where("la.ts < ?", f.To.UTC())
+		q = q.Where("la.ts < ?", Micro(*f.To))
 	}
 	if f.Success != nil {
 		q = q.Where("la.success = ?", *f.Success)
@@ -339,14 +330,14 @@ func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([
 		q = q.Where("s.login_success = ?", *f.Interactive)
 	}
 	rows := []LoginAttemptRow{}
-	total, err := f.Page.apply(q).OrderExpr("la.ts DESC, la.id").ScanAndCount(ctx, &rows)
+	total, err := f.Page.apply(q).OrderExpr("la.ts DESC, la.id DESC").ScanAndCount(ctx, &rows)
 	return rows, int(total), err
 }
 
-// ListSensors returns every sensor that sent events.
+// ListSensors returns every sensor that sent events, by name.
 func ListSensors(ctx context.Context, db bun.IDB) ([]Sensor, error) {
 	sensors := []Sensor{}
-	err := db.NewSelect().Model(&sensors).Order("id").Scan(ctx)
+	err := db.NewSelect().Model(&sensors).Where("first_seen IS NOT NULL").Order("name").Scan(ctx)
 	return sensors, err
 }
 
@@ -363,7 +354,7 @@ var ErrNoRecording = errors.New("no recording")
 
 // TermSize is a terminal size reported by the client during a session.
 type TermSize struct {
-	TS         time.Time
+	TS         Time
 	Cols, Rows int
 }
 
@@ -378,9 +369,9 @@ type Recording struct {
 }
 
 // GetRecording returns the stored recording of a session.
-func GetRecording(ctx context.Context, db bun.IDB, id string) (*Recording, error) {
+func GetRecording(ctx context.Context, db bun.IDB, id int64) (*Recording, error) {
 	var s Session
-	err := db.NewSelect().Model(&s).Column("session", "tty_sha256").Where("id = ?", id).Scan(ctx)
+	err := selectSessions(db, &s).Where("s.id = ?", id).Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -390,26 +381,25 @@ func GetRecording(ctx context.Context, db bun.IDB, id string) (*Recording, error
 	if s.TTYSHA256 == nil {
 		return nil, ErrNoRecording
 	}
-	stored, err := db.NewSelect().Model((*TTYFile)(nil)).Where("sha256 = ?", *s.TTYSHA256).Exists(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if !stored {
-		return nil, ErrNoRecording
-	}
 
-	rec := &Recording{Session: s.Session, SHA256: *s.TTYSHA256}
+	rec := &Recording{Session: s.CowrieSession, SHA256: *s.TTYSHA256}
 	if err := db.NewSelect().Model(&rec.Commands).Where("session_id = ?", id).
 		Order("ts", "id").Scan(ctx); err != nil {
 		return nil, err
 	}
-	var raw []RawEvent
-	if err := db.NewSelect().Model(&raw).Column("ts", "data").
-		Where("session_id = ?", id).Where("eventid = ?", "cowrie.client.size").
-		Order("ts", "id").Scan(ctx); err != nil {
+	// Terminal sizes are only in the raw lines: purging raw data must keep
+	// cowrie.client.size (see docs/db.md).
+	var sizes []struct {
+		TS   Time   `bun:"ts"`
+		Data string `bun:"data"`
+	}
+	if err := db.NewSelect().Model((*Event)(nil)).ColumnExpr("e.ts, ed.data").
+		Join("JOIN event_data AS ed ON ed.event_id = e.id").
+		Where("e.session_id = ?", id).Where("e.type = ?", "cowrie.client.size").
+		OrderExpr("e.ts, e.id").Scan(ctx, &sizes); err != nil {
 		return nil, err
 	}
-	for _, e := range raw {
+	for _, e := range sizes {
 		var size struct {
 			Width  json.Number `json:"width"`
 			Height json.Number `json:"height"`
@@ -438,16 +428,16 @@ type SessionFacts struct {
 }
 
 // GetSessionFacts returns the facts of a session.
-func GetSessionFacts(ctx context.Context, db bun.IDB, id string) (*SessionFacts, error) {
+func GetSessionFacts(ctx context.Context, db bun.IDB, id int64) (*SessionFacts, error) {
 	var s Session
-	err := db.NewSelect().Model(&s).Column("client_version", "tty_log", "tty_sha256").Where("id = ?", id).Scan(ctx)
+	err := selectSessions(db, &s).Where("s.id = ?", id).Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	f := &SessionFacts{Terminal: s.TTYLog != nil || s.TTYSHA256 != nil}
+	f := &SessionFacts{Terminal: s.TTYLog != nil || s.TTYFileID != nil, RecordingSHA256: s.TTYSHA256}
 	if s.ClientVersion != nil {
 		f.ClientVersion = *s.ClientVersion
 	}
@@ -457,19 +447,10 @@ func GetSessionFacts(ctx context.Context, db bun.IDB, id string) (*SessionFacts,
 	}
 	f.Commands = int(n)
 	if !f.Terminal {
-		f.Terminal, err = db.NewSelect().Model((*RawEvent)(nil)).
-			Where("session_id = ?", id).Where("eventid = ?", "cowrie.client.size").Exists(ctx)
+		f.Terminal, err = db.NewSelect().Model((*Event)(nil)).
+			Where("session_id = ?", id).Where("type = ?", "cowrie.client.size").Exists(ctx)
 		if err != nil {
 			return nil, err
-		}
-	}
-	if s.TTYSHA256 != nil {
-		stored, err := db.NewSelect().Model((*TTYFile)(nil)).Where("sha256 = ?", *s.TTYSHA256).Exists(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if stored {
-			f.RecordingSHA256 = s.TTYSHA256
 		}
 	}
 	return f, nil
@@ -482,14 +463,27 @@ type CountryCount struct {
 }
 
 // ListCountries returns the countries sessions came from, most sessions
-// first, for one sensor if sensorID is set.
-func ListCountries(ctx context.Context, db bun.IDB, sensorID string) ([]CountryCount, error) {
+// first, for one sensor (by name) if sensor is set.
+func ListCountries(ctx context.Context, db bun.IDB, sensor string) ([]CountryCount, error) {
 	out := []CountryCount{}
 	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country").ColumnExpr("COUNT(*) AS n").
 		Where("s.geo_country IS NOT NULL").GroupExpr("s.geo_country").OrderExpr("n DESC, s.geo_country")
-	if sensorID != "" {
-		q = q.Where("s.sensor_id = ?", sensorID)
+	if sensor != "" {
+		q = q.Where("s.sensor_id = (SELECT id FROM sensors WHERE name = ?)", sensor)
 	}
 	err := q.Scan(ctx, &out)
 	return out, err
+}
+
+// LookupSession returns the id of a session from its sensor name and
+// Cowrie session id.
+func LookupSession(ctx context.Context, db bun.IDB, sensor, cowrieSession string) (int64, error) {
+	var id int64
+	err := db.NewSelect().Model((*Session)(nil)).Column("s.id").
+		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
+		Where("sn.name = ?", sensor).Where("s.cowrie_session = ?", cowrieSession).Scan(ctx, &id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return id, err
 }
