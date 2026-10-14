@@ -71,7 +71,10 @@ are converted to asciicast at read time (`/api/sessions/{id}/cast`,
 keep the real timing and include keystrokes (`"i"`) and a marker (`"m"`)
 per command; `idle_time_limit` is only a header hint. Chapters (each
 command and its plain-text output, `/api/sessions/{id}/chapters`) come
-from the same recording, with bounded cost and output. A new asciicast version is a new `Encoder`, not a
+from the same recording, with bounded cost and output. So does the
+human/bot verdict (`/api/sessions/{id}/verdict`, `internal/verdict`): it
+always returns its reasons with their points, and its thresholds stay
+grouped there to be tuned. A new asciicast version is a new `Encoder`, not a
 change of the converter.
 
 **Same origin.** The UI calls relative `/api/...` paths: no CORS, no API
@@ -98,6 +101,7 @@ mandatory.
 | `internal/store/` | bun models, migrations, read queries; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
 | `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model and v3 encoder |
+| `internal/verdict/` | Human/bot verdict: signals from the recording and the events, points, thresholds |
 | `internal/auth/` | Ingestor tokens |
 | `internal/api/` | chi router, ingestion and read handlers, middlewares |
 | `internal/ingestor/` | Ingestor loop, TTY queue, `Sink`; `tail/` follows the log files |

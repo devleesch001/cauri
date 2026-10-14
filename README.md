@@ -94,6 +94,7 @@ internal/store/      database: models, migrations, read queries
 internal/ttystore/   storage of TTY recordings
 internal/ttylog/     reads Cowrie's recordings, converts them for replay
 internal/asciicast/  asciicast model and encoders (version 3)
+internal/verdict/    human/bot verdict of a session
 internal/auth/       ingestor tokens
 internal/api/        HTTP API (chi)
 internal/ingestor/   ingestor; tail/ follows the log files
@@ -140,6 +141,29 @@ In the UI, the session page shows the replay with controls (skip 10 or
 and beside it the session facts, the commands with their output (a click
 moves the player there; the current one is highlighted), the logins
 tried (passwords and offered public keys) and the files.
+
+### Human or bot
+
+`GET /api/sessions/{id}/verdict` tells whether a session looks typed by a
+human or run by a bot, as `{verdict, score, reasons}`. Each signal adds
+points (positive: human); the UI shows the verdict with every reason.
+
+| Signal | Source | Points |
+|---|---|---|
+| Input sent key by key (≥ 80%) / as whole lines (≤ 20%) | recording | +2 / −2 |
+| Irregular (≥ 0.4) / mechanical (< 0.1) intervals between keys | recording | +1 / −2 |
+| Human typing speed (median 60–600 ms) / too fast (< 20 ms) | recording | +1 / −1 |
+| Editing keys: backspace, arrows, Tab, Ctrl-C | recording | +2 |
+| Irregular (median ≥ 0.5 s) / constant pauses between commands | recording | +1 / −2 |
+| Commands without a terminal (`ssh host command`) | events | −2 |
+| Client from an automation library (Go, libssh, paramiko, …) | events | −1 |
+
+A score of 3 or more is `human`, −3 or less `bot`, `uncertain` in
+between; a session with neither commands nor recording is
+`no_interaction`. It is a heuristic: a human pasting commands sends whole
+lines, a bot can fake typing. The thresholds, in `internal/verdict`, come
+from a small sample and are meant to be tuned. Computed on read, like
+replays: past sessions have a verdict too.
 
 ## Configuration
 

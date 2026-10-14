@@ -15,7 +15,8 @@ Version 1 is complete:
   filters, session detail, failed logins, sensors);
 - UI: session list, session detail with a timeline (commands shown as a
   terminal) and the replay of the recording with chapters (one per
-  command, with its output) and player controls, failed logins without a
+  command, with its output) and player controls, a human/bot verdict with
+  its reasons, failed logins without a
   shell, sensor filter; English, all texts in vue-i18n;
 - one Docker image (scratch, non-root), compose examples for modes 1
   and 2, GitHub and Forgejo Actions workflows with GoReleaser releases,
@@ -56,6 +57,7 @@ module path is `github.com/devleesch001/cauri`.
 | CI runner | `runs-on: ubuntu-latest` | User. |
 | CI actions | Major version tags (`@v7`), GoReleaser `"~> v2"` | User: fixes within a major version must apply without changing the workflows. |
 | CI and releases | GitHub Actions (ghcr.io, GitHub releases) and Forgejo Actions (instance registry and releases), GoReleaser for binaries and deb/rpm/Arch packages | Set up by the user; the repository lives on GitHub. |
+| Human/bot verdict | Points per signal (typing granularity, rhythm, speed, editing keys, pauses between commands, no terminal, automation client), human ≥ 3, bot ≤ −3; computed on read, every reason shown | User approved the criteria; on read so past sessions get it and criteria can change without a migration. Storing it is for later, if the session list needs a verdict filter. |
 | Replay format | asciicast v3, the converter structured so that a v2 encoder can be added (not implemented) | User: the player is embedded (asciinema-player ≥ 3.10); CLI compatibility is not a priority. |
 | Keystrokes in replays | Included as `"i"` events | User: in a honeypot they hold input the terminal does not show (passwords at `sudo`, `passwd`…). |
 | Replay timing | Real timing in the cast; `idle_time_limit` 2 s in the header by default, removable (`?idle_time_limit=0`, "Real time" switch) | User: the real rhythm tells a human from a bot. |
