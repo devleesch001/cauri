@@ -176,6 +176,15 @@ its name (from the browser) and its flag, from
 [flag-icons](https://github.com/lipis/flag-icons) (MIT), bundled in the
 UI: no request leaves for another site.
 
+The **overview** page, the first one, maps where attacks come from:
+countries coloured by sessions (logarithmic scale), sessions and shells
+on hover, with the period, sensor and human/bot filters of the lists; a
+country leads to its sessions. The borders are
+[Natural Earth](https://www.naturalearthdata.com) 1:50m (public domain),
+drawn with [d3-geo](https://github.com/d3/d3-geo) and
+[topojson-client](https://github.com/topojson/topojson-client) (ISC),
+bundled in the UI; `ui/scripts/world-geo.mjs` generates them.
+
 cauri reads any MMDB file. Two free databases fit; neither is bundled,
 and the UI shows the attribution each requires:
 
@@ -487,7 +496,9 @@ jobs use the `Dockerfile`, which also builds the UI.
 - **All-in-one binary** (build tag `allinone`): the ingestor writes to a
   `Sink` interface; an in-process implementation calling
   `ingest.Service` replaces HTTPS.
-- **GeoIP**, message broker: not designed in yet, nothing prevents them.
+- **City markers on the map**: the map's overlay layer receives the
+  projection; sessions need their coordinates stored first.
+- Message broker: not designed in yet, nothing prevents it.
 
 ## License
 
