@@ -543,6 +543,33 @@ func TestVerdict(t *testing.T) {
 			t.Errorf("quiet session = %+v", v)
 		}
 		get(t, e, "/api/sessions/unknown/verdict", http.StatusNotFound, nil)
+
+		// The list filters on the stored verdict, the same as computed on
+		// read; the scripted session was judged again with its recording.
+		var sessions struct {
+			Items []store.SessionSummary `json:"items"`
+			Total int                    `json:"total"`
+		}
+		// The capture also has two sessions without interaction and one
+		// that only typed exit (uncertain, listed under no filter).
+		get(t, e, "/api/sessions", http.StatusOK, &sessions)
+		if sessions.Total != 6 {
+			t.Fatalf("sessions = %d", sessions.Total)
+		}
+		get(t, e, "/api/sessions?verdict=bot", http.StatusOK, &sessions)
+		if sessions.Total != 5 {
+			t.Errorf("bots = %d, want all but the uncertain session", sessions.Total)
+		}
+		for _, it := range sessions.Items {
+			if it.ID == store.SessionID("hp-01", "6f07bbfeafaa") && (*it.Verdict != "bot" || *it.VerdictScore != -5) {
+				t.Errorf("stored verdict of the scripted session = %s %d", *it.Verdict, *it.VerdictScore)
+			}
+		}
+		get(t, e, "/api/sessions?verdict=human", http.StatusOK, &sessions)
+		if sessions.Total != 0 {
+			t.Errorf("humans = %d", sessions.Total)
+		}
+		get(t, e, "/api/sessions?verdict=uncertain", http.StatusBadRequest, nil)
 	})
 }
 

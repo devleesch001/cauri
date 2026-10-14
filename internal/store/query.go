@@ -40,6 +40,13 @@ const (
 	LoginFailed  = "failed"
 )
 
+// Verdict filters, on the stored verdict (see package verdict). Sessions
+// without interaction count as bots: nobody typed in them.
+const (
+	VerdictHuman = "human"
+	VerdictBot   = "bot"
+)
+
 // SessionFilter selects sessions. Zero values do not filter.
 type SessionFilter struct {
 	SensorID string
@@ -52,6 +59,7 @@ type SessionFilter struct {
 	Country     string     // ISO 3166-1 alpha-2 code of the source address
 	From, To    *time.Time // on started_at, To exclusive
 	Login       string     // LoginSuccess or LoginFailed
+	Verdict     string     // VerdictHuman or VerdictBot
 	HasCommands *bool
 	HasTTY      *bool
 	Page
@@ -106,6 +114,12 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 		q = q.Where("s.login_success = ?", true)
 	case LoginFailed:
 		q = q.Where("s.login_success = ?", false)
+	}
+	switch f.Verdict {
+	case VerdictHuman:
+		q = q.Where("s.verdict = ?", "human")
+	case VerdictBot:
+		q = q.Where("s.verdict IN (?)", bun.List([]string{"bot", "no_interaction"}))
 	}
 	if f.Username != "" || f.Password != "" {
 		sub := db.NewSelect().TableExpr("login_attempts AS fla").ColumnExpr("1").Where("fla.session_id = s.id")

@@ -119,6 +119,10 @@ func TestListSessions(t *testing.T) {
 			"has tty":           {store.SessionFilter{HasTTY: ptr(true)}, "1"},
 			"from":              {store.SessionFilter{From: ptr(t0.Add(time.Hour))}, "32"},
 			"to":                {store.SessionFilter{To: ptr(t0.Add(time.Hour))}, "1"},
+			// 1 is uncertain (its recording is not one); 2 and 3 have no
+			// interaction, counted as bots.
+			"verdict bot":   {store.SessionFilter{Verdict: store.VerdictBot}, "32"},
+			"verdict human": {store.SessionFilter{Verdict: store.VerdictHuman}, ""},
 		}
 		for name, c := range cases {
 			if _, got := sessions(t, db, c.f); got != c.want {

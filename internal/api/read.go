@@ -44,6 +44,7 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 		From:        q.time("from"),
 		To:          q.time("to"),
 		Login:       q.oneOf("login", store.LoginSuccess, store.LoginFailed),
+		Verdict:     q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
 		HasCommands: q.bool("has_commands"),
 		HasTTY:      q.bool("has_tty"),
 		Page:        q.page(),
