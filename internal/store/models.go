@@ -11,7 +11,7 @@ import (
 // All times are stored in UTC: SQLite compares them as text.
 
 type Sensor struct {
-	bun.BaseModel `bun:"table:sensors"`
+	bun.BaseModel `bun:"table:sensors,alias:sn"`
 
 	ID        string    `bun:"id,pk" json:"id"`
 	FirstSeen time.Time `bun:"first_seen" json:"first_seen"`
@@ -19,7 +19,7 @@ type Sensor struct {
 }
 
 type IngestToken struct {
-	bun.BaseModel `bun:"table:ingest_tokens"`
+	bun.BaseModel `bun:"table:ingest_tokens,alias:tok"`
 
 	ID         string     `bun:"id,pk"`
 	SensorID   string     `bun:"sensor_id"`
@@ -31,7 +31,7 @@ type IngestToken struct {
 }
 
 type TTYFile struct {
-	bun.BaseModel `bun:"table:tty_files"`
+	bun.BaseModel `bun:"table:tty_files,alias:t"`
 
 	SHA256   string    `bun:"sha256,pk"`
 	Size     int64     `bun:"size"`
@@ -40,7 +40,7 @@ type TTYFile struct {
 }
 
 type Session struct {
-	bun.BaseModel `bun:"table:sessions"`
+	bun.BaseModel `bun:"table:sessions,alias:s"`
 
 	ID            string     `bun:"id,pk" json:"id"`
 	SensorID      string     `bun:"sensor_id" json:"sensor_id"`
@@ -69,7 +69,7 @@ func SessionID(sensorID, session string) string {
 }
 
 type RawEvent struct {
-	bun.BaseModel `bun:"table:raw_events"`
+	bun.BaseModel `bun:"table:raw_events,alias:e"`
 
 	ID         string    `bun:"id,pk" json:"id"`
 	SensorID   string    `bun:"sensor_id" json:"sensor_id"`
@@ -82,7 +82,7 @@ type RawEvent struct {
 }
 
 type LoginAttempt struct {
-	bun.BaseModel `bun:"table:login_attempts"`
+	bun.BaseModel `bun:"table:login_attempts,alias:la"`
 
 	ID        string    `bun:"id,pk" json:"id"`
 	SessionID string    `bun:"session_id" json:"session_id"`
@@ -93,7 +93,7 @@ type LoginAttempt struct {
 }
 
 type Command struct {
-	bun.BaseModel `bun:"table:commands"`
+	bun.BaseModel `bun:"table:commands,alias:c"`
 
 	ID        string    `bun:"id,pk" json:"id"`
 	SessionID string    `bun:"session_id" json:"session_id"`
@@ -108,7 +108,7 @@ const (
 )
 
 type Transfer struct {
-	bun.BaseModel `bun:"table:transfers"`
+	bun.BaseModel `bun:"table:transfers,alias:x"`
 
 	ID        string    `bun:"id,pk" json:"id"`
 	SessionID string    `bun:"session_id" json:"session_id"`
