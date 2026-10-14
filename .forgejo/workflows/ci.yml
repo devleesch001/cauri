@@ -10,9 +10,9 @@
 # the registry token to them, and a tag can be moved. Update the pins
 # deliberately, for example with Renovate.
 #
-# "runs-on: docker" is the default label of the Forgejo runner: change it
-# to match your runner. The image job needs a runner whose job
-# containers can reach a Docker daemon (for example the host socket).
+# Jobs run on the "ubuntu-latest" runner label. The image job needs a
+# runner whose job containers can reach a Docker daemon (for example the
+# host socket).
 
 name: ci
 
@@ -24,7 +24,7 @@ on:
 
 jobs:
   go:
-    runs-on: docker
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:17-alpine
@@ -47,7 +47,7 @@ jobs:
           version: v2.13.2
 
   ui:
-    runs-on: docker
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ui
@@ -65,7 +65,7 @@ jobs:
   image:
     if: github.event_name == 'push'
     needs: [go, ui]
-    runs-on: docker
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Image name and tags

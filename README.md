@@ -259,7 +259,7 @@ cd ui && npm run dev
 CI (`.forgejo/workflows/ci.yml`) runs the same checks and pushes the image
 to the registry of the Forgejo instance on `main` and `v*` tags. It needs
 a `REGISTRY_TOKEN` secret (token allowed to write packages), optionally a
-`REGISTRY_USER` variable, and a runner labelled `docker` whose job
+`REGISTRY_USER` variable, and a runner labelled `ubuntu-latest` whose job
 containers can reach a Docker daemon.
 
 ## Next steps the code is ready for
