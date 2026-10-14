@@ -1,12 +1,14 @@
 package ingest
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -118,7 +120,7 @@ func TestIngestFullSession(t *testing.T) {
 			t.Error("login_success = false")
 		case !s.StartedAt.Equal(t0), !s.EndedAt.Equal(t0.Add(9500 * time.Millisecond)), *s.Duration != 9.5:
 			t.Errorf("times: %v %v %v", s.StartedAt, s.EndedAt, *s.Duration)
-		case *s.TTYSHA256 != sum("tty"), *s.TTYSize != 3, *s.TTYDuration != 8.9:
+		case *s.TTYLog != sum("tty"), *s.TTYDuration != 8.9, s.TTYSHA256 != nil, s.TTYSize != nil:
 			t.Errorf("tty fields: %+v", s)
 		}
 		if n := count(t, db, (*store.LoginAttempt)(nil)); n != 2 {
@@ -218,7 +220,7 @@ func TestIngestOutOfOrderBatches(t *testing.T) {
 			}
 		}
 		s := getSession(t, db, sensor, "a1b2c3d4e5f6")
-		if !s.StartedAt.Equal(t0) || s.SrcPort == nil || s.EndedAt == nil || !s.LoginSuccess || s.TTYSHA256 == nil {
+		if !s.StartedAt.Equal(t0) || s.SrcPort == nil || s.EndedAt == nil || !s.LoginSuccess || s.TTYLog == nil {
 			t.Fatalf("merged session = %+v", s)
 		}
 	})
@@ -276,7 +278,9 @@ func TestStoreTTY(t *testing.T) {
 			t.Fatalf("before events: err = %v, want ErrUnknownSession", err)
 		}
 
-		lines := fullSession("a1b2c3d4e5f6", content)
+		// As with real Cowrie, the name of the recording is not the digest
+		// of the file.
+		lines := fullSession("a1b2c3d4e5f6", "terminal output only")
 		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, lines...)); err != nil {
 			t.Fatal(err)
 		}
@@ -284,6 +288,9 @@ func TestStoreTTY(t *testing.T) {
 		res, err := svc.StoreTTY(ctx, sensor, ttyMeta("a1b2c3d4e5f6", content), strings.NewReader(content))
 		if err != nil || res.Status != protocol.TTYStored {
 			t.Fatalf("store = %+v, %v", res, err)
+		}
+		if s := getSession(t, db, sensor, "a1b2c3d4e5f6"); *s.TTYSHA256 != sum(content) || *s.TTYSize != int64(len(content)) {
+			t.Errorf("session tty = %v %v", *s.TTYSHA256, *s.TTYSize)
 		}
 		f, err := svc.tty.Open(sum(content))
 		if err != nil {
@@ -371,4 +378,70 @@ func TestStoreTTYErrors(t *testing.T) {
 			t.Errorf("session not linked: %+v", s)
 		}
 	})
+}
+
+// testdata/cowrie-v3.1.2.json was written by the official cowrie/cowrie
+// image (v3.1.2) during two failed logins and two shells.
+func TestIngestRealCowrieLog(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		data, err := os.ReadFile("testdata/cowrie-v3.1.2.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := bytes.Split(bytes.TrimSpace(data), []byte("\n"))
+		res, err := svc.IngestEvents(ctx, sensor, batch(sensor, lines...))
+		if err != nil || res.Accepted != len(lines) || len(res.Rejected) != 0 {
+			t.Fatalf("result = %+v, %v", res, err)
+		}
+		if n := count(t, db, (*store.Session)(nil)); n != 4 {
+			t.Errorf("sessions = %d", n)
+		}
+		s := getSession(t, db, sensor, "6f07bbfeafaa")
+		switch {
+		case !s.LoginSuccess, *s.ClientVersion != "SSH-2.0-Go", *s.HASSH != "16443846184eafde36765c9bab2f4397":
+			t.Errorf("session = %+v", s)
+		case s.Duration == nil || *s.Duration != 0.991, s.TTYDuration == nil || *s.TTYDuration != 0.91:
+			t.Errorf("durations from duration_ms: %v %v", s.Duration, s.TTYDuration)
+		case *s.TTYLog != "5d07941f09498a4f65d7453a8d25cabda2a265b3da7eb2b80a7a4fa923c5e12a", s.TTYSHA256 != nil:
+			t.Errorf("tty = %v %v", *s.TTYLog, s.TTYSHA256)
+		}
+		if n := count(t, db, (*store.Command)(nil)); n != 5 {
+			t.Errorf("commands = %d", n)
+		}
+		failed, err := db.NewSelect().Model((*store.LoginAttempt)(nil)).Where("success = ?", false).Count(ctx)
+		if err != nil || failed != 2 {
+			t.Errorf("failed logins = %d, %v", failed, err)
+		}
+	})
+}
+
+func TestDurations(t *testing.T) {
+	for raw, want := range map[string]float64{
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration_ms":1500}`:  1.5,
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration":"2.5"}`:    2.5,
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration":3}`:        3,
+		`{"eventid":"x","timestamp":"2026-10-14T09:00:00Z","duration_ms":"250"}`: 0.25,
+	} {
+		ev, err := parseEvent([]byte(raw))
+		if err != nil || ev.seconds() == nil || *ev.seconds() != want {
+			t.Errorf("%s: %v, %v", raw, ev, err)
+		}
+	}
+}
+
+// Unexpected field types must not cost the event.
+func TestParseLenient(t *testing.T) {
+	ev, err := parseEvent([]byte(`{"eventid":"cowrie.session.connect","timestamp":"2026-10-14T09:00:00Z",` +
+		`"session":"s1","src_port":"4242","duration":"soon","username":["a"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.SrcPort != nil || ev.seconds() != nil || ev.Username != nil || ev.Session != "s1" {
+		t.Errorf("event = %+v", ev)
+	}
+	if _, err := parseEvent([]byte(`{"eventid":42,"timestamp":"2026-10-14T09:00:00Z"}`)); err == nil {
+		t.Error("want error when eventid is not a string")
+	}
 }

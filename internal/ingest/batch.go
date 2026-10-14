@@ -16,7 +16,8 @@ import (
 // memory within a batch and in SQL across batches (see upsertSessions):
 // connection details keep their first value, started_at the earliest
 // timestamp, end and recording details their last value, login_success
-// becomes true once any login succeeded.
+// becomes true once any login succeeded. The digest and size of the
+// recording are only set by StoreTTY, from the uploaded file.
 type batchWriter struct {
 	now      time.Time
 	sensor   store.Sensor
@@ -106,19 +107,16 @@ func (w *batchWriter) project(id string, s *store.Session, ev *cowrieEvent) {
 			Filename: ev.Filename, SHA256: ev.Shasum,
 		})
 	case evLogClosed:
-		if sha := ev.ttySHA256(); sha != nil {
-			s.TTYSHA256 = sha
+		if name := ev.ttyName(); name != nil {
+			s.TTYLog = name
 		}
-		if ev.Size != nil {
-			s.TTYSize = ev.Size
-		}
-		if d := ev.Duration.ptr(); d != nil {
+		if d := ev.seconds(); d != nil {
 			s.TTYDuration = d
 		}
 	case evSessionClosed:
 		ts := ev.ts
 		s.EndedAt = &ts
-		if d := ev.Duration.ptr(); d != nil {
+		if d := ev.seconds(); d != nil {
 			s.Duration = d
 		}
 	}
@@ -162,7 +160,7 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) error {
 	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "hassh"} {
 		q = q.Set(col + " = COALESCE(?TableAlias." + col + ", EXCLUDED." + col + ")")
 	}
-	for _, col := range []string{"ended_at", "duration", "tty_sha256", "tty_size", "tty_duration"} {
+	for _, col := range []string{"ended_at", "duration", "tty_log", "tty_duration"} {
 		q = q.Set(col + " = COALESCE(EXCLUDED." + col + ", ?TableAlias." + col + ")")
 	}
 	_, err := q.Exec(ctx)

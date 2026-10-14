@@ -192,7 +192,7 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 		if sess.TTYSHA256 == nil {
 			_, err := tx.NewUpdate().Model((*store.Session)(nil)).
 				Set("tty_sha256 = ?", m.SHA256).
-				Set("tty_size = COALESCE(tty_size, ?)", m.Size).
+				Set("tty_size = ?", m.Size).
 				Where("id = ?", sess.ID).Exec(ctx)
 			return err
 		}

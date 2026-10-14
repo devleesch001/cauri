@@ -41,9 +41,13 @@ CREATE TABLE sessions (
     ended_at       TIMESTAMPTZ,
     duration       DOUBLE PRECISION,
     login_success  BOOLEAN NOT NULL DEFAULT FALSE,
+    -- From cowrie.log.closed: Cowrie's name for the recording, which is
+    -- not the digest of the file, and the recording duration.
+    tty_log        TEXT,
+    tty_duration   DOUBLE PRECISION,
+    -- Set when the recording is uploaded: digest and size of the file.
     tty_sha256     TEXT,
     tty_size       BIGINT,
-    tty_duration   DOUBLE PRECISION,
     UNIQUE (sensor_id, session)
 );
 CREATE INDEX sessions_started_at ON sessions (started_at);

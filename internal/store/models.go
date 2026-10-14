@@ -56,9 +56,10 @@ type Session struct {
 	EndedAt       *time.Time `bun:"ended_at" json:"ended_at"`
 	Duration      *float64   `bun:"duration" json:"duration"`
 	LoginSuccess  bool       `bun:"login_success" json:"login_success"`
+	TTYLog        *string    `bun:"tty_log" json:"tty_log"`
+	TTYDuration   *float64   `bun:"tty_duration" json:"tty_duration"`
 	TTYSHA256     *string    `bun:"tty_sha256" json:"tty_sha256"`
 	TTYSize       *int64     `bun:"tty_size" json:"tty_size"`
-	TTYDuration   *float64   `bun:"tty_duration" json:"tty_duration"`
 }
 
 // SessionID returns the internal identifier of a Cowrie session. Cowrie
