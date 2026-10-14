@@ -544,3 +544,56 @@ func FuzzChapters(f *testing.F) {
 		}
 	})
 }
+
+// Commands and Enter keys come from the attacker: matching them must stay
+// linear, not compare every command with every key.
+func TestChaptersManyCommands(t *testing.T) {
+	const n = 200_000
+	var buf bytes.Buffer
+	buf.Write(rec(OpOpen, 0, 0, ""))
+	cmds := make([]Command, n)
+	for i := range n {
+		at := time.Duration(i) * time.Millisecond
+		buf.Write(rec(OpWrite, DirInput, at, "\r"))
+		cmds[i] = Command{Time: t0.Add(at), Input: "x"}
+	}
+	start := time.Now()
+	sum, err := Chapters(bytes.NewReader(buf.Bytes()), cmds)
+	if err != nil || len(sum.Chapters) != n {
+		t.Fatalf("%d chapters, %v", len(sum.Chapters), err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("took %v: not linear", d)
+	}
+}
+
+// The output kept for all chapters together is bounded too.
+func TestChaptersTotalOutput(t *testing.T) {
+	const n = 3 * MaxTotalOutput / MaxChapterOutput // three times the budget
+	var parts [][]byte
+	parts = append(parts, rec(OpOpen, 0, 0, ""))
+	cmds := make([]Command, n)
+	big := strings.Repeat("z", MaxChapterOutput-10) + "\n"
+	for i := range n {
+		at := time.Duration(i) * time.Second
+		parts = append(parts,
+			rec(OpWrite, DirInput, at, "\r"),
+			rec(OpWrite, DirOutput, at, "\n"+big+"# "),
+		)
+		cmds[i] = Command{Time: t0.Add(at), Input: "cat"}
+	}
+	sum, err := Chapters(bytes.NewReader(file(parts...)), cmds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total, truncated := 0, 0
+	for _, c := range sum.Chapters {
+		total += len(c.Output)
+		if c.Truncated {
+			truncated++
+		}
+	}
+	if total > MaxTotalOutput || truncated < n/2 {
+		t.Errorf("total output %d bytes, %d of %d chapters truncated", total, truncated, n)
+	}
+}

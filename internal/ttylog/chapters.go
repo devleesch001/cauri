@@ -31,9 +31,13 @@ type Summary struct {
 	Chapters []Chapter
 }
 
-// MaxChapterOutput bounds the output kept per chapter, in bytes of raw
-// terminal output: it comes from the attacker.
-const MaxChapterOutput = 64 << 10
+// MaxChapterOutput bounds the output kept per chapter, and MaxTotalOutput
+// for all chapters together, in bytes of raw terminal output: it comes
+// from the attacker, as the number of commands does.
+const (
+	MaxChapterOutput = 64 << 10
+	MaxTotalOutput   = 4 << 20
+)
 
 // enterWindow is how far from the time Cowrie logged a command its Enter
 // key may be: they differ by under a millisecond on real recordings.
@@ -44,13 +48,14 @@ const enterWindow = 2 * time.Second
 // A command's output is what the terminal printed after the echo of the
 // command line (up to the first line feed after its Enter key), until the
 // next key typed or the next command, without the prompt that ends it.
-// The recording is read twice, hence the io.ReadSeeker.
+// The recording is read twice, hence the io.ReadSeeker. Time and memory
+// are linear in the size of the recording and the number of commands.
 func Chapters(r io.ReadSeeker, cmds []Command) (Summary, error) {
 	var sum Summary
 
-	// First pass: the input records, to find each command's Enter key.
+	// First pass: match each command with its Enter key.
 	var start time.Time
-	var inputs []inputRecord
+	m := newEnterMatcher(cmds)
 	rd := NewReader(r)
 	for {
 		rec, err := rd.Next()
@@ -67,10 +72,11 @@ func Chapters(r io.ReadSeeker, cmds []Command) (Summary, error) {
 			start = rec.Time
 		}
 		sum.Records++
-		if rec.Op == OpWrite && rec.Dir == DirInput {
-			inputs = append(inputs, inputRecord{rec.Time, strings.ContainsAny(string(rec.Data), "\r\n")})
+		if rec.Op == OpWrite && rec.Dir == DirInput && strings.ContainsAny(string(rec.Data), "\r\n") {
+			m.enter(rec.Time)
 		}
 	}
+	enters := m.finish()
 	if sum.Records == 0 {
 		return sum, ErrTruncated
 	}
@@ -79,8 +85,10 @@ func Chapters(r io.ReadSeeker, cmds []Command) (Summary, error) {
 	}
 
 	segs := make([]segment, len(cmds))
+	budget := MaxTotalOutput
 	for i, cmd := range cmds {
-		segs[i].enter = enterTime(inputs, cmd.Time)
+		segs[i].enter = enters[i]
+		segs[i].budget = &budget
 		segs[i].Chapter = Chapter{Time: max(cmd.Time.Sub(start), 0), Command: cmd.Input}
 	}
 
@@ -111,25 +119,52 @@ func Chapters(r io.ReadSeeker, cmds []Command) (Summary, error) {
 	return sum, nil
 }
 
-type inputRecord struct {
-	time  time.Time
-	enter bool // holds a line end: the Enter key
+// enterMatcher finds the Enter key of each command, as the Enter keys of
+// the recording stream by: the closest one to the time Cowrie logged the
+// command, within enterWindow, else that time itself. Commands and keys are
+// both in time order, so the closest key is the last one before the
+// command or the first one after it: one merge pass, nothing stored.
+type enterMatcher struct {
+	cmds []Command
+	out  []time.Time
+	prev time.Time
+	seen bool // prev is set
+	j    int  // next command to match
 }
 
-// enterTime finds the Enter key of a command logged at t: the input record
-// holding a line end closest to t, or t itself if none is near.
-func enterTime(inputs []inputRecord, t time.Time) time.Time {
-	best, bestGap := t, enterWindow
-	for _, in := range inputs {
-		if !in.enter {
-			continue
+func newEnterMatcher(cmds []Command) *enterMatcher {
+	return &enterMatcher{cmds: cmds, out: make([]time.Time, len(cmds))}
+}
+
+// enter takes the next Enter key of the recording, at t.
+func (m *enterMatcher) enter(t time.Time) {
+	for m.j < len(m.cmds) && m.cmds[m.j].Time.Before(t) {
+		m.out[m.j] = m.closest(m.cmds[m.j].Time, &t)
+		m.j++
+	}
+	m.prev, m.seen = t, true
+}
+
+// finish matches the commands logged after the last Enter key.
+func (m *enterMatcher) finish() []time.Time {
+	for ; m.j < len(m.cmds); m.j++ {
+		m.out[m.j] = m.closest(m.cmds[m.j].Time, nil)
+	}
+	return m.out
+}
+
+// closest picks, for a command logged at t, the previous Enter key or the
+// next one (nil if none), whichever is closer and within enterWindow.
+func (m *enterMatcher) closest(t time.Time, next *time.Time) time.Time {
+	best, gap := t, enterWindow
+	if m.seen {
+		if d := t.Sub(m.prev); d <= gap {
+			best, gap = m.prev, d
 		}
-		gap := in.time.Sub(t)
-		if gap < 0 {
-			gap = -gap
-		}
-		if gap <= bestGap {
-			best, bestGap = in.time, gap
+	}
+	if next != nil {
+		if d := next.Sub(t); d < gap {
+			best = *next
 		}
 	}
 	return best
@@ -142,6 +177,7 @@ type segment struct {
 	echoDone bool // the line feed ending the echo of the command was seen
 	stopped  bool // a key was typed after the output: the next command
 	raw      []byte
+	budget   *int // output left for all chapters, see MaxTotalOutput
 }
 
 func (s *segment) add(rec Record) {
@@ -167,12 +203,13 @@ func (s *segment) add(rec Record) {
 		s.echoDone = true
 		data = data[i+1:]
 	}
-	if room := MaxChapterOutput - len(s.raw); len(data) > room {
+	if room := min(MaxChapterOutput-len(s.raw), *s.budget); len(data) > room {
 		data = data[:room]
 		s.Truncated = true
 		s.stopped = true
 	}
 	s.raw = append(s.raw, data...)
+	*s.budget -= len(data)
 }
 
 func (s *segment) finish() Chapter {
