@@ -4,9 +4,9 @@
   "go.lintOnSave": "package",
   "go.testFlags": ["-race"],
   "go.testEnvVars": {
-    // Uncomment to run the tests on PostgreSQL too (dev database of
-    // deploy/compose.dev.yml, see docs/development.md).
-    // "CAURI_TEST_PG_DSN": "postgres://postgres:dev@127.0.0.1:55432/postgres?sslmode=disable"
+    // Uncomment to run the tests on PostgreSQL too, when changing SQL
+    // (start the throwaway server of docs/development.md first).
+    // "CAURI_TEST_PG_DSN": "postgres://postgres:test@127.0.0.1:55432/postgres?sslmode=disable"
   },
   "gopls": {
     // ui/ is a separate (empty) module that keeps node_modules out of Go;

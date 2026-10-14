@@ -57,7 +57,7 @@
     },
     {
       "label": "dev: stop containers",
-      "detail": "make dev-down: stops the local Cowrie (and PostgreSQL)",
+      "detail": "make dev-down: stops the local Cowrie",
       "type": "shell",
       "command": "make dev-down",
       "problemMatcher": []

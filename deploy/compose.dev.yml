@@ -1,9 +1,7 @@
-# Development services: a real Cowrie honeypot writing into ./data/cowrie
-# (read by an ingestor run from the source tree) and an optional
-# PostgreSQL. See docs/development.md.
+# Development services: a real Cowrie honeypot writing into ./data/cowrie,
+# read by an ingestor run from the source tree. See docs/development.md.
 #
 #   docker compose -f deploy/compose.dev.yml up -d cowrie
-#   docker compose -f deploy/compose.dev.yml --profile postgres up -d
 
 name: cauri-dev
 
@@ -18,11 +16,3 @@ services:
       - ../data/cowrie:/cowrie/cowrie-git/var
     ports:
       - "127.0.0.1:${COWRIE_DEV_PORT:-22222}:2222"
-
-  postgres:
-    image: postgres:17-alpine
-    profiles: [postgres]
-    environment:
-      POSTGRES_PASSWORD: dev
-    ports:
-      - "127.0.0.1:${POSTGRES_DEV_PORT:-55432}:5432"

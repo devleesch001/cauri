@@ -254,11 +254,11 @@ sensor. TLS is handled by the reverse proxy in front of the API.
 
 ### PostgreSQL
 
-SQLite is the default and the recommended choice. PostgreSQL is
-supported as an option: set
-`CAURI_DB_DRIVER=postgres`, `CAURI_DB_DSN` and `POSTGRES_PASSWORD`, then
-start with `--profile postgres`, or point `CAURI_DB_DSN` at an existing
-server.
+SQLite is the default and the recommended choice: the compose files use
+it. PostgreSQL is supported as an option, on a server you run: set
+`CAURI_DB_DRIVER=postgres` and `CAURI_DB_DSN` to its URL, for example
+`postgres://cauri:<password>@<host>:5432/cauri?sslmode=require`. Back it
+up with the TTY directory, like the SQLite file.
 
 ### Protecting the UI
 

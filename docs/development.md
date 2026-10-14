@@ -32,7 +32,7 @@ and the two URLs that point at it.
 |---------------------|--------------------------|-------------------------------|
 | Go                  | 1.27 (see `go.mod`)      | API, ingestor, tests          |
 | Node.js and npm     | 24                       | UI                            |
-| Docker with Compose | recent                   | Cowrie, PostgreSQL, the image |
+| Docker with Compose | recent                   | Cowrie, the image             |
 | golangci-lint       | v2.13.2 (same as the CI) | Go lint                       |
 | git, make           | any                      |                               |
 
@@ -82,7 +82,7 @@ docker compose -f deploy/compose.dev.yml up -d cowrie
 
 SSH is on `127.0.0.1:22222` (`COWRIE_DEV_PORT` to change it), so it does
 not clash with a Cowrie already running on 2222. `make dev-down` stops
-the dev containers.
+it.
 
 ### An ingestor token
 
@@ -194,13 +194,14 @@ go test ./internal/ingestor/... -run Rotation -v   # one test
 Tests run on SQLite, the database cauri is built for and the only one the
 CI tests. When a change touches SQL (migrations, queries, ingestion), run
 them on PostgreSQL too: tests touching the database also run on it when
-`CAURI_TEST_PG_DSN` is set, each in its own schema. The dev compose file
-has a PostgreSQL for that:
+`CAURI_TEST_PG_DSN` is set, each in its own schema. A throwaway server is
+enough (`--rm`: it disappears when stopped):
 
 ```sh
-docker compose -f deploy/compose.dev.yml --profile postgres up -d postgres
-export CAURI_TEST_PG_DSN='postgres://postgres:dev@127.0.0.1:55432/postgres?sslmode=disable'
+docker run -d --rm --name cauri-test-pg -p 127.0.0.1:55432:5432 -e POSTGRES_PASSWORD=test postgres:17-alpine
+export CAURI_TEST_PG_DSN='postgres://postgres:test@127.0.0.1:55432/postgres?sslmode=disable'
 go test -race ./...
+docker stop cauri-test-pg
 ```
 
 Where tests live:
@@ -216,12 +217,12 @@ Where tests live:
 ## Running cauri on PostgreSQL
 
 SQLite is the default; PostgreSQL is an option for users who prefer it.
-To try cauri on it, with the dev PostgreSQL started as above, give the same database settings
-to the API and to `cauri token`:
+To try cauri on it, with the throwaway server started as above, give the
+same database settings to the API and to `cauri token`:
 
 ```sh
 export CAURI_DB_DRIVER=postgres
-export CAURI_DB_DSN='postgres://postgres:dev@127.0.0.1:55432/postgres?sslmode=disable'
+export CAURI_DB_DSN='postgres://postgres:test@127.0.0.1:55432/postgres?sslmode=disable'
 go run ./cmd/cauri token create --sensor dev > data/dev.token
 CAURI_LISTEN=:8090 go run ./cmd/cauri api --log-level debug
 ```

@@ -82,9 +82,9 @@ dev-ingestor:
 dev-ui:
 	cd ui && CAURI_API_URL=http://localhost:$(DEV_API_PORT) npm run dev
 
-# Stops the dev containers (Cowrie, and PostgreSQL if started).
+# Stops the dev Cowrie.
 dev-down:
-	$(DEV_COMPOSE) --profile postgres down
+	$(DEV_COMPOSE) down
 
 # Deletes cauri's dev data (database, recordings, ingestor state, token)
 # but keeps Cowrie's. Stop dev-api and dev-ingestor first, then run
