@@ -25,7 +25,19 @@ type Options struct {
 	Sizes []TermSize
 	// IdleTimeLimit is written in the header as a playback hint.
 	IdleTimeLimit time.Duration
+	// Commands typed during the session, in time order, from Cowrie's
+	// cowrie.command.input events: each becomes a marker (a chapter).
+	Commands []Command
 }
+
+// Command is a command typed in the session, at the time Cowrie ran it.
+type Command struct {
+	Time  time.Time
+	Input string
+}
+
+// maxMarkerLabel bounds marker labels: they come from the attacker.
+const maxMarkerLabel = 200
 
 // Default terminal size.
 const (
@@ -67,7 +79,7 @@ func Convert(r io.Reader, enc asciicast.Encoder, opts Options) error {
 		return err
 	}
 
-	c := converter{enc: enc, start: start, sizes: sizes}
+	c := converter{enc: enc, start: start, sizes: sizes, commands: opts.Commands}
 	rec := first
 	for {
 		if err := c.record(rec); err != nil {
@@ -107,6 +119,7 @@ type converter struct {
 	start      time.Time
 	last       time.Duration
 	sizes      []TermSize
+	commands   []Command
 	out, input utf8Buffer
 }
 
@@ -114,6 +127,9 @@ func (c *converter) record(rec Record) error {
 	at := max(rec.Time.Sub(c.start), 0)
 	c.last = max(c.last, at)
 	if err := c.resizesUntil(rec.Time); err != nil {
+		return err
+	}
+	if err := c.markersUntil(rec.Time); err != nil {
 		return err
 	}
 	if rec.Op != OpWrite {
@@ -141,7 +157,28 @@ func (c *converter) resizesUntil(t time.Time) error {
 	return nil
 }
 
-// finish writes bytes still waiting for the rest of a character and
+func (c *converter) markersUntil(t time.Time) error {
+	for len(c.commands) > 0 && !c.commands[0].Time.After(t) {
+		if err := c.marker(c.commands[0]); err != nil {
+			return err
+		}
+		c.commands = c.commands[1:]
+	}
+	return nil
+}
+
+func (c *converter) marker(cmd Command) error {
+	label := cmd.Input
+	if r := []rune(label); len(r) > maxMarkerLabel {
+		label = string(r[:maxMarkerLabel]) + "…"
+	}
+	return c.enc.WriteEvent(asciicast.Event{
+		Time: max(cmd.Time.Sub(c.start), 0), Code: asciicast.Marker, Data: label,
+	})
+}
+
+// finish writes bytes still waiting for the rest of a character, the
+// markers of commands logged after the last record (such as "exit"), and
 // flushes the encoder. Sizes reported after the end are dropped.
 func (c *converter) finish() error {
 	if err := c.emit(c.last, asciicast.Output, onlcr(c.out.flush())); err != nil {
@@ -150,6 +187,12 @@ func (c *converter) finish() error {
 	if err := c.emit(c.last, asciicast.Input, c.input.flush()); err != nil {
 		return err
 	}
+	for _, cmd := range c.commands {
+		if err := c.marker(cmd); err != nil {
+			return err
+		}
+	}
+	c.commands = nil
 	return c.enc.Flush()
 }
 

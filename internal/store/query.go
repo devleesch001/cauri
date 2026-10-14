@@ -348,6 +348,8 @@ type Recording struct {
 	SHA256  string // digest of the stored file, see ttystore
 	// Sizes are the terminal sizes reported by the client, in time order.
 	Sizes []TermSize
+	// Commands are the commands typed, in time order: the replay chapters.
+	Commands []Command
 }
 
 // GetRecording returns the stored recording of a session.
@@ -372,6 +374,10 @@ func GetRecording(ctx context.Context, db bun.IDB, id string) (*Recording, error
 	}
 
 	rec := &Recording{Session: s.Session, SHA256: *s.TTYSHA256}
+	if err := db.NewSelect().Model(&rec.Commands).Where("session_id = ?", id).
+		Order("ts", "id").Scan(ctx); err != nil {
+		return nil, err
+	}
 	var raw []RawEvent
 	if err := db.NewSelect().Model(&raw).Column("ts", "data").
 		Where("session_id = ?", id).Where("eventid = ?", "cowrie.client.size").

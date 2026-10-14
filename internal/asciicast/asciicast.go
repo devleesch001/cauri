@@ -31,6 +31,7 @@ const (
 	Output = "o" // data written to the terminal
 	Input  = "i" // data sent by the user, keystrokes
 	Resize = "r" // new terminal size, as "COLSxROWS"
+	Marker = "m" // a point of interest, with a label; players show it as a chapter
 )
 
 // Event is something that happened at Time after the start.

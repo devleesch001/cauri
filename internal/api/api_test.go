@@ -386,7 +386,8 @@ func TestCast(t *testing.T) {
 		if header.Version != 3 || header.Term.Cols != 120 || header.Term.Rows != 40 || header.IdleTimeLimit != 2 {
 			t.Errorf("header = %+v", header)
 		}
-		if len(lines) != 1+93 || !strings.Contains(body, `"i", "uname -a\n"`) {
+		// 93 recorded writes, and a marker for the "id" command of events().
+		if len(lines) != 1+93+1 || !strings.Contains(body, `"i", "uname -a\n"`) || !strings.Contains(body, `"m", "id"]`) {
 			t.Errorf("%d events, input missing", len(lines)-1)
 		}
 
@@ -428,4 +429,66 @@ func TestCastUnreadable(t *testing.T) {
 	if resp.code != http.StatusUnprocessableEntity || resp.header.Get("ETag") != "" {
 		t.Errorf("= %d %s", resp.code, body)
 	}
+}
+
+// realSession ingests the events of session 6f07bbfeafaa from the real
+// Cowrie capture, then its recording, and returns its internal id.
+func realSession(t *testing.T, e *env) string {
+	t.Helper()
+	ctx := context.Background()
+	data, err := os.ReadFile("../ingest/testdata/cowrie-v3.1.2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := protocol.EventBatch{SensorID: "hp-01"}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		b.Events = append(b.Events, protocol.Event{ID: protocol.EventID("hp-01", []byte(line)), Raw: json.RawMessage(line)})
+	}
+	if _, err := e.client.SendEvents(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	m, tty := realRecording(t)
+	m.Session = "6f07bbfeafaa"
+	if _, err := e.client.SendTTY(ctx, m, bytes.NewReader(tty)); err != nil {
+		t.Fatal(err)
+	}
+	return store.SessionID("hp-01", "6f07bbfeafaa")
+}
+
+func TestChapters(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		id := realSession(t, e)
+
+		var got struct {
+			Records  int `json:"records"`
+			Chapters []struct {
+				Time       float64 `json:"time"`
+				Command    string  `json:"command"`
+				Output     string  `json:"output"`
+				Truncated  bool    `json:"truncated"`
+				FullScreen bool    `json:"full_screen"`
+			} `json:"chapters"`
+		}
+		get(t, e, "/api/sessions/"+id+"/chapters", http.StatusOK, &got)
+		if got.Records != 95 || len(got.Chapters) != 4 {
+			t.Fatalf("chapters = %+v", got)
+		}
+		if c := got.Chapters[0]; c.Command != "uname -a" || !strings.HasPrefix(c.Output, "Linux svr04") || c.Time <= 0 {
+			t.Errorf("first chapter = %+v", c)
+		}
+
+		resp, _ := getRaw(t, e, "/api/sessions/"+id+"/chapters", nil)
+		if again, _ := getRaw(t, e, "/api/sessions/"+id+"/chapters", http.Header{"If-None-Match": {resp.header.Get("ETag")}}); again.code != http.StatusNotModified {
+			t.Errorf("If-None-Match: %d", again.code)
+		}
+
+		// The same commands are markers of the replay.
+		_, cast := getRaw(t, e, "/api/sessions/"+id+"/cast", nil)
+		if n := strings.Count(cast, `, "m", `); n != 4 || !strings.Contains(cast, `"m", "cat /proc/cpuinfo | head -3"]`) {
+			t.Errorf("%d markers in the cast", n)
+		}
+
+		get(t, e, "/api/sessions/unknown/chapters", http.StatusNotFound, nil)
+	})
 }

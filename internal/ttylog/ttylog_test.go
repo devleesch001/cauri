@@ -11,12 +11,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/devleesch001/cauri/internal/asciicast"
 )
 
 // testdata/cowrie-v3.1.2.tty was written by the official cowrie/cowrie
 // image (v3.1.2) during a scripted session: login, three commands, exit.
+// It is the recording of session 6f07bbfeafaa, whose events are in
+// ../ingest/testdata/cowrie-v3.1.2.json.
 const realFile = "testdata/cowrie-v3.1.2.tty"
 
 var t0 = time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
@@ -327,4 +330,217 @@ func TestConvertLineEnds(t *testing.T) {
 	if events[0].data != "one\r\ntwo\r\r\n" || events[1].data != "ls\n" {
 		t.Errorf("events = %+v", events)
 	}
+}
+
+// commandsOf reads the cowrie.command.input events of a session from the
+// cowrie.json test capture.
+func commandsOf(t testing.TB, session string) []Command {
+	t.Helper()
+	data, err := os.ReadFile("../ingest/testdata/cowrie-v3.1.2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cmds []Command
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var e struct{ Eventid, Session, Input, Timestamp string }
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatal(err)
+		}
+		if e.Session == session && e.Eventid == "cowrie.command.input" {
+			ts, err := time.Parse(time.RFC3339Nano, e.Timestamp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmds = append(cmds, Command{Time: ts, Input: e.Input})
+		}
+	}
+	return cmds
+}
+
+func TestChaptersRealRecording(t *testing.T) {
+	f, err := os.Open(realFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	sum, err := Chapters(f, commandsOf(t, "6f07bbfeafaa"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Records != 95 || len(sum.Chapters) != 4 {
+		t.Fatalf("records %d, chapters %v", sum.Records, sum.Chapters)
+	}
+	want := []struct{ command, output string }{
+		{"uname -a", "Linux svr04 6.1.0-21-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.90-1 (2024-05-03) x86_64 GNU/Linux"},
+		{"cat /proc/cpuinfo | head -3", "processor\t: 0\nvendor_id\t: GenuineIntel\ncpu family\t: 6"},
+		{"wget http://127.0.0.1:1/x.sh", "--2026-10-14 08:26:27--  http://127.0.0.1:1/x.sh\nResolving 127.0.0.1 (127.0.0.1)... failed: Temporary failure in name resolution.\nwget: unable to resolve host address ‘127.0.0.1’"},
+		{"exit", ""},
+	}
+	for i, w := range want {
+		c := sum.Chapters[i]
+		if c.Command != w.command || c.Output != w.output || c.Truncated || c.FullScreen {
+			t.Errorf("chapter %d = %s", i, c)
+		}
+	}
+	if d := sum.Chapters[1].Time; d < 300*time.Millisecond || d > 310*time.Millisecond {
+		t.Errorf("second chapter at %v", d)
+	}
+}
+
+// keys types s one key at a time, each followed by its echo, like an
+// interactive SSH client; Enter is "\r", echoed as "\n".
+func keys(at time.Duration, s string) [][]byte {
+	var out [][]byte
+	for _, k := range s {
+		echo := string(k)
+		if k == '\r' {
+			echo = "\n"
+		}
+		out = append(out, rec(OpWrite, DirInput, at, string(k)), rec(OpWrite, DirOutput, at, echo))
+		at += 10 * time.Millisecond
+	}
+	return out
+}
+
+func TestChaptersInteractive(t *testing.T) {
+	prompt := "\x1b[1;32mroot@svr04\x1b[0m:~# "
+	var parts [][]byte
+	parts = append(parts, rec(OpOpen, 0, 0, ""), rec(OpWrite, DirOutput, 0, prompt))
+	// "lss", backspace, Enter: the command line is edited.
+	parts = append(parts, keys(time.Second, "lss\x7f\r")...)
+	parts = append(parts,
+		rec(OpWrite, DirOutput, 1100*time.Millisecond, "\x1b[34mbin\x1b[0m  etc\n"),
+		rec(OpWrite, DirOutput, 1100*time.Millisecond, prompt),
+	)
+	parts = append(parts, keys(2*time.Second, "wget x\r")...)
+	parts = append(parts,
+		rec(OpWrite, DirOutput, 2100*time.Millisecond, " 10%\r 50%\r100%\n"),
+		rec(OpWrite, DirOutput, 2100*time.Millisecond, "saved\n"+prompt),
+	)
+	parts = append(parts, keys(3*time.Second, "vim\r")...)
+	parts = append(parts,
+		rec(OpWrite, DirOutput, 3100*time.Millisecond, "\x1b[?1049h\x1b[H~\n~\n\x1b[?1049l"),
+		rec(OpWrite, DirOutput, 3100*time.Millisecond, prompt),
+	)
+	parts = append(parts, keys(4*time.Second, "yes\r")...)
+	parts = append(parts, rec(OpWrite, DirOutput, 4100*time.Millisecond, strings.Repeat("y\n", MaxChapterOutput)))
+
+	// Cowrie logs each command a fraction of a millisecond after its Enter.
+	enter := func(at time.Duration, line string) Command {
+		return Command{Time: t0.Add(at + time.Duration(len(line)-1)*10*time.Millisecond + 300*time.Microsecond), Input: line}
+	}
+	cmds := []Command{
+		enter(time.Second, "lss\x7f"), enter(2*time.Second, "wget x"),
+		enter(3*time.Second, "vim"), enter(4*time.Second, "yes"),
+	}
+	cmds[0].Input = "ls"
+
+	sum, err := Chapters(bytes.NewReader(file(parts...)), cmds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := sum.Chapters
+	if len(got) != 4 {
+		t.Fatalf("chapters = %v", got)
+	}
+	if got[0].Command != "ls" || got[0].Output != "bin  etc" {
+		t.Errorf("colours and prompt: %s", got[0])
+	}
+	if got[1].Output != "100%\nsaved" {
+		t.Errorf("carriage returns: %s", got[1])
+	}
+	if !got[2].FullScreen || got[2].Output != "" {
+		t.Errorf("full screen: %s", got[2])
+	}
+	if !got[3].Truncated || len(got[3].Output) > MaxChapterOutput || !strings.HasPrefix(got[3].Output, "y\ny\n") {
+		t.Errorf("truncation: truncated %v, %d bytes", got[3].Truncated, len(got[3].Output))
+	}
+}
+
+func TestPlainText(t *testing.T) {
+	for raw, want := range map[string]string{
+		"a\x1b[31mred\x1b[0mb": "aredb",
+		"abc\bd":               "abd",
+		"one\r\ntwo":           "one\ntwo",
+		"50%\r100%":            "100%",
+		"x\x1b]0;title\x07y":   "xy",
+		"x\x1b]0;title\x1b\\y": "xy",
+		"x\x1b(By":             "xy",
+		"tab\there\x00\x07":    "tab\there",
+		"bad \xff byte":        "bad � byte",
+		"unterminated \x1b[":   "unterminated ",
+	} {
+		if got, _ := plainText([]byte(raw)); got != want {
+			t.Errorf("plainText(%q) = %q, want %q", raw, got, want)
+		}
+	}
+	if _, full := plainText([]byte("\x1b[?1049h")); !full {
+		t.Error("alternate screen not detected")
+	}
+}
+
+func TestChaptersErrors(t *testing.T) {
+	if _, err := Chapters(bytes.NewReader(nil), nil); !errors.Is(err, ErrTruncated) {
+		t.Errorf("empty recording: %v", err)
+	}
+	// A damaged recording still gives the chapters before the damage.
+	data := file(
+		rec(OpOpen, 0, 0, ""),
+		rec(OpWrite, DirInput, time.Second, "id\r"),
+		rec(OpWrite, DirOutput, time.Second, "id\nuid=0(root)\n# "),
+		rec(OpWrite, DirOutput, 2*time.Second, "lost")[:headerSize+1],
+	)
+	sum, err := Chapters(bytes.NewReader(data), []Command{{Time: t0.Add(time.Second), Input: "id"}})
+	if err != nil || len(sum.Chapters) != 1 || sum.Chapters[0].Output != "uid=0(root)" {
+		t.Errorf("damaged: %v, %v", sum, err)
+	}
+}
+
+func TestConvertMarkers(t *testing.T) {
+	data := file(
+		rec(OpOpen, 0, 0, ""),
+		rec(OpWrite, DirOutput, time.Second, "a"),
+		rec(OpWrite, DirOutput, 3*time.Second, "b"),
+	)
+	long := strings.Repeat("x", maxMarkerLabel+10)
+	_, events, err := convert(t, data, Options{Commands: []Command{
+		{Time: t0.Add(2 * time.Second), Input: "ls -la"},
+		{Time: t0.Add(5 * time.Second), Input: long}, // after the last record
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var markers []event
+	for _, e := range events {
+		if e.code == asciicast.Marker {
+			markers = append(markers, e)
+		}
+	}
+	if len(markers) != 2 || markers[0].at != 2*time.Second || markers[0].data != "ls -la" {
+		t.Fatalf("markers = %v", markers)
+	}
+	if markers[1].at != 5*time.Second || len([]rune(markers[1].data)) != maxMarkerLabel+1 {
+		t.Errorf("late, long marker = %v", markers[1])
+	}
+	if events[len(events)-1].code != asciicast.Marker {
+		t.Error("the marker after the end must come last")
+	}
+}
+
+func FuzzChapters(f *testing.F) {
+	real, err := os.ReadFile(realFile)
+	if err != nil {
+		f.Fatal(err)
+	}
+	cmds := commandsOf(f, "6f07bbfeafaa")
+	f.Add(real)
+	f.Add(file(rec(OpOpen, 0, 0, ""), rec(OpWrite, DirOutput, time.Second, "\x1b[?1049h\x1b]0;\x1b[")))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		sum, _ := Chapters(bytes.NewReader(data), cmds)
+		for _, c := range sum.Chapters {
+			if len(c.Output) > 4*MaxChapterOutput || !utf8.ValidString(c.Output) {
+				t.Fatalf("bad chapter %s", c)
+			}
+		}
+	})
 }
