@@ -1,4 +1,6 @@
 import type { RawEvent } from './api/types'
+import { formatDuration } from './format'
+import { t } from './i18n'
 
 // Turns the raw Cowrie events of a session into timeline entries:
 // consecutive commands are grouped into one terminal block, every other
@@ -30,9 +32,10 @@ export type Entry = ProseEntry | TerminalEntry
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : v === undefined || v === null ? '' : String(v))
 
+// Cowrie 3 writes duration_ms, older versions duration in seconds.
 function duration(d: Record<string, unknown>): string {
-  if (typeof d.duration_ms === 'number') return `${(d.duration_ms / 1000).toFixed(1)} s`
-  if (d.duration !== undefined) return `${Number(d.duration).toFixed(1)} s`
+  if (d.duration_ms !== undefined) return formatDuration(Number(d.duration_ms) / 1000)
+  if (d.duration !== undefined) return formatDuration(Number(d.duration))
   return ''
 }
 
@@ -41,29 +44,29 @@ function prose(e: RawEvent): ProseEntry {
   const p = (text: string, detail?: string, tone: Tone = 'normal'): ProseEntry => ({ kind: 'prose', ts: e.ts, text, detail, tone })
   switch (e.eventid) {
     case 'cowrie.session.connect':
-      return p(`Connected to port ${str(d.dst_port)} over ${str(d.protocol) || 'ssh'} from`, `${str(d.src_ip)}:${str(d.src_port)}`)
+      return p(t('events.connect', { port: str(d.dst_port), protocol: str(d.protocol) || 'ssh' }), `${str(d.src_ip)}:${str(d.src_port)}`)
     case 'cowrie.client.version':
-      return p('Client announced', str(d.version))
+      return p(t('events.clientVersion'), str(d.version))
     case 'cowrie.client.kex':
-      return p('Key exchange, HASSH', str(d.hassh), 'muted')
+      return p(t('events.kex'), str(d.hassh), 'muted')
     case 'cowrie.client.size':
-      return p(`Terminal size ${str(d.width)}×${str(d.height)}`, undefined, 'muted')
+      return p(t('events.clientSize', { width: str(d.width), height: str(d.height) }), undefined, 'muted')
     case 'cowrie.session.params':
-      return p('Shell architecture', str(d.arch), 'muted')
+      return p(t('events.params'), str(d.arch), 'muted')
     case 'cowrie.login.failed':
-      return p('Login refused', `${str(d.username)} / ${str(d.password)}`)
+      return p(t('events.loginFailed'), `${str(d.username)} / ${str(d.password)}`)
     case 'cowrie.login.success':
-      return p('Login accepted, shell opened', `${str(d.username)} / ${str(d.password)}`, 'shell')
+      return p(t('events.loginSuccess'), `${str(d.username)} / ${str(d.password)}`, 'shell')
     case 'cowrie.session.file_download':
-      return p(`Downloaded ${str(d.url)}`, `sha256 ${str(d.shasum)}`, 'shell')
+      return p(t('events.download', { url: str(d.url) }), t('session.files.sha256', { sha: str(d.shasum) }), 'shell')
     case 'cowrie.session.file_download.failed':
-      return p('Download failed', str(d.url))
+      return p(t('events.downloadFailed'), str(d.url))
     case 'cowrie.session.file_upload':
-      return p(`Uploaded ${str(d.filename)}`, `sha256 ${str(d.shasum)}`, 'shell')
+      return p(t('events.upload', { filename: str(d.filename) }), t('session.files.sha256', { sha: str(d.shasum) }), 'shell')
     case 'cowrie.log.closed':
-      return p(`Terminal recording closed after ${duration(d)}`, undefined, 'muted')
+      return p(t('events.logClosed', { duration: duration(d) }), undefined, 'muted')
     case 'cowrie.session.closed':
-      return p(`Disconnected after ${duration(d)}`)
+      return p(t('events.sessionClosed', { duration: duration(d) }))
     default:
       return p(str(d.message) || e.eventid, str(d.message) ? e.eventid : undefined, 'muted')
   }

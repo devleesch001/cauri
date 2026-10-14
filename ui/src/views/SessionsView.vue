@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent } from 'openvue/datatable'
 import Column from 'openvue/column'
 import InputText from 'openvue/inputtext'
@@ -15,6 +16,7 @@ import { dayRange } from '@/dates'
 import { endpoint, formatDuration, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const rows = 50
@@ -35,11 +37,11 @@ const login = computed({
   get: () => q('login') || 'any',
   set: (v: string) => void patchQuery({ login: v === 'any' ? undefined : v }),
 })
-const loginOptions = [
-  { label: 'Any outcome', value: 'any' },
-  { label: 'Shell obtained', value: 'success' },
-  { label: 'Login failed', value: 'failed' },
-]
+const loginOptions = computed(() => [
+  { label: t('sessions.filters.anyOutcome'), value: 'any' },
+  { label: t('sessions.filters.shellObtained'), value: 'success' },
+  { label: t('sessions.filters.loginFailed'), value: 'failed' },
+])
 const withCommands = computed({
   get: () => q('has_commands') === 'true',
   set: (v: boolean) => void patchQuery({ has_commands: v ? 'true' : undefined }),
@@ -95,8 +97,8 @@ function clearFilters() {
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>Sessions</h1>
-      <span class="muted">{{ total.toLocaleString() }} {{ total === 1 ? 'session' : 'sessions' }}</span>
+      <h1>{{ t('sessions.title') }}</h1>
+      <span class="muted">{{ t('sessions.count', { n: total.toLocaleString() }, total) }}</span>
     </div>
 
     <div
@@ -105,29 +107,29 @@ function clearFilters() {
     >
       <InputText
         v-model="text.ip"
-        placeholder="Source IP"
-        aria-label="Source IP"
+        :placeholder="t('filters.sourceIp')"
+        :aria-label="t('filters.sourceIp')"
         @keyup.enter="applyText"
         @blur="applyText"
       />
       <InputText
         v-model="text.username"
-        placeholder="Username tried"
-        aria-label="Username tried"
+        :placeholder="t('sessions.filters.username')"
+        :aria-label="t('sessions.filters.username')"
         @keyup.enter="applyText"
         @blur="applyText"
       />
       <InputText
         v-model="text.password"
-        placeholder="Password tried"
-        aria-label="Password tried"
+        :placeholder="t('sessions.filters.password')"
+        :aria-label="t('sessions.filters.password')"
         @keyup.enter="applyText"
         @blur="applyText"
       />
       <InputText
         v-model="text.client"
-        placeholder="SSH client"
-        aria-label="SSH client contains"
+        :placeholder="t('sessions.filters.client')"
+        :aria-label="t('sessions.filters.clientLabel')"
         @keyup.enter="applyText"
         @blur="applyText"
       />
@@ -141,15 +143,15 @@ function clearFilters() {
         option-label="label"
         option-value="value"
         :allow-empty="false"
-        aria-label="Login outcome"
+        :aria-label="t('sessions.filters.outcome')"
       />
       <label class="toggle">
         <ToggleSwitch v-model="withCommands" />
-        Typed commands
+        {{ t('sessions.filters.typedCommands') }}
       </label>
       <Button
         v-if="filtered"
-        label="Clear filters"
+        :label="t('filters.clear')"
         severity="secondary"
         text
         @click="clearFilters"
@@ -178,16 +180,16 @@ function clearFilters() {
           v-if="filtered"
           class="muted"
         >
-          No session matches these filters.
+          {{ t('sessions.empty.filtered') }}
         </p>
         <p
           v-else
           class="muted"
         >
-          No session yet. Sessions appear here once an ingestor sends Cowrie events to this API.
+          {{ t('sessions.empty.none') }}
         </p>
       </template>
-      <Column header="Started">
+      <Column :header="t('sessions.columns.started')">
         <template #body="{ data }">
           <RouterLink
             :to="{ name: 'session', params: { id: data.id } }"
@@ -200,14 +202,14 @@ function clearFilters() {
       </Column>
       <Column
         field="sensor_id"
-        header="Sensor"
+        :header="t('sessions.columns.sensor')"
       />
-      <Column header="Source">
+      <Column :header="t('sessions.columns.source')">
         <template #body="{ data }">
           <span class="data">{{ endpoint(data.src_ip, data.src_port) }}</span>
         </template>
       </Column>
-      <Column header="Credentials tried">
+      <Column :header="t('sessions.columns.credentials')">
         <template #body="{ data }">
           <span
             v-for="(c, i) in shown(data)"
@@ -218,41 +220,41 @@ function clearFilters() {
           <span
             v-if="data.login_attempts > 3"
             class="muted"
-          >+{{ data.login_attempts - 3 }} more</span>
+          >{{ t('sessions.moreCredentials', { n: data.login_attempts - 3 }) }}</span>
         </template>
       </Column>
-      <Column header="SSH client">
+      <Column :header="t('sessions.columns.client')">
         <template #body="{ data }">
           <span class="data client">{{ data.client_version ?? '—' }}</span>
         </template>
       </Column>
-      <Column header="Duration">
+      <Column :header="t('sessions.columns.duration')">
         <template #body="{ data }">
           {{ formatDuration(data.duration) }}
         </template>
       </Column>
       <Column
-        header="Commands"
+        :header="t('sessions.columns.commands')"
         class="num"
       >
         <template #body="{ data }">
           {{ data.commands || '—' }}
         </template>
       </Column>
-      <Column header="Outcome">
+      <Column :header="t('sessions.columns.outcome')">
         <template #body="{ data }">
           <span
             v-if="data.login_success"
             class="shell"
-          >Shell</span>
+          >{{ t('sessions.outcome.shell') }}</span>
           <span
             v-else-if="data.login_attempts"
             class="muted"
-          >Refused</span>
+          >{{ t('sessions.outcome.refused') }}</span>
           <span
             v-else
             class="muted"
-          >No login</span>
+          >{{ t('sessions.outcome.noLogin') }}</span>
         </template>
       </Column>
     </DataTable>

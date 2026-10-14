@@ -278,6 +278,10 @@ CAURI_TEST_PG_DSN='postgres://postgres:test@127.0.0.1:55432/postgres?sslmode=dis
 cd ui && npm run dev
 ```
 
+UI texts are in `ui/src/locales/` (vue-i18n). English is the reference
+catalogue; another language is a file with the same keys, checked by
+TypeScript, registered in `ui/src/i18n.ts`.
+
 `internal/ingest/testdata` holds a `cowrie.json` written by the official
 `cowrie/cowrie` image (v3.1.2); tests check the parsing against it.
 

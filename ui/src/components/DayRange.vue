@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import DatePicker from 'openvue/datepicker'
+import { useI18n } from 'vue-i18n'
 import { fromDay, toDay } from '@/dates'
 
 // A range of days bound to two YYYY-MM-DD strings.
+const { t } = useI18n()
 const from = defineModel<string>('from', { required: true })
 const to = defineModel<string>('to', { required: true })
 
@@ -27,9 +29,9 @@ const range = computed<(Date | null)[] | null>({
     v-model="range"
     selection-mode="range"
     date-format="yy-mm-dd"
-    placeholder="Any date"
+    :placeholder="t('filters.anyDate')"
     show-button-bar
     :manual-input="false"
-    aria-label="Date range"
+    :aria-label="t('filters.dateRange')"
   />
 </template>

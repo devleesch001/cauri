@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import Message from 'openvue/message'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{ error: string | null }>()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -10,7 +12,7 @@ defineProps<{ error: string | null }>()
     severity="error"
     class="notice"
   >
-    The API did not answer: {{ error }}. Check that "cauri api" is running and reachable under /api.
+    {{ t('apiError', { error }) }}
   </Message>
 </template>
 

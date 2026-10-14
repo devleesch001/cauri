@@ -10,12 +10,14 @@ import '@fontsource/ibm-plex-mono/500.css'
 import './style.css'
 
 import App from './App.vue'
+import { i18n } from './i18n'
 import { router } from './router'
 import { Cauri } from './theme'
 
 createApp(App)
   .use(createPinia())
   .use(router)
+  .use(i18n)
   .use(OpenVue, { theme: { preset: Cauri, options: { darkModeSelector: 'system' } } })
   .directive('tooltip', Tooltip)
   .mount('#app')

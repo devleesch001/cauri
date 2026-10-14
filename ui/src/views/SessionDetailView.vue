@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Skeleton from 'openvue/skeleton'
 import { ApiError, api } from '@/api/client'
 import type { SessionDetail } from '@/api/types'
@@ -9,6 +10,7 @@ import { endpoint, formatBytes, formatDuration, formatOffset, formatTime } from 
 import { timeline } from '@/timeline'
 
 const props = defineProps<{ id: string }>()
+const { t } = useI18n()
 
 const session = ref<SessionDetail | null>(null)
 const missing = ref(false)
@@ -40,93 +42,93 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
       :to="{ name: 'sessions' }"
       class="back muted"
     >
-      All sessions
+      {{ t('session.back') }}
     </RouterLink>
 
     <ErrorNotice :error="error" />
 
     <template v-if="missing">
-      <h1>Session not found</h1>
+      <h1>{{ t('session.notFound') }}</h1>
       <p class="muted">
-        No session has the identifier {{ id }}. It may come from another cauri instance.
+        {{ t('session.notFoundText', { id }) }}
       </p>
     </template>
 
     <template v-else-if="session">
       <div class="page-head">
         <h1>
-          <span class="data">{{ session.src_ip ?? 'Unknown source' }}</span>
+          <span class="data">{{ session.src_ip ?? t('session.unknownSource') }}</span>
           <span
             v-if="session.login_success"
             class="shell verdict"
-          >got a shell</span>
+          >{{ t('session.gotShell') }}</span>
           <span
             v-else
             class="muted verdict"
-          >no shell</span>
+          >{{ t('session.noShell') }}</span>
         </h1>
-        <span class="muted">{{ formatTime(session.started_at) }} on {{ session.sensor_id }}</span>
+        <span class="muted">{{ t('session.startedOn', { time: formatTime(session.started_at), sensor: session.sensor_id }) }}</span>
       </div>
 
       <div class="layout">
         <aside>
           <dl class="facts">
-            <dt>Source</dt>
+            <dt>{{ t('session.facts.source') }}</dt>
             <dd class="data">
               {{ endpoint(session.src_ip, session.src_port) }}
             </dd>
-            <dt>Honeypot port</dt>
+            <dt>{{ t('session.facts.port') }}</dt>
             <dd>{{ session.dst_port ?? '—' }} <span class="muted">{{ session.protocol }}</span></dd>
-            <dt>SSH client</dt>
+            <dt>{{ t('session.facts.client') }}</dt>
             <dd class="data">
               {{ session.client_version ?? '—' }}
             </dd>
-            <dt>HASSH</dt>
+            <dt>{{ t('session.facts.hassh') }}</dt>
             <dd class="data">
               {{ session.hassh ?? '—' }}
             </dd>
-            <dt>Duration</dt>
+            <dt>{{ t('session.facts.duration') }}</dt>
             <dd>{{ formatDuration(session.duration) }}</dd>
-            <dt>Cowrie session</dt>
+            <dt>{{ t('session.facts.cowrieSession') }}</dt>
             <dd class="data">
               {{ session.session }}
             </dd>
           </dl>
 
-          <h2>Recording</h2>
+          <h2>{{ t('session.recording.title') }}</h2>
           <p
             v-if="session.tty_available"
             class="recording"
           >
-            Stored, {{ formatBytes(session.tty_size) }} over {{ formatDuration(session.tty_duration) }}.
-            <span class="muted">Replay is not available in this version.</span>
+            {{ t('session.recording.stored', { size: formatBytes(session.tty_size), duration: formatDuration(session.tty_duration) }) }}
+            <span class="muted">{{ t('session.recording.noReplay') }}</span>
           </p>
           <p
             v-else-if="session.tty_log"
             class="muted recording"
           >
-            Cowrie recorded the terminal; the file has not reached the API yet.
+            {{ t('session.recording.pending') }}
           </p>
           <p
             v-else
             class="muted recording"
           >
-            No terminal was opened.
+            {{ t('session.recording.none') }}
           </p>
 
           <template v-if="session.transfers.length">
-            <h2>Files</h2>
+            <h2>{{ t('session.files.title') }}</h2>
             <ul class="files">
               <li
-                v-for="t in session.transfers"
-                :key="t.id"
+                v-for="x in session.transfers"
+                :key="x.id"
               >
-                <span>{{ t.direction === 'download' ? 'Downloaded' : 'Uploaded' }}</span>
-                <span class="data">{{ t.url ?? t.filename }}</span>
+                <span>{{ x.direction === 'download' ? t('session.files.download') : t('session.files.upload') }}</span>
+                <span class="data">{{ x.url ?? x.filename }}</span>
                 <span
-                  v-if="t.sha256"
+                  v-if="x.sha256"
                   class="data muted"
-                >sha256 {{ t.sha256 }}</span>
+                >{{ t('session.files.sha256', { sha: x.sha256 }) }}</span>
               </li>
             </ul>
           </template>
@@ -134,7 +136,7 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
 
         <section aria-labelledby="timeline-title">
           <h2 id="timeline-title">
-            Timeline
+            {{ t('session.timeline.title') }}
           </h2>
           <ol class="timeline">
             <li
@@ -146,7 +148,7 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
                 <div
                   class="terminal"
                   role="log"
-                  aria-label="Commands typed"
+                  :aria-label="t('session.timeline.commands')"
                 >
                   <div
                     v-for="(line, j) in entry.lines"
@@ -159,7 +161,7 @@ const offset = (ts: string) => (session.value ? formatOffset(session.value.start
                     <span
                       v-if="line.failed"
                       class="failed"
-                    >command not found</span>
+                    >{{ t('session.timeline.commandNotFound') }}</span>
                   </div>
                 </div>
               </template>

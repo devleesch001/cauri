@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent } from 'openvue/datatable'
 import Column from 'openvue/column'
 import InputText from 'openvue/inputtext'
@@ -16,6 +17,7 @@ import { patchQuery, queryValue } from '@/router'
 
 // Failed logins. By default only those of sessions that never obtained a
 // shell: the credential spraying that leaves no other trace.
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const rows = 100
@@ -79,8 +81,8 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
 <template>
   <div class="page">
     <div class="page-head">
-      <h1>Failed logins</h1>
-      <span class="muted">{{ total.toLocaleString() }} {{ total === 1 ? 'attempt' : 'attempts' }}</span>
+      <h1>{{ t('logins.title') }}</h1>
+      <span class="muted">{{ t('logins.count', { n: total.toLocaleString() }, total) }}</span>
     </div>
 
     <div
@@ -89,22 +91,22 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
     >
       <InputText
         v-model="text.ip"
-        placeholder="Source IP"
-        aria-label="Source IP"
+        :placeholder="t('filters.sourceIp')"
+        :aria-label="t('filters.sourceIp')"
         @keyup.enter="applyText"
         @blur="applyText"
       />
       <InputText
         v-model="text.username"
-        placeholder="Username"
-        aria-label="Username"
+        :placeholder="t('logins.username')"
+        :aria-label="t('logins.username')"
         @keyup.enter="applyText"
         @blur="applyText"
       />
       <InputText
         v-model="text.password"
-        placeholder="Password"
-        aria-label="Password"
+        :placeholder="t('logins.password')"
+        :aria-label="t('logins.password')"
         @keyup.enter="applyText"
         @blur="applyText"
       />
@@ -114,11 +116,11 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       />
       <label class="toggle">
         <ToggleSwitch v-model="withShells" />
-        Include sessions that later got a shell
+        {{ t('logins.includeShells') }}
       </label>
       <Button
         v-if="filtered"
-        label="Clear filters"
+        :label="t('filters.clear')"
         severity="secondary"
         text
         @click="router.replace({ query: {} })"
@@ -144,10 +146,10 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
     >
       <template #empty>
         <p class="muted">
-          {{ filtered ? 'No failed login matches these filters.' : 'No failed login yet.' }}
+          {{ filtered ? t('logins.empty.filtered') : t('logins.empty.none') }}
         </p>
       </template>
-      <Column header="Time">
+      <Column :header="t('logins.columns.time')">
         <template #body="{ data }">
           <RouterLink
             :to="{ name: 'session', params: { id: data.session_id } }"
@@ -160,24 +162,24 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       </Column>
       <Column
         field="sensor_id"
-        header="Sensor"
+        :header="t('logins.columns.sensor')"
       />
-      <Column header="Source IP">
+      <Column :header="t('logins.columns.sourceIp')">
         <template #body="{ data }">
           <span class="data">{{ data.src_ip ?? '—' }}</span>
         </template>
       </Column>
-      <Column header="Username">
+      <Column :header="t('logins.columns.username')">
         <template #body="{ data }">
           <span class="data">{{ data.username }}</span>
         </template>
       </Column>
-      <Column header="Password">
+      <Column :header="t('logins.columns.password')">
         <template #body="{ data }">
           <span class="data">{{ data.password }}</span>
         </template>
       </Column>
-      <Column header="SSH client">
+      <Column :header="t('logins.columns.client')">
         <template #body="{ data }">
           <span class="data">{{ data.client_version ?? '—' }}</span>
         </template>

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Select from 'openvue/select'
 import { patchQuery, queryValue } from '@/router'
 import { useSensors } from '@/stores/sensors'
 
 // Filters every view by sensor, through the ?sensor= query parameter.
+const { t } = useI18n()
 const sensors = useSensors()
 const route = useRoute()
 
@@ -22,9 +24,9 @@ const selected = computed({
     :options="options"
     option-label="label"
     option-value="value"
-    placeholder="All sensors"
+    :placeholder="t('sensor.all')"
     show-clear
-    aria-label="Sensor"
+    :aria-label="t('sensor.label')"
     :disabled="route.name === 'session'"
   />
 </template>

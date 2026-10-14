@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import SensorSelect from './components/SensorSelect.vue'
 import { useSensors } from './stores/sensors'
 
+const { t } = useI18n()
 const sensors = useSensors()
 onMounted(sensors.load)
 </script>
@@ -16,12 +18,12 @@ onMounted(sensors.load)
     >
       cauri
     </RouterLink>
-    <nav aria-label="Sections">
+    <nav :aria-label="t('nav.sections')">
       <RouterLink to="/sessions">
-        Sessions
+        {{ t('nav.sessions') }}
       </RouterLink>
       <RouterLink to="/login-attempts">
-        Failed logins
+        {{ t('nav.failedLogins') }}
       </RouterLink>
     </nav>
     <SensorSelect class="sensor" />

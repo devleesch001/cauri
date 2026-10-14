@@ -18,6 +18,12 @@ const keepDist: Plugin = {
 // In development, /api goes to a local "cauri api" (CAURI_API_URL to change it).
 export default defineConfig({
   plugins: [vue(), keepDist],
+  // vue-i18n build flags: Composition API only, no devtools in production.
+  define: {
+    __VUE_I18N_FULL_INSTALL__: true,
+    __VUE_I18N_LEGACY_API__: false,
+    __INTLIFY_PROD_DEVTOOLS__: false,
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
