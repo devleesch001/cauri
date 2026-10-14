@@ -129,8 +129,9 @@ export interface Verdict {
 }
 
 export interface CountryCount {
-  country: string
+  country: string // ISO 3166-1 alpha-2
   sessions: number
+  shells: number // sessions that obtained a shell
 }
 
 /** GET /api/about. */

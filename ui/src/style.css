@@ -10,6 +10,7 @@
   --c-term-ink: #d6e2ea;
   --c-term-prompt: #7fd1c7;
   --c-term-dim: #7d8f9c;
+  --c-map-land: #e2e7eb; /* countries without attacks */
 
   --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, monospace;
@@ -31,6 +32,7 @@
     --c-shell: #f97066;
     --c-shell-bg: #3a1714;
     --c-term-bg: #0a1117;
+    --c-map-land: #2a353e;
   }
 }
 

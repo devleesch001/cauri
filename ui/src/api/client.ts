@@ -36,7 +36,7 @@ async function get<T>(path: string, params: Params = {}): Promise<T> {
 
 export const api = {
   sensors: () => get<Sensor[]>('/sensors'),
-  countries: (sensor: string) => get<CountryCount[]>('/countries', { sensor }),
+  countries: (params: Params) => get<CountryCount[]>('/countries', params),
   about: () => get<About>('/about'),
   sessions: (params: Params) => get<Page<SessionSummary>>('/sessions', params),
   session: (id: string) => get<SessionDetail>('/sessions/' + encodeURIComponent(id)),

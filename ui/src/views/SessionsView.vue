@@ -40,7 +40,7 @@ const countries = ref<CountryCount[]>([])
 watch(
   () => q('sensor'),
   async (sensor) => {
-    countries.value = await api.countries(sensor).catch(() => [])
+    countries.value = await api.countries({ sensor }).catch(() => [])
   },
   { immediate: true },
 )

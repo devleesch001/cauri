@@ -5,6 +5,7 @@
 export default {
   nav: {
     sections: 'Sections',
+    overview: 'Overview',
     sessions: 'Sessions',
     failedLogins: 'Failed logins',
   },
@@ -19,6 +20,26 @@ export default {
     clear: 'Clear filters',
   },
   apiError: 'The API did not answer: {error}. Check that "cauri api" is running and reachable under /api.',
+  overview: {
+    title: 'Overview',
+    summary: '{n} located session from {c} countries | {n} located sessions from {c} countries',
+    sessions: '{n} session | {n} sessions',
+    shells: '{n} got a shell | {n} got a shell',
+    noGeoip:
+      'Sessions are not located: give the API a GeoIP database (CAURI_GEOIP_DB, see the README) to see where attacks come from.',
+    empty: 'No located session matches these filters.',
+    map: {
+      title: 'Attacks by country',
+      label: 'World map of the sessions of {n} country | World map of the sessions of {n} countries',
+      legend: 'sessions, logarithmic scale',
+    },
+    ranking: {
+      title: 'Top countries',
+      country: 'Country',
+      sessions: 'Sessions',
+      shells: 'Shells',
+    },
+  },
   sessions: {
     title: 'Sessions',
     count: '{n} session | {n} sessions',

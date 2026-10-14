@@ -4,7 +4,7 @@ export const router: Router = createRouter({
   // The server answers index.html for every path outside /api.
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/sessions' },
+    { path: '/', name: 'overview', component: () => import('./views/OverviewView.vue') },
     { path: '/sessions', name: 'sessions', component: () => import('./views/SessionsView.vue') },
     { path: '/sessions/:id', name: 'session', component: () => import('./views/SessionDetailView.vue'), props: true },
     { path: '/login-attempts', name: 'login-attempts', component: () => import('./views/LoginAttemptsView.vue') },

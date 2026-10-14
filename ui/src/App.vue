@@ -20,12 +20,15 @@ onMounted(() => {
 <template>
   <header class="bar">
     <RouterLink
-      to="/sessions"
+      to="/"
       class="brand"
     >
       cauri
     </RouterLink>
     <nav :aria-label="t('nav.sections')">
+      <RouterLink to="/">
+        {{ t('nav.overview') }}
+      </RouterLink>
       <RouterLink to="/sessions">
         {{ t('nav.sessions') }}
       </RouterLink>
