@@ -351,7 +351,8 @@ func (t *Follower) list() ([]*file, error) {
 	var files []*file
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || (name != t.opts.Name && !strings.HasPrefix(name, t.opts.Name+".")) {
+		// Regular files only: a symbolic link could lead out of the directory.
+		if !e.Type().IsRegular() || (name != t.opts.Name && !strings.HasPrefix(name, t.opts.Name+".")) {
 			continue
 		}
 		if ext := filepath.Ext(name); name != t.opts.Name && contains(compressedExt, ext) {

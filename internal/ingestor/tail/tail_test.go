@@ -36,7 +36,9 @@ func appendTo(t *testing.T, path string, lines ...string) {
 }
 
 // ev returns a distinct line, with a timestamp-like prefix as Cowrie writes.
-func ev(i int) string { return fmt.Sprintf(`{"timestamp":"2026-10-14T09:00:%02d","n":%d}`+"\n", i%60, i) }
+func ev(i int) string {
+	return fmt.Sprintf(`{"timestamp":"2026-10-14T09:00:%02d","n":%d}`+"\n", i%60, i)
+}
 
 func next(t *testing.T, f *Follower) Line {
 	t.Helper()
@@ -240,4 +242,17 @@ func TestOverlongLine(t *testing.T) {
 	appendTo(t, filepath.Join(dir, name), ev(1), strings.Repeat("x", 200)+"\n", ev(2))
 	f := open(t, opts(dir), nil) // MaxLine 64
 	expect(t, f, 1, 2)
+}
+
+func TestIgnoresSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "other.json")
+	appendTo(t, outside, ev(9))
+	if err := os.Symlink(outside, filepath.Join(dir, name+".link")); err != nil {
+		t.Fatal(err)
+	}
+	appendTo(t, filepath.Join(dir, name), ev(1))
+	f := open(t, opts(dir), nil)
+	expect(t, f, 1, 1)
+	expectNothing(t, f)
 }

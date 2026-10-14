@@ -81,7 +81,14 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := os.MkdirAll(cfg.StateDir, 0o750); err != nil {
 		return err
 	}
-	in := &ingestor{Config: cfg, posPath: filepath.Join(cfg.StateDir, "position.json")}
+	// Cowrie controls the TTY directory: os.Root refuses names, symbolic
+	// links included, that would lead outside of it.
+	ttyRoot, err := os.OpenRoot(cfg.TTYDir)
+	if err != nil {
+		return fmt.Errorf("tty directory: %w", err)
+	}
+	defer func() { _ = ttyRoot.Close() }()
+	in := &ingestor{Config: cfg, posPath: filepath.Join(cfg.StateDir, "position.json"), ttyRoot: ttyRoot}
 
 	var saved *tail.Position
 	var pos tail.Position
@@ -130,6 +137,7 @@ func Run(ctx context.Context, cfg Config) error {
 type ingestor struct {
 	Config
 	posPath string
+	ttyRoot *os.Root
 	queue   *ttyQueue
 }
 
@@ -287,29 +295,16 @@ func (in *ingestor) uploadTTYs(ctx context.Context) error {
 // errors are returned.
 func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	log := in.Logger.With("session", job.Session, "ttylog", job.TTYLog)
-	// Only the base name of Cowrie's path is kept: the file must be in TTYDir.
-	name := filepath.Base(job.TTYLog)
-	if name == "." || name == ".." || name == string(filepath.Separator) {
-		log.Warn("invalid tty recording name, dropping it")
+	f, m, err := in.openTTY(job)
+	if err != nil {
+		log.Warn("tty recording unreadable, dropping it", "err", err)
 		return in.queue.done(job.Session)
 	}
-	path := filepath.Join(in.TTYDir, name)
-	m, err := in.ttyMeta(job.Session, path)
-	if errors.Is(err, os.ErrNotExist) {
-		log.Warn("tty recording missing, dropping it")
-		return in.queue.done(job.Session)
-	}
+	res, err := in.Sink.SendTTY(ctx, m, f)
+	_ = f.Close()
 	if err == nil {
-		var f *os.File
-		if f, err = os.Open(path); err == nil { //nolint:gosec // G304: base name inside TTYDir, checked above
-			var res protocol.TTYResult
-			res, err = in.Sink.SendTTY(ctx, m, f)
-			_ = f.Close()
-			if err == nil {
-				log.Debug("tty recording delivered", "status", res.Status)
-				return in.queue.done(job.Session)
-			}
-		}
+		log.Debug("tty recording delivered", "status", res.Status)
+		return in.queue.done(job.Session)
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -323,20 +318,33 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	return in.queue.retry(job.Session, time.Now().Add(delay))
 }
 
-// ttyMeta hashes a recording: the digest lets the API check the upload
-// and recognise one it already has.
-func (in *ingestor) ttyMeta(session, path string) (protocol.TTYMeta, error) {
-	f, err := os.Open(path) //nolint:gosec // G304: see uploadTTY
+// openTTY opens the recording of a job, which must be a regular file of
+// the TTY directory, and hashes it: the digest lets the API check the
+// upload and recognise one it already has. The file is returned at its
+// start, ready to send.
+func (in *ingestor) openTTY(job ttyJob) (*os.File, protocol.TTYMeta, error) {
+	var m protocol.TTYMeta
+	f, err := in.ttyRoot.Open(filepath.Base(job.TTYLog))
 	if err != nil {
-		return protocol.TTYMeta{}, err
+		return nil, m, err
 	}
-	defer func() { _ = f.Close() }()
+	fi, err := f.Stat()
+	if err == nil && !fi.Mode().IsRegular() {
+		err = errors.New("not a regular file")
+	}
+	var n int64
 	h := sha256.New()
-	n, err := io.Copy(h, f)
-	if err != nil {
-		return protocol.TTYMeta{}, err
+	if err == nil {
+		n, err = io.Copy(h, f)
 	}
-	return protocol.TTYMeta{
-		SensorID: in.SensorID, Session: session, SHA256: hex.EncodeToString(h.Sum(nil)), Size: n,
+	if err == nil {
+		_, err = f.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, m, err
+	}
+	return f, protocol.TTYMeta{
+		SensorID: in.SensorID, Session: job.Session, SHA256: hex.EncodeToString(h.Sum(nil)), Size: n,
 	}, nil
 }

@@ -330,3 +330,33 @@ func TestConfigValidation(t *testing.T) {
 		t.Fatal("want error for invalid sensor id")
 	}
 }
+
+// A compromised Cowrie must not make the ingestor upload files from
+// outside the TTY directory.
+func TestTTYOutsideDirectory(t *testing.T) {
+	f := newFixture(t)
+	secret := filepath.Join(filepath.Dir(f.ttyDir), "secret")
+	if err := os.WriteFile(secret, []byte("token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(f.ttyDir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(f.ttyDir, "dir"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, LogName,
+		logClosedEvent("s1", "link"),
+		logClosedEvent("s2", "../secret"), // base name only: "secret", absent from the directory
+		logClosedEvent("s3", "dir"),
+	)
+	f.start(t, f.config(f.sink))
+	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
+	waitFor(t, "jobs dropped", func() bool {
+		q, _ = loadTTYQueue(q.path)
+		return eventCount(f.sink)() == 3 && q.len() == 0
+	})
+	if _, ttys := f.sink.snapshot(); len(ttys) != 0 {
+		t.Fatalf("uploaded %v", ttys)
+	}
+}
