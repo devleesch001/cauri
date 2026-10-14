@@ -54,9 +54,9 @@ const (
 	wholeLinesShare = 0.2
 	minInputs       = 3 // input records needed to judge granularity
 
-	minKeyGaps         = 10   // intervals between keys needed to judge typing
-	irregularTypingCV  = 0.4  // coefficient of variation of key intervals
-	mechanicalTypingCV = 0.1  //
+	minKeyGaps         = 10  // intervals between keys needed to judge typing
+	irregularTypingCV  = 0.4 // coefficient of variation of key intervals
+	mechanicalTypingCV = 0.1 //
 	humanSpeedMin      = 60 * time.Millisecond
 	humanSpeedMax      = 600 * time.Millisecond
 	tooFastToType      = 20 * time.Millisecond

@@ -98,7 +98,9 @@ func TestRealScriptedSession(t *testing.T) {
 
 func TestHuman(t *testing.T) {
 	in := typed(lines, keyGaps,
-		func(i int) time.Duration { return []time.Duration{900, 2500, 600, 4000, 1200, 700}[i] * time.Millisecond })
+		func(i int) time.Duration {
+			return []time.Duration{900, 2500, 600, 4000, 1200, 700}[i] * time.Millisecond
+		})
 	// A typo corrected with backspace, and Tab completion.
 	in = append(in, input{in[len(in)-1].at + time.Second, "x"}, input{in[len(in)-1].at + 1200*time.Millisecond, "\x7f"},
 		input{in[len(in)-1].at + 1500*time.Millisecond, "\t"})
