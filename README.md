@@ -95,6 +95,7 @@ internal/ttystore/   storage of TTY recordings
 internal/ttylog/     reads Cowrie's recordings, converts them for replay
 internal/asciicast/  asciicast model and encoders (version 3)
 internal/verdict/    human/bot verdict of a session
+internal/geoip/      GeoIP lookups (MMDB), reloaded when the file changes
 internal/auth/       ingestor tokens
 internal/api/        HTTP API (chi)
 internal/ingestor/   ingestor; tail/ follows the log files
@@ -142,6 +143,47 @@ and beside it the session facts, the commands with their output (a click
 moves the player there; the current one is highlighted), the logins
 tried (passwords and offered public keys) and the files.
 
+### GeoIP
+
+With a GeoIP database, cauri locates each session by its source address:
+country and city, shown in the session list (with a country filter), the
+failed logins and the session page. A session is located when it is
+stored, with the database of that time, which is recorded with it;
+sessions stored before a database was configured are located once when
+the API starts. Private and reserved addresses have no location.
+
+cauri reads any MMDB file. Two free databases fit; neither is bundled,
+and the UI shows the attribution each requires:
+
+| | DB-IP Lite (default choice) | MaxMind GeoLite2 |
+|---|---|---|
+| Licence | Creative Commons BY 4.0 | MaxMind's GeoLite EULA |
+| Account | None | Required (licence key) |
+| Obligations | Attribution, shown by the UI | Attribution; use each new version and delete older ones within 30 days |
+| Updates | Monthly | Twice a week |
+
+Download DB-IP City Lite (or `dbip-country-lite`, smaller, without
+cities), replacing the month:
+
+```sh
+curl -fL https://download.db-ip.com/free/dbip-city-lite-2026-10.mmdb.gz | gunzip > geoip.mmdb
+```
+
+GeoLite2 is downloaded with MaxMind's `geoipupdate` and your licence key.
+
+Then give the file to the API, `--geoip-db` / `CAURI_GEOIP_DB`. With the
+compose files, copy it into the data volume and set
+`CAURI_GEOIP_DB=/data/geoip.mmdb`:
+
+```sh
+docker compose cp geoip.mmdb api:/data/geoip.mmdb
+```
+
+To update, copy the new file over the old one: the API reloads it within
+a minute, without restarting. The database is held in memory (about
+120 MiB for DB-IP City Lite, 8 MiB for the country version), so replacing
+the file in place is safe.
+
 ### Human or bot
 
 `GET /api/sessions/{id}/verdict` tells whether a session looks typed by a
@@ -179,6 +221,7 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_DB_DRIVER`    | `sqlite`                                  | `sqlite` or `postgres`                                                       |
 | `CAURI_DB_DSN`       | `data/cauri.db` (image: `/data/cauri.db`) | SQLite file path, or `postgres://user:password@host:5432/db?sslmode=disable` |
 | `CAURI_TTY_DIR`      | `data/tty` (image: `/data/tty`)           | Directory of the TTY recordings                                              |
+| `CAURI_GEOIP_DB` | (none) | MMDB GeoIP database (DB-IP Lite or GeoLite2) to locate sessions, see [GeoIP](#geoip) |
 | `CAURI_MAX_TTY_SIZE` | `134217728` (128 MiB)                     | Largest recording accepted, in bytes                                         |
 | `CAURI_UI`           | `false`                                   | `true`: same as `api --ui`                                                   |
 | `CAURI_LOG_LEVEL`    | `info`                                    | `debug`, `info`, `warn`, `error` (also `cauri ui`)                           |

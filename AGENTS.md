@@ -101,6 +101,7 @@ mandatory.
 | `internal/store/` | bun models, migrations, read queries; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
 | `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model and v3 encoder |
+| `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |
 | `internal/verdict/` | Human/bot verdict: signals from the recording and the events, points, thresholds |
 | `internal/auth/` | Ingestor tokens |
 | `internal/api/` | chi router, ingestion and read handlers, middlewares |
