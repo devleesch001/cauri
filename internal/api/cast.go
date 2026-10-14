@@ -24,7 +24,7 @@ const (
 
 // castVersion changes when the conversion of a same file changes, so that
 // clients do not keep an old replay (it is part of the ETag).
-const castVersion = "v3.1"
+const castVersion = "v3.2"
 
 // getCast converts the raw recording of a session to asciicast v3 on the
 // fly. The stored file is never modified.

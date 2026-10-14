@@ -121,7 +121,7 @@ func (c *converter) record(rec Record) error {
 	}
 	switch rec.Dir {
 	case DirOutput:
-		return c.emit(at, asciicast.Output, c.out.decode(rec.Data))
+		return c.emit(at, asciicast.Output, onlcr(c.out.decode(rec.Data)))
 	case DirInput:
 		return c.emit(at, asciicast.Input, c.input.decode(rec.Data))
 	}
@@ -144,7 +144,7 @@ func (c *converter) resizesUntil(t time.Time) error {
 // finish writes bytes still waiting for the rest of a character and
 // flushes the encoder. Sizes reported after the end are dropped.
 func (c *converter) finish() error {
-	if err := c.emit(c.last, asciicast.Output, c.out.flush()); err != nil {
+	if err := c.emit(c.last, asciicast.Output, onlcr(c.out.flush())); err != nil {
 		return err
 	}
 	if err := c.emit(c.last, asciicast.Input, c.input.flush()); err != nil {
@@ -159,6 +159,11 @@ func (c *converter) emit(at time.Duration, code, data string) error {
 	}
 	return c.enc.WriteEvent(asciicast.Event{Time: at, Code: code, Data: data})
 }
+
+// onlcr does what the terminal driver does to output on a real terminal
+// (stty onlcr): Cowrie records its shell's output before that, with bare
+// "\n" line ends. A "\r\n" becomes "\r\r\n", which displays the same.
+func onlcr(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
 
 // utf8Buffer turns a byte stream cut at arbitrary places into valid UTF-8
 // strings: a character split between two writes is kept until complete,

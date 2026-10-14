@@ -311,3 +311,20 @@ func FuzzConvert(f *testing.F) {
 		}
 	})
 }
+
+// Line ends of the output get the carriage return a real terminal adds;
+// input is left as typed.
+func TestConvertLineEnds(t *testing.T) {
+	data := file(
+		rec(OpOpen, 0, 0, ""),
+		rec(OpWrite, DirOutput, time.Millisecond, "one\ntwo\r\n"),
+		rec(OpWrite, DirInput, 2*time.Millisecond, "ls\n"),
+	)
+	_, events, err := convert(t, data, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events[0].data != "one\r\ntwo\r\r\n" || events[1].data != "ls\n" {
+		t.Errorf("events = %+v", events)
+	}
+}
