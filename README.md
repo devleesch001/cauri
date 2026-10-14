@@ -152,6 +152,11 @@ stored, with the database of that time, which is recorded with it;
 sessions stored before a database was configured are located once when
 the API starts. Private and reserved addresses have no location.
 
+The API returns the ISO 3166-1 alpha-2 code of the country; the UI shows
+its name (from the browser) and its flag, from
+[flag-icons](https://github.com/lipis/flag-icons) (MIT), bundled in the
+UI: no request leaves for another site.
+
 cauri reads any MMDB file. Two free databases fit; neither is bundled,
 and the UI shows the attribution each requires:
 

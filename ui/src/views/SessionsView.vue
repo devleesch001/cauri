@@ -11,6 +11,7 @@ import ToggleSwitch from 'openvue/toggleswitch'
 import Button from 'openvue/button'
 import { api } from '@/api/client'
 import type { CountryCount, SessionSummary } from '@/api/types'
+import CountryFlag from '@/components/CountryFlag.vue'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
@@ -45,8 +46,9 @@ watch(
 )
 const countryOptions = computed(() =>
   countries.value.map((c) => ({
-    label: `${countryName(c.country)} (${c.sessions})`,
+    label: countryName(c.country), // shown when selected, searched by the filter
     value: c.country,
+    count: c.sessions,
   })),
 )
 const country = computed({
@@ -174,7 +176,19 @@ function clearFilters() {
         :aria-label="t('sessions.columns.country')"
         show-clear
         filter
-      />
+      >
+        <template #value="{ value, placeholder }">
+          <CountryFlag
+            v-if="value"
+            :code="value"
+          />
+          <span v-else>{{ placeholder }}</span>
+        </template>
+        <template #option="{ option }">
+          <CountryFlag :code="option.value" />
+          <span class="muted count">{{ option.count }}</span>
+        </template>
+      </Select>
       <DayRange
         v-model:from="from"
         v-model:to="to"
@@ -275,11 +289,11 @@ function clearFilters() {
       </Column>
       <Column :header="t('sessions.columns.country')">
         <template #body="{ data }">
-          <span
+          <CountryFlag
             v-if="data.geo_country"
-            class="country"
+            :code="data.geo_country"
             :title="[data.geo_country, data.geo_city].filter(Boolean).join(', ')"
-          >{{ countryName(data.geo_country) }}</span>
+          />
           <span
             v-else
             class="muted"
@@ -360,8 +374,9 @@ function clearFilters() {
   white-space: nowrap;
 }
 
-.country {
-  white-space: nowrap;
+.count {
+  margin-left: auto;
+  padding-left: var(--space-3);
 }
 
 .client {

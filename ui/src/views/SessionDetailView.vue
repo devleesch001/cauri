@@ -6,9 +6,10 @@ import Skeleton from 'openvue/skeleton'
 import { ApiError, api } from '@/api/client'
 import type { Chapter, Chapters, SessionDetail, Verdict } from '@/api/types'
 import ChapterList from '@/components/ChapterList.vue'
+import CountryFlag from '@/components/CountryFlag.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import ReplayPlayer from '@/components/ReplayPlayer.vue'
-import { countryName, endpoint, formatBytes, formatDuration, formatOffset, formatTime } from '@/format'
+import { endpoint, formatBytes, formatDuration, formatOffset, formatTime } from '@/format'
 import { timeline } from '@/timeline'
 
 const props = defineProps<{ id: string }>()
@@ -190,7 +191,9 @@ const logins = computed(() => {
               <template v-if="session.geo_source">
                 <dt>{{ t('session.facts.location') }}</dt>
                 <dd v-if="session.geo_country">
-                  {{ countryName(session.geo_country) }}{{ session.geo_city ? `, ${session.geo_city}` : '' }}
+                  <CountryFlag :code="session.geo_country">
+                    {{ session.geo_city ? `, ${session.geo_city}` : '' }}
+                  </CountryFlag>
                   <span class="muted source">{{ t('session.facts.locationSource', { source: session.geo_source }) }}</span>
                 </dd>
                 <dd

@@ -9,10 +9,11 @@ import ToggleSwitch from 'openvue/toggleswitch'
 import Button from 'openvue/button'
 import { api } from '@/api/client'
 import type { LoginAttemptRow } from '@/api/types'
+import CountryFlag from '@/components/CountryFlag.vue'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
-import { countryName, formatTime } from '@/format'
+import { formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
 
 // Failed logins. By default only those of sessions that never obtained a
@@ -181,7 +182,10 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       </Column>
       <Column :header="t('logins.columns.country')">
         <template #body="{ data }">
-          <span v-if="data.geo_country">{{ countryName(data.geo_country) }}</span>
+          <CountryFlag
+            v-if="data.geo_country"
+            :code="data.geo_country"
+          />
           <span
             v-else
             class="muted"
