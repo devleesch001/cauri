@@ -1,0 +1,18 @@
+# Go
+/bin/
+*.test
+*.out
+
+# UI
+/ui/node_modules/
+/ui/dist/*
+!/ui/dist/index.html
+
+# Local data
+*.db
+*.db-*
+/data/
+
+# IDE
+/.idea/
+/.vscode/
