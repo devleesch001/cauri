@@ -1,4 +1,8 @@
-FROM alpine:latest AS dirs
+# Image built by GoReleaser from its prebuilt binaries (one per platform);
+# same layout as the Dockerfile: distroless, nonroot user, /data volume.
+
+# Runs on the build machine's platform: no emulation needed for arm64.
+FROM --platform=$BUILDPLATFORM alpine:3.22 AS dirs
 RUN mkdir -p -m 0755 /data && chown 65532:65532 /data
 
 FROM gcr.io/distroless/static-debian13:nonroot

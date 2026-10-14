@@ -17,15 +17,18 @@ Version 1 is complete:
   terminal) and the replay of the recording, failed logins without a
   shell, sensor filter; English, all texts in vue-i18n;
 - one Docker image (distroless, non-root), compose examples for modes 1
-  and 2, Forgejo Actions workflow, README.
+  and 2, GitHub and Forgejo Actions workflows with GoReleaser releases,
+  README.
 
 Verified: Go tests with the race detector on SQLite and PostgreSQL, lint,
 UI lint/typecheck/build; the real chain against the official
 `cowrie/cowrie` image (v3.1.2) with a simulated attacker; mode 2 under
 Docker Compose as non-root; the UI in a browser (desktop and phone).
 
-Not verified: the Forgejo workflow (no Forgejo runner was available) and
-whether the instance's actions mirror has the pinned commits.
+Not verified: the workflows themselves (no runner was available; they
+pass actionlint, and a local GoReleaser snapshot builds binaries, packages
+and both images), and whether a Forgejo instance's actions mirror has the
+pinned commits.
 
 The repository is hosted at https://github.com/devleesch001/cauri; the Go
 module path is `github.com/devleesch001/cauri`.
@@ -48,6 +51,7 @@ module path is `github.com/devleesch001/cauri`.
 | UI protection | None imposed by cauri or the compose files; documented as the operator's job until UI auth exists | User: no mandatory middleware. |
 | CI runner | `runs-on: ubuntu-latest` | User. |
 | CI actions | Pinned to commit SHAs | The image job hands the registry token to third-party actions. |
+| CI and releases | GitHub Actions (ghcr.io, GitHub releases) and Forgejo Actions (instance registry and releases), GoReleaser for binaries and deb/rpm/Arch packages | Set up by the user; the repository lives on GitHub. |
 | Replay format | asciicast v3, the converter structured so that a v2 encoder can be added (not implemented) | User: the player is embedded (asciinema-player ≥ 3.10); CLI compatibility is not a priority. |
 | Keystrokes in replays | Included as `"i"` events | User: in a honeypot they hold input the terminal does not show (passwords at `sudo`, `passwd`…). |
 | Replay timing | Real timing in the cast; `idle_time_limit` 2 s in the header by default, removable (`?idle_time_limit=0`, "Real time" switch) | User: the real rhythm tells a human from a bot. |

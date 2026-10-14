@@ -101,7 +101,8 @@ mandatory.
 | `internal/webui/` | Serves the UI embedded from `internal/webui/dist` |
 | `ui/` | Vue app; builds into `../internal/webui/dist`; `ui/go.mod` keeps `node_modules` out of the Go module |
 | `deploy/` | Compose examples (mode 1: api/ui/ingestor; mode 2: api --ui/ingestor), `.env.example` |
-| `.forgejo/workflows/ci.yml` | CI: tests, lint, UI build, image push to the Forgejo registry |
+| `.github/workflows/ci.yml`, `.forgejo/workflows/ci.yml` | CI: tests, lint, UI build, image (ghcr.io / Forgejo registry), release on `v*` tags |
+| `.goreleaser.yaml`, `.goreleaser.forgejo.yaml`, `Dockerfile.goreleaser` | Releases: binaries, deb/rpm/Arch packages, multi-arch image |
 
 ## Commands
 
@@ -168,8 +169,12 @@ Plex Mono only for technical values; red (`--c-shell`) means only "an
 attacker obtained a shell". Respect dark mode, reduced motion, keyboard
 focus, phone widths.
 
-**CI.** Third-party actions are pinned to commit SHAs with the version in
-a comment; jobs run on `ubuntu-latest`.
+**CI.** GitHub and Forgejo workflows are kept equivalent. Third-party
+actions are pinned to commit SHAs with the version in a comment; jobs run
+on `ubuntu-latest` with the least permissions (read-only by default). On
+GitHub, jobs run on the runner itself: services are reached on
+`localhost`; on Forgejo, jobs run in a container: services by name.
+GoReleaser is pinned to the same version in both workflows.
 
 ## Way of working
 

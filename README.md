@@ -311,11 +311,33 @@ TypeScript, registered in `ui/src/i18n.ts`.
 `internal/ingest/testdata` holds a `cowrie.json` written by the official
 `cowrie/cowrie` image (v3.1.2); tests check the parsing against it.
 
-CI (`.forgejo/workflows/ci.yml`) runs the same checks and pushes the image
-to the registry of the Forgejo instance on `main` and `v*` tags. It needs
-a `REGISTRY_TOKEN` secret (token allowed to write packages), optionally a
-`REGISTRY_USER` variable, and a runner labelled `ubuntu-latest` whose job
-containers can reach a Docker daemon.
+### CI and releases
+
+Two equivalent workflows run the checks above (gofmt, vet, race tests on
+SQLite and PostgreSQL, golangci-lint, UI lint and build) on every push and
+pull request, then publish:
+
+| | GitHub (`.github/workflows/ci.yml`) | Forgejo (`.forgejo/workflows/ci.yml`) |
+|---|---|---|
+| Image, on `main` and `v*` tags | `ghcr.io/devleesch001/cauri` (`main`, `sha-…`, the tag, `latest`) | Registry of the instance |
+| Release, on `v*` tags | GitHub release by GoReleaser (`.goreleaser.yaml`) | Forgejo release by GoReleaser (`.goreleaser.forgejo.yaml`) |
+| Secrets | None: the built-in `GITHUB_TOKEN` | `REGISTRY_TOKEN` (writes packages), optional `REGISTRY_USER`; `RELEASE_TOKEN` for the release if the built-in token cannot create it |
+
+A release holds the static binaries (linux amd64 and arm64), deb, rpm and
+Arch Linux packages installing `/usr/bin/cauri`, and checksums. To publish
+one, push a tag:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Locally, `make release-snapshot` builds everything (multi-arch image
+included, named after `IMAGE`, default `cauri`) in `dist/` without
+publishing; `make release-build` builds the binaries only.
+
+GoReleaser builds images from its own binaries with
+`Dockerfile.goreleaser` (same layout as the `Dockerfile`); the CI image
+jobs use the `Dockerfile`, which also builds the UI.
 
 ## Next steps the code is ready for
 

@@ -1,0 +1,131 @@
+# Tests and lint on every push and pull request; on main and on v* tags,
+# the image is built and pushed to GitHub Container Registry (ghcr.io),
+# and on v* tags a GitHub release is published with GoReleaser.
+#
+# Actions are pinned to commit SHAs (tag in comment): the image and
+# release jobs hand tokens to them, and a tag can be moved. Update the pins
+# deliberately, for example with Renovate.
+#
+# Jobs run on GitHub-hosted "ubuntu-latest" runners. Each job only gets the
+# permissions it needs: the default is read-only.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    # The job runs on the runner itself, not in a container: the service is
+    # reached through its published port.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CAURI_TEST_PG_DSN: postgres://postgres:test@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - name: Test (SQLite and PostgreSQL)
+        run: go test -race ./...
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+
+  ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build # type-checks, then builds
+
+  image:
+    if: github.event_name == 'push'
+    needs: [go, ui]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Image name and tags
+        id: meta
+        run: |
+          image="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            version="${GITHUB_REF_NAME}"
+            tags="${image}:${version},${image}:latest"
+          else
+            version="${GITHUB_SHA::12}"
+            tags="${image}:main,${image}:sha-${version}"
+          fi
+          {
+            echo "image=${image}"
+            echo "version=${version}"
+            echo "tags=${tags}"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [go, ui]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.14.3 # same as local releases
+          args: release --clean --skip=docker
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
