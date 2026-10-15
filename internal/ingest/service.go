@@ -261,6 +261,37 @@ func (s *Service) ForgetTTY(ctx context.Context, sha256 string) error {
 	})
 }
 
+// ForgetPartialTTYs detaches the recordings of sessions that opened several
+// channels, and returns how many sessions it changed. Cowrie writes a file
+// per channel and, before the ingestor stopped sending those sessions' files
+// (see internal/ingestor), the API kept the first channel's alone: a
+// recording of one command out of dozens, which replays as if nothing else
+// had run. Those sessions are replayed from their commands instead. Only
+// rows go: the files stay in the volume, and the verdicts stand. Run it
+// again and it changes nothing.
+func (s *Service) ForgetPartialTTYs(ctx context.Context) (int, error) {
+	n := 0
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		res, err := tx.NewUpdate().Model((*store.Session)(nil)).
+			Set("tty_file_id = NULL").
+			Where("tty_file_id IS NOT NULL").
+			Where("(SELECT COUNT(*) FROM events AS e WHERE e.session_id = s.id AND e.type = ?) > 1", "cowrie.log.closed").
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		changed, _ := res.RowsAffected()
+		n = int(changed)
+		if n == 0 {
+			return nil
+		}
+		_, err = tx.NewDelete().Model((*store.TTYFile)(nil)).
+			Where("id NOT IN (SELECT tty_file_id FROM sessions WHERE tty_file_id IS NOT NULL)").Exec(ctx)
+		return err
+	})
+	return n, err
+}
+
 // locateBatch is the number of sessions located per transaction.
 const locateBatch = 500
 
