@@ -3,9 +3,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import SelectButton from 'openvue/selectbutton'
+import ToggleSwitch from 'openvue/toggleswitch'
 import Button from 'openvue/button'
 import { api } from '@/api/client'
-import type { CountryCount } from '@/api/types'
+import type { CityCount, CountryCount } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
@@ -29,9 +30,15 @@ const verdictOptions = computed(() => [
   { label: t('sessions.filters.humans'), value: 'human' },
   { label: t('sessions.filters.bots'), value: 'bot' },
 ])
+// Cities are shown unless hidden: the choice is kept in the URL too.
+const showCities = computed({
+  get: () => q('cities') !== 'hide',
+  set: (v: boolean) => void patchQuery({ cities: v ? undefined : 'hide' }),
+})
 const filtered = computed(() => ['from', 'to', 'verdict'].some((k) => q(k)))
 
 const countries = ref<CountryCount[]>([])
+const cities = ref<CityCount[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 watch(
@@ -39,7 +46,8 @@ watch(
   async () => {
     loading.value = true
     try {
-      countries.value = await api.countries({ sensor: q('sensor'), verdict: q('verdict'), ...dayRange(q('from'), q('to')) })
+      const params = { sensor: q('sensor'), verdict: q('verdict'), ...dayRange(q('from'), q('to')) }
+      ;[countries.value, cities.value] = await Promise.all([api.countries(params), api.cities(params)])
       error.value = null
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -59,16 +67,17 @@ onMounted(() => {
   void api.about().then((a) => (geoip.value = a.geoip !== null)).catch(() => undefined)
 })
 
-// A country leads to its sessions, with the same filters.
-function sessionsOf(country: string) {
+// A country or a city leads to its sessions, with the same filters.
+function sessionsOf(country: string, city?: string) {
   const query: Record<string, string> = { country }
+  if (city) query.city = city
   for (const k of ['sensor', 'from', 'to', 'verdict']) {
     if (q(k)) query[k] = q(k)
   }
   return { name: 'sessions', query }
 }
-function open(country: string) {
-  void router.push(sessionsOf(country))
+function open(country: string, city?: string) {
+  void router.push(sessionsOf(country, city))
 }
 function clearFilters() {
   void patchQuery({ from: undefined, to: undefined, verdict: undefined })
@@ -98,6 +107,10 @@ function clearFilters() {
         :allow-empty="false"
         :aria-label="t('sessions.filters.verdict')"
       />
+      <label class="toggle">
+        <ToggleSwitch v-model="showCities" />
+        {{ t('overview.map.cities') }}
+      </label>
       <Button
         v-if="filtered"
         :label="t('filters.clear')"
@@ -123,7 +136,9 @@ function clearFilters() {
         <h2>{{ t('overview.map.title') }}</h2>
         <WorldMap
           :countries="countries"
+          :cities="showCities ? cities : []"
           @select="open"
+          @select-city="open"
         />
         <p
           v-if="geoip && !loading && !countries.length"
@@ -195,6 +210,13 @@ function clearFilters() {
 </template>
 
 <style scoped>
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--c-muted);
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 20rem;

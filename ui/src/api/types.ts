@@ -41,6 +41,8 @@ export interface Session {
   geo_country: string | null // ISO 3166-1 alpha-2
   geo_city: string | null
   geo_source: string | null // GeoIP database used; set with no country: unknown address
+  geo_lat: number | null // centre of the city
+  geo_lon: number | null
   verdict: Verdict['verdict'] | null // stored; null until judged
   verdict_score: number | null
 }
@@ -126,6 +128,16 @@ export interface Verdict {
   verdict: 'human' | 'bot' | 'uncertain' | 'no_interaction'
   score: number
   reasons: { code: string; points: number }[]
+}
+
+/** A city sessions came from (GET /api/cities): its centre, from the GeoIP database. */
+export interface CityCount {
+  country: string
+  city: string
+  lat: number
+  lon: number
+  sessions: number
+  shells: number
 }
 
 export interface CountryCount {

@@ -9,6 +9,7 @@ import Select from 'openvue/select'
 import SelectButton from 'openvue/selectbutton'
 import ToggleSwitch from 'openvue/toggleswitch'
 import Button from 'openvue/button'
+import Chip from 'openvue/chip'
 import { api } from '@/api/client'
 import type { CountryCount, SessionSummary } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
@@ -51,9 +52,10 @@ const countryOptions = computed(() =>
     count: c.sessions,
   })),
 )
+// A city comes from the map, with its country: changing the country drops it.
 const country = computed({
   get: () => q('country') || null,
-  set: (v: string | null) => void patchQuery({ country: v ?? undefined }),
+  set: (v: string | null) => void patchQuery({ country: v ?? undefined, city: undefined }),
 })
 
 const login = computed({
@@ -96,7 +98,7 @@ watch(
     try {
       const res = await api.sessions({
         sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        client: q('client'), country: q('country'), login: q('login'), verdict: q('verdict'),
+        client: q('client'), country: q('country'), city: q('city'), login: q('login'), verdict: q('verdict'),
         has_commands: q('has_commands'),
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
@@ -189,6 +191,13 @@ function clearFilters() {
           <span class="muted count">{{ option.count }}</span>
         </template>
       </Select>
+      <Chip
+        v-if="q('city')"
+        removable
+        :label="q('city')"
+        :aria-label="t('sessions.filters.city', { city: q('city') })"
+        @remove="patchQuery({ city: undefined })"
+      />
       <DayRange
         v-model:from="from"
         v-model:to="to"

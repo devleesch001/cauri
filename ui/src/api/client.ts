@@ -1,4 +1,4 @@
-import type { About, Chapters, CountryCount, LoginAttemptRow, Page, Sensor, SessionDetail, SessionSummary, Verdict } from './types'
+import type { About, Chapters, CityCount, CountryCount, LoginAttemptRow, Page, Sensor, SessionDetail, SessionSummary, Verdict } from './types'
 
 // Paths are relative to the page: the API and the UI share a domain, so
 // there is no API URL to configure and no CORS.
@@ -37,6 +37,7 @@ async function get<T>(path: string, params: Params = {}): Promise<T> {
 export const api = {
   sensors: () => get<Sensor[]>('/sensors'),
   countries: (params: Params) => get<CountryCount[]>('/countries', params),
+  cities: (params: Params) => get<CityCount[]>('/cities', params),
   about: () => get<About>('/about'),
   sessions: (params: Params) => get<Page<SessionSummary>>('/sessions', params),
   session: (id: string) => get<SessionDetail>('/sessions/' + encodeURIComponent(id)),

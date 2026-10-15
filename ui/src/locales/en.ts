@@ -29,9 +29,10 @@ export default {
       'Sessions are not located: give the API a GeoIP database (CAURI_GEOIP_DB, see the README) to see where attacks come from.',
     empty: 'No located session matches these filters.',
     map: {
-      title: 'Attacks by country',
+      title: 'Where attacks come from',
       label: 'World map of the sessions of {n} country | World map of the sessions of {n} countries',
       legend: 'sessions, logarithmic scale',
+      cities: 'Cities',
     },
     ranking: {
       title: 'Top countries',
@@ -55,6 +56,7 @@ export default {
       loginFailed: 'Login failed',
       typedCommands: 'Typed commands',
       verdict: 'Human or bot',
+      city: 'City {city}: remove this filter',
       anyVerdict: 'All',
       humans: 'Humans',
       bots: 'Bots',

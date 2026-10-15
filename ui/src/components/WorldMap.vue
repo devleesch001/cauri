@@ -6,14 +6,15 @@ import { feature } from 'topojson-client'
 import type { FeatureCollection, Geometry } from 'geojson'
 import type { GeometryCollection, Topology } from 'topojson-specification'
 import world from '@/assets/world.json'
-import type { CountryCount } from '@/api/types'
+import type { CityCount, CountryCount } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
 
 // Countries coloured by sessions, in the Equal Earth projection (areas
-// kept true). Borders: Natural Earth 1:50m, see scripts/world-geo.mjs.
-// The overlay slot gets the projection, for markers such as cities.
-const props = defineProps<{ countries: CountryCount[] }>()
-const emit = defineEmits<{ select: [code: string] }>()
+// kept true), and cities as circles whose area follows their sessions.
+// Borders: Natural Earth 1:50m, see scripts/world-geo.mjs. The overlay
+// slot gets the projection, for other markers.
+const props = withDefaults(defineProps<{ countries: CountryCount[]; cities?: CityCount[] }>(), { cities: () => [] })
+const emit = defineEmits<{ select: [code: string]; selectCity: [code: string, city: string] }>()
 const { t } = useI18n()
 
 const topo = world as unknown as Topology<{ countries: GeometryCollection<{ a2?: string }> }>
@@ -45,13 +46,26 @@ function fill(a2?: string): string | undefined {
   return `color-mix(in oklab, var(--p-primary-color) ${Math.round(18 + 82 * share(c.sessions))}%, var(--c-map-land))`
 }
 
-const hover = ref<{ c: CountryCount; x: number; y: number } | null>(null)
+// Largest first, so that smaller cities stay on top and can be pointed.
+const dots = computed(() => {
+  const most = props.cities.reduce((m, c) => Math.max(m, c.sessions), 0)
+  return props.cities
+    .map((c) => ({ c, at: projection([c.lon, c.lat]), r: 1.5 + 10 * Math.sqrt(c.sessions / most) }))
+    .filter((d): d is { c: CityCount; at: [number, number]; r: number } => d.at !== null)
+    .sort((a, b) => b.r - a.r)
+})
+
+// What the pointer is on: a country, or a city of it.
+const hover = ref<{ c: CountryCount | CityCount; x: number; y: number } | null>(null)
 const box = ref<HTMLElement | null>(null)
-function move(e: PointerEvent, a2?: string) {
-  const c = a2 ? byCode.value.get(a2) : undefined
+function at(e: PointerEvent, c?: CountryCount | CityCount) {
   const r = box.value?.getBoundingClientRect()
   hover.value = c && r ? { c, x: e.clientX - r.left, y: e.clientY - r.top } : null
 }
+function move(e: PointerEvent, a2?: string) {
+  at(e, a2 ? byCode.value.get(a2) : undefined)
+}
+const hoveredCity = computed(() => (hover.value && 'city' in hover.value.c ? hover.value.c : null))
 function select(a2?: string) {
   if (a2 && byCode.value.has(a2)) emit('select', a2)
 }
@@ -74,9 +88,21 @@ function select(a2?: string) {
           :key="s.key"
           :d="s.d"
           :style="{ fill: fill(s.a2) }"
-          :class="{ active: s.a2 && byCode.has(s.a2), hovered: hover && hover.c.country === s.a2 }"
+          :class="{ active: s.a2 && byCode.has(s.a2), hovered: hover && !hoveredCity && hover.c.country === s.a2 }"
           @pointermove="move($event, s.a2)"
           @click="select(s.a2)"
+        />
+      </g>
+      <g class="cities">
+        <circle
+          v-for="d in dots"
+          :key="`${d.c.country}/${d.c.city}`"
+          :cx="d.at[0]"
+          :cy="d.at[1]"
+          :r="d.r"
+          :class="{ hovered: hoveredCity === d.c }"
+          @pointermove="at($event, d.c)"
+          @click="emit('selectCity', d.c.country, d.c.city)"
         />
       </g>
       <g class="overlay">
@@ -92,7 +118,9 @@ function select(a2?: string) {
       :style="{ left: `${hover.x}px`, top: `${hover.y}px` }"
       aria-hidden="true"
     >
-      <CountryFlag :code="hover.c.country" />
+      <CountryFlag :code="hover.c.country">
+        {{ hoveredCity ? `, ${hoveredCity.city}` : '' }}
+      </CountryFlag>
       <span>{{ t('overview.sessions', { n: hover.c.sessions.toLocaleString() }, hover.c.sessions) }}</span>
       <span
         v-if="hover.c.shells"
@@ -133,6 +161,21 @@ path.active {
 path.hovered {
   stroke: var(--c-ink);
   stroke-width: 1.2;
+}
+
+/* Dark on the coloured countries, never red: red means a shell. */
+circle {
+  fill: var(--c-ink);
+  fill-opacity: 0.4;
+  stroke: var(--c-surface);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+circle.hovered {
+  fill-opacity: 0.75;
+  stroke: var(--c-ink);
 }
 
 .tip {
