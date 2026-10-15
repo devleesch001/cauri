@@ -207,18 +207,38 @@ func (q *query) page() store.Page {
 }
 
 func (s *server) listCountries(w http.ResponseWriter, r *http.Request) {
-	listGeo(s, w, r, store.ListCountries)
+	serveStats(s, w, r, store.ListCountries)
 }
 
 func (s *server) listCities(w http.ResponseWriter, r *http.Request) {
-	listGeo(s, w, r, store.ListCities)
+	serveStats(s, w, r, store.ListCities)
 }
 
-// listGeo answers a count of sessions by place, with the filters of the
-// session list that apply to places.
-func listGeo[T any](s *server, w http.ResponseWriter, r *http.Request, list func(context.Context, bun.IDB, store.GeoFilter) ([]T, error)) {
+func (s *server) getSummary(w http.ResponseWriter, r *http.Request) {
+	serveStats(s, w, r, store.Summarize)
+}
+
+func (s *server) getActivity(w http.ResponseWriter, r *http.Request) {
+	serveStats(s, w, r, store.GetActivity)
+}
+
+func (s *server) getCredentials(w http.ResponseWriter, r *http.Request) {
+	serveStats(s, w, r, store.GetCredentials)
+}
+
+func (s *server) getPayloads(w http.ResponseWriter, r *http.Request) {
+	serveStats(s, w, r, store.GetPayloads)
+}
+
+func (s *server) getOrigins(w http.ResponseWriter, r *http.Request) {
+	serveStats(s, w, r, store.GetOrigins)
+}
+
+// serveStats answers a statistic of the sessions selected by the filters
+// that apply to statistics: sensor, period, human or bot.
+func serveStats[T any](s *server, w http.ResponseWriter, r *http.Request, get func(context.Context, bun.IDB, store.StatsFilter) (T, error)) {
 	q := query{v: r.URL.Query()}
-	f := store.GeoFilter{
+	f := store.StatsFilter{
 		Sensor:  q.str("sensor"),
 		From:    q.time("from"),
 		To:      q.time("to"),
@@ -228,12 +248,12 @@ func listGeo[T any](s *server, w http.ResponseWriter, r *http.Request, list func
 		writeError(w, http.StatusBadRequest, q.err.Error())
 		return
 	}
-	rows, err := list(r.Context(), s.DB, f)
+	out, err := get(r.Context(), s.DB, f)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rows)
+	writeJSON(w, http.StatusOK, out)
 }
 
 type about struct {

@@ -652,3 +652,47 @@ func TestAboutWithoutGeoIP(t *testing.T) {
 		t.Errorf("about = %v", a)
 	}
 }
+
+// The statistics answer on the real capture, with their filters.
+func TestStats(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		realSession(t, e)
+
+		var sum store.Summary
+		get(t, e, "/api/stats/summary", http.StatusOK, &sum)
+		if sum.Sessions != 4 || sum.Shells != 2 || sum.SourceIPs != 1 || sum.Logins != 4 || sum.Accepted != 2 || sum.Previous != nil {
+			t.Errorf("summary = %+v", sum)
+		}
+		get(t, e, "/api/stats/summary?from=2026-10-14T00:00:00Z&to=2026-10-15T00:00:00Z", http.StatusOK, &sum)
+		if sum.Sessions != 4 || sum.Previous == nil || sum.Previous.Sessions != 0 {
+			t.Errorf("summary of the day = %+v", sum)
+		}
+
+		var act store.Activity
+		get(t, e, "/api/stats/activity", http.StatusOK, &act)
+		if len(act.Days) != 1 || act.Days[0].Day != "2026-10-14" || len(act.Hours) != 1 || act.Hours[0].Hour != 8 {
+			t.Errorf("activity = %+v", act)
+		}
+
+		var cred store.Credentials
+		get(t, e, "/api/stats/credentials?sensor=hp-01", http.StatusOK, &cred)
+		if cred.Attempts != 4 || len(cred.Worked) != 1 || cred.Worked[0] != (store.PairCount{Username: "admin", Password: "admin", Count: 2, Accepted: 2}) {
+			t.Errorf("credentials = %+v", cred)
+		}
+
+		var pay store.Payloads
+		get(t, e, "/api/stats/payloads", http.StatusOK, &pay)
+		if pay.Items == nil {
+			t.Errorf("payloads = %+v, want an empty list, not null", pay)
+		}
+
+		var orig store.Origins
+		get(t, e, "/api/stats/origins?verdict=bot", http.StatusOK, &orig)
+		if len(orig.Clients) != 1 || orig.Clients[0] != (store.ClientCount{Client: "SSH-2.0-Go", Sessions: 4, Sources: 1}) {
+			t.Errorf("origins = %+v", orig)
+		}
+
+		get(t, e, "/api/stats/credentials?from=yesterday", http.StatusBadRequest, nil)
+	})
+}
