@@ -97,7 +97,7 @@ change of the converter.
 **Simulated replays.** `/cast` and `/chapters` serve the stored recording
 if the session has one and its file exists. Otherwise (bots, or a file
 the operator removed from the volume to limit retention) they are
-simulated from the commands (`asciicast.Simulate`): marker, prompt (`# `
+simulated from the commands (`asciicast.Simulate`): a banner (`### simulated session ###`), 500 ms later each marker, prompt (`# `
 for root, `$ ` otherwise) and command at their real times, no output;
 chapters carry `simulated: true` and the UI shows a badge. `cowrie.json`
 never holds terminal output, so a simulated replay cannot have any. The

@@ -75,8 +75,12 @@ func (s *server) replaySource(r *http.Request, forced bool) (*store.Recording, *
 	return rec, f, nil
 }
 
+// simulatedLead is the pause between the banner that opens a simulated
+// replay and its first command.
+const simulatedLead = 500 * time.Millisecond
+
 // simulatedSteps returns the commands of a session as steps of a simulated
-// replay, from the first command, and the prompt to show.
+// replay, the first one after the lead, and the prompt to show.
 func (s *server) simulatedSteps(r *http.Request) (start time.Time, prompt string, steps []asciicast.Step, err error) {
 	sim, err := store.GetSimulation(r.Context(), s.DB, sessionID(r))
 	if err != nil {
@@ -91,7 +95,7 @@ func (s *server) simulatedSteps(r *http.Request) (start time.Time, prompt string
 		prompt = "# "
 	}
 	for _, c := range sim.Commands {
-		steps = append(steps, asciicast.Step{Time: max(c.TS.Sub(start), 0), Command: c.Input})
+		steps = append(steps, asciicast.Step{Time: simulatedLead + max(c.TS.Sub(start), 0), Command: c.Input})
 	}
 	return start, prompt, steps, nil
 }

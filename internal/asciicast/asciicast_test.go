@@ -66,6 +66,7 @@ func TestSimulate(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{"version":3,"term":{"cols":80,"rows":24}}
+[0, "o", "#########################\r\n### simulated session ###\r\n#########################\r\n"]
 [0, "m", "uname -a"]
 [0, "o", "# uname -a\r\n"]
 [1.5, "m", "echo a\necho b"]

@@ -892,14 +892,23 @@ func TestSimulatedReplay(t *testing.T) {
 	type chapters struct {
 		Simulated bool `json:"simulated"`
 		Chapters  []struct {
-			Command string `json:"command"`
-			Output  string `json:"output"`
+			Time    float64 `json:"time"`
+			Command string  `json:"command"`
+			Output  string  `json:"output"`
 		} `json:"chapters"`
 	}
 	var got chapters
 	get(t, e, "/api/sessions/"+id+"/chapters", http.StatusOK, &got)
 	if !got.Simulated || len(got.Chapters) != 1 || got.Chapters[0].Command != "id" || got.Chapters[0].Output != "" {
 		t.Fatalf("simulated chapters = %+v", got)
+	}
+	// After the banner and its pause, so that chapters match the replay.
+	if got.Chapters[0].Time != 0.5 {
+		t.Errorf("first chapter at %v s, want 0.5", got.Chapters[0].Time)
+	}
+	if _, body := getRaw(t, e, "/api/sessions/"+id+"/cast", nil); !strings.Contains(body, "### simulated session ###") ||
+		!strings.Contains(body, `[0.5, "m", "id"]`) {
+		t.Errorf("simulated cast = %s", body)
 	}
 
 	// With the recording the replay is real, and no longer after removal.
