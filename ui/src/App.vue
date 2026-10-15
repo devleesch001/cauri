@@ -68,6 +68,12 @@ onMounted(() => {
       to="/"
       class="brand"
     >
+      <img
+        src="/cauri.svg"
+        alt=""
+        width="28"
+        height="28"
+      >
       cauri
     </RouterLink>
     <nav :aria-label="t('nav.sections')">
@@ -189,6 +195,9 @@ onMounted(() => {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-weight: 600;
   font-size: 1.15rem;
   text-decoration: none;

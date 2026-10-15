@@ -1,3 +1,5 @@
+<img src="ui/public/cauri.svg" alt="" width="96">
+
 # cauri
 
 cauri collects what the [Cowrie](https://github.com/cowrie/cowrie) SSH
