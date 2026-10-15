@@ -256,6 +256,15 @@ API serves them under `/api/stats/` (`summary`, `activity`,
 `credentials`, `commands`, `payloads`, `origins`) and `/api/countries`,
 `/api/cities`, with the parameters `sensor`, `from`, `to`, `verdict`.
 
+### Exports
+
+The session list and the failed logins have an **Export CSV** link: the
+same filters, up to 100,000 rows (`/api/sessions.csv`,
+`/api/login-attempts.csv`). Usernames, passwords and client versions
+come from attackers: a cell starting with `=`, `+`, `-` or `@` is
+prefixed with an apostrophe, so that a spreadsheet shows it instead of
+running it as a formula.
+
 ### Raw data retention
 
 The raw Cowrie lines are most of the database (31.6 of 40.4 MB on 7,437

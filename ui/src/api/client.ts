@@ -32,13 +32,18 @@ export class ApiError extends Error {
 
 export type Params = Record<string, string | number | boolean | undefined | null>
 
-async function get<T>(path: string, params: Params = {}): Promise<T> {
+/** The URL of an API path with its parameters; empty ones are left out. */
+function url(path: string, params: Params = {}): string {
   const query = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') query.set(k, String(v))
   }
   const qs = query.toString()
-  const res = await fetch(base + path + (qs ? '?' + qs : ''), { headers: { Accept: 'application/json' } })
+  return base + path + (qs ? '?' + qs : '')
+}
+
+async function get<T>(path: string, params: Params = {}): Promise<T> {
+  const res = await fetch(url(path, params), { headers: { Accept: 'application/json' } })
   if (!res.ok) {
     let message = res.statusText
     try {
@@ -70,4 +75,7 @@ export const api = {
   castUrl: (id: string, realTime: boolean) =>
     `${base}/sessions/${encodeURIComponent(id)}/cast` + (realTime ? '?idle_time_limit=0' : ''),
   loginAttempts: (params: Params) => get<Page<LoginAttemptRow>>('/login-attempts', params),
+  /** CSV downloads of the lists, with the same filters (no page). */
+  sessionsCsvUrl: (params: Params) => url('/sessions.csv', params),
+  loginAttemptsCsvUrl: (params: Params) => url('/login-attempts.csv', params),
 }

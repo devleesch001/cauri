@@ -156,6 +156,11 @@ a {
   white-space: nowrap;
 }
 
+/* A download link beside a list's count. */
+.export {
+  margin-left: var(--space-3);
+}
+
 /* A panel of a page. */
 .card {
   padding: var(--space-3);

@@ -43,6 +43,14 @@ const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ 
 const page = computed(() => Math.max(Number(q('page')) || 1, 1))
 const filtered = computed(() => Object.keys(route.query).some((k) => k !== 'page'))
 
+// The API parameters of the filters, shared by the list and its export.
+const filters = computed(() => ({
+  sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
+  success: false, interactive: withShells.value ? undefined : false,
+  ...dayRange(q('from'), q('to')),
+}))
+const csvUrl = computed(() => api.loginAttemptsCsvUrl(filters.value))
+
 const items = ref<LoginAttemptRow[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -53,12 +61,7 @@ watch(
   async () => {
     loading.value = true
     try {
-      const res = await api.loginAttempts({
-        sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        success: false, interactive: withShells.value ? undefined : false,
-        ...dayRange(q('from'), q('to')),
-        limit: rows, offset: (page.value - 1) * rows,
-      })
+      const res = await api.loginAttempts({ ...filters.value, limit: rows, offset: (page.value - 1) * rows })
       items.value = res.items
       total.value = res.total
       error.value = null
@@ -83,7 +86,14 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
   <div class="page">
     <div class="page-head">
       <h1>{{ t('logins.title') }}</h1>
-      <span class="muted">{{ t('logins.count', { n: total.toLocaleString() }, total) }}</span>
+      <span class="muted">
+        {{ t('logins.count', { n: total.toLocaleString() }, total) }}
+        <a
+          :href="csvUrl"
+          download
+          class="export"
+        >{{ t('export.csv') }}</a>
+      </span>
     </div>
 
     <div

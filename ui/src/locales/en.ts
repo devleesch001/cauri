@@ -310,6 +310,9 @@ export default {
       country: 'Country',
     },
   },
+  export: {
+    csv: 'Export CSV',
+  },
   layout: {
     fullWidth: 'Use the full width of the screen',
     limitWidth: 'Limit the width of pages',

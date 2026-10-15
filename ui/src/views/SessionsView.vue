@@ -86,6 +86,16 @@ const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ 
 const page = computed(() => Math.max(Number(q('page')) || 1, 1))
 const filtered = computed(() => Object.keys(route.query).some((k) => k !== 'page'))
 
+// The API parameters of the filters, shared by the list and its export.
+const filters = computed(() => ({
+  sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
+  client: q('client'), country: q('country'), city: q('city'), file: q('file'), asn: q('asn'),
+  command: q('command'), hassh: q('hassh'), login: q('login'), verdict: q('verdict'),
+  has_commands: q('has_commands'),
+  ...dayRange(q('from'), q('to')),
+}))
+const csvUrl = computed(() => api.sessionsCsvUrl(filters.value))
+
 const items = ref<SessionSummary[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -96,13 +106,7 @@ watch(
   async () => {
     loading.value = true
     try {
-      const res = await api.sessions({
-        sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        client: q('client'), country: q('country'), city: q('city'), file: q('file'), asn: q('asn'), command: q('command'), hassh: q('hassh'), login: q('login'), verdict: q('verdict'),
-        has_commands: q('has_commands'),
-        ...dayRange(q('from'), q('to')),
-        limit: rows, offset: (page.value - 1) * rows,
-      })
+      const res = await api.sessions({ ...filters.value, limit: rows, offset: (page.value - 1) * rows })
       items.value = res.items
       total.value = res.total
       error.value = null
@@ -134,7 +138,14 @@ function clearFilters() {
   <div class="page">
     <div class="page-head">
       <h1>{{ t('sessions.title') }}</h1>
-      <span class="muted">{{ t('sessions.count', { n: total.toLocaleString() }, total) }}</span>
+      <span class="muted">
+        {{ t('sessions.count', { n: total.toLocaleString() }, total) }}
+        <a
+          :href="csvUrl"
+          download
+          class="export"
+        >{{ t('export.csv') }}</a>
+      </span>
     </div>
 
     <div
