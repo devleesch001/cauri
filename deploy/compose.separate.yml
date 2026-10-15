@@ -18,6 +18,7 @@ services:
       CAURI_DB_DSN: ${CAURI_DB_DSN:-/data/cauri.db}
       # Optional GeoIP database, in the cauri-data volume (README: GeoIP).
       CAURI_GEOIP_DB: ${CAURI_GEOIP_DB:-}
+      CAURI_GEOIP_ASN_DB: ${CAURI_GEOIP_ASN_DB:-}
     volumes:
       - cauri-data:/data
     networks: [default, traefik]
