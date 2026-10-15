@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'openvue/button'
 import SelectButton from 'openvue/selectbutton'
@@ -19,7 +19,13 @@ import { markerTimes, terminalSize } from '@/replay'
 // The cast is fetched here rather than by the player, to compute where the
 // markers fall on the player's timeline (see replay.ts); the page uses
 // them to follow the current chapter.
-const props = defineProps<{ sessionId: string }>()
+const props = defineProps<{
+  sessionId: string
+  /** The session has no recording to play: the replay is simulated, and cannot be anything else. */
+  locked?: boolean
+}>()
+/** The simulated replay is asked for, over a recording that exists. */
+const simulated = defineModel<boolean>('simulated', { default: false })
 const emit = defineEmits<{
   /** Current position, in seconds of the player's timeline. */
   time: [seconds: number]
@@ -32,6 +38,10 @@ const container = ref<HTMLElement | null>(null)
 const realTime = ref(false)
 const speed = ref(1)
 const speeds = [0.5, 1, 2, 4, 8].map((s) => ({ label: `${s}×`, value: s }))
+const sources = computed(() => [
+  { label: t('session.replay.source.recording'), value: false, disabled: props.locked },
+  { label: t('session.replay.source.simulated'), value: true },
+])
 const failed = ref(false)
 // The frame has the terminal's proportions (a cell is about 0.6 × 1.33
 // em in the player), so that the player, which fits it in both
@@ -45,7 +55,7 @@ let playing = false
 async function fetchCast() {
   failed.value = false
   try {
-    const res = await fetch(api.castUrl(props.sessionId, realTime.value))
+    const res = await fetch(api.castUrl(props.sessionId, realTime.value, simulated.value && !props.locked))
     if (!res.ok) throw new Error(res.statusText)
     cast = await res.text()
   } catch {
@@ -86,7 +96,7 @@ async function load() {
 
 // The player cannot change speed while running: recreate it in place.
 watch(speed, () => void mount(player.value?.getCurrentTime() ?? 0, playing))
-watch([() => props.sessionId, realTime], () => void load())
+watch([() => props.sessionId, realTime, simulated], () => void load())
 watch(container, (el) => el && void load())
 
 const ticker = setInterval(() => {
@@ -169,11 +179,26 @@ defineExpose({ seekChapter })
         :aria-label="t('session.replay.speed')"
       />
     </div>
-    <label class="real-time">
-      <ToggleSwitch v-model="realTime" />
-      {{ t('session.replay.realTime') }}
-      <span class="muted">{{ realTime ? t('session.replay.realTimeOn') : t('session.replay.realTimeOff') }}</span>
-    </label>
+    <div class="options">
+      <label class="real-time">
+        <ToggleSwitch v-model="realTime" />
+        {{ t('session.replay.realTime') }}
+        <span class="muted">{{ realTime ? t('session.replay.realTimeOn') : t('session.replay.realTimeOff') }}</span>
+      </label>
+      <SelectButton
+        :model-value="locked ? true : simulated"
+        :options="sources"
+        option-label="label"
+        option-value="value"
+        option-disabled="disabled"
+        :allow-empty="false"
+        :disabled="locked"
+        size="small"
+        :title="locked ? t('session.replay.locked') : undefined"
+        :aria-label="t('session.replay.sourceLabel')"
+        @update:model-value="(v: boolean) => (simulated = v)"
+      />
+    </div>
   </div>
 </template>
 
@@ -214,11 +239,19 @@ defineExpose({ seekChapter })
   gap: var(--space-1);
 }
 
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+}
+
 .real-time {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 </style>

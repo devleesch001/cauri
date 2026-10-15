@@ -158,7 +158,10 @@ request and never modified.
   the prompt (`# ` for root, `$ ` otherwise), at its real time, and no
   output. `404` if there is no command either. The UI marks it
   "Simulated". Deleting old recordings from the volume is thus a retention
-  policy: those sessions stay replayable as commands only. The first read
+  policy: those sessions stay replayable as commands only. `?simulated=1`
+  asks for the simulated replay (and chapters) of a session that has a
+  recording too: the UI's "Simulated" switch, locked where there is none; the
+  `X-Cauri-Replay` header of the cast says which one it is. The first read
   that finds a file missing also removes its row from `tty_files`, unless
   the whole volume is unavailable (not mounted); the stored verdict stays.
 

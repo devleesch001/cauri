@@ -18,6 +18,9 @@ const { t } = useI18n()
 const session = ref<SessionDetail | null>(null)
 const chapters = ref<Chapters | null>(null)
 const verdict = ref<Verdict | null>(null)
+// Declared before the watch below, which runs at once.
+const forceSimulated = ref(false) // the viewer asked for the commands alone
+const recordingGone = ref(false) // the API found the recording's file missing
 // Position of the player and of its markers, on its own timeline.
 const playerTime = ref(0)
 const markers = ref<number[]>([])
@@ -32,6 +35,8 @@ watch(
     chapters.value = null
     verdict.value = null
     markers.value = []
+    forceSimulated.value = false
+    recordingGone.value = false
     try {
       session.value = await api.session(id)
       error.value = null
@@ -40,6 +45,8 @@ watch(
       if (replayable.value) {
         // Without chapters, the commands are listed without their output.
         chapters.value = await api.chapters(id).catch(() => null)
+        // A recording listed whose file is gone: the API played the commands.
+        recordingGone.value = !!session.value.tty_available && !!chapters.value?.simulated
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) missing.value = true
@@ -52,7 +59,17 @@ watch(
 // With a recording the replay is the terminal's; without one, but with
 // commands, the API simulates it from them.
 const replayable = computed(() => !!session.value && (session.value.tty_available || session.value.command_list.length > 0))
-const simulated = computed(() => !!chapters.value?.simulated)
+// What is played: the stored recording when there is one and its file is
+// still there, else the commands alone. The viewer may ask for the commands
+// alone even where a recording exists.
+const hasRecording = computed(() => !!session.value?.tty_available && !recordingGone.value)
+const simulated = computed(() => !hasRecording.value || forceSimulated.value)
+
+// Chapters follow what is played: with their output, or without.
+watch(forceSimulated, async (forced) => {
+  if (!session.value || !replayable.value) return
+  chapters.value = await api.chapters(props.id, forced).catch(() => null)
+})
 
 const entries = computed(() => (session.value ? timeline(session.value.events) : []))
 const offset = (ts: string) => (session.value ? formatOffset(session.value.started_at, ts) : '')
@@ -172,14 +189,15 @@ const logins = computed(() => {
           <h2 id="replay-title">
             {{ t('session.replay.title') }}
             <span
-              v-if="simulated"
               class="badge"
-              :title="t('session.replay.simulatedHint')"
-            >{{ t('session.replay.simulated') }}</span>
+              :title="simulated ? t('session.replay.simulatedHint') : t('session.replay.recordingHint')"
+            >{{ simulated ? t('session.replay.simulated') : t('session.replay.recorded') }}</span>
           </h2>
           <ReplayPlayer
             ref="player"
+            v-model:simulated="forceSimulated"
             :session-id="id"
+            :locked="!hasRecording"
             @time="(s) => (playerTime = s)"
             @markers="(m) => (markers = m)"
           />
@@ -252,7 +270,7 @@ const logins = computed(() => {
               <dd v-if="session.tty_available">
                 {{ t('session.recording.stored', { size: formatBytes(session.tty_size), duration: formatMillis(session.tty_duration_ms) }) }}
                 <span
-                  v-if="chapters"
+                  v-if="chapters && !chapters.simulated"
                   class="muted"
                 >{{ t('session.recording.records', { n: chapters.records }) }}</span>
               </dd>

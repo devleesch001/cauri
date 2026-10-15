@@ -104,11 +104,16 @@ export const api = {
   about: () => get<About>('/about'),
   sessions: (params: Params) => get<Page<SessionSummary>>('/sessions', params),
   session: (id: string) => get<SessionDetail>('/sessions/' + encodeURIComponent(id)),
-  chapters: (id: string) => get<Chapters>('/sessions/' + encodeURIComponent(id) + '/chapters'),
+  /** simulated asks for the commands alone, even where a recording exists. */
+  chapters: (id: string, simulated = false) =>
+    get<Chapters>('/sessions/' + encodeURIComponent(id) + '/chapters', simulated ? { simulated: 1 } : {}),
   verdict: (id: string) => get<Verdict>('/sessions/' + encodeURIComponent(id) + '/verdict'),
-  /** URL of a session's replay; realTime removes the idle time limit. */
-  castUrl: (id: string, realTime: boolean) =>
-    `${base}/sessions/${encodeURIComponent(id)}/cast` + (realTime ? '?idle_time_limit=0' : ''),
+  /** URL of a session's replay; realTime removes the idle time limit, simulated asks for the commands alone. */
+  castUrl: (id: string, realTime: boolean, simulated = false) =>
+    url(`/sessions/${encodeURIComponent(id)}/cast`, {
+      idle_time_limit: realTime ? 0 : undefined,
+      simulated: simulated ? 1 : undefined,
+    }),
   loginAttempts: (params: Params) => get<Page<LoginAttemptRow>>('/login-attempts', params),
   /** CSV downloads of the lists, with the same filters (no page). */
   sessionsCsvUrl: (params: Params) => url('/sessions.csv', params),
