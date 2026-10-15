@@ -462,9 +462,9 @@ type CountryCount struct {
 	Shells   int    `bun:"shells" json:"shells"` // sessions that obtained a shell
 }
 
-// GeoFilter selects the sessions counted by country or city. Zero values
-// do not filter.
-type GeoFilter struct {
+// StatsFilter selects the sessions statistics count: by place, time,
+// credentials or files. Zero values do not filter.
+type StatsFilter struct {
 	Sensor   string     // name
 	From, To *time.Time // on started_at, To exclusive
 	Verdict  string     // VerdictHuman or VerdictBot, as in SessionFilter
@@ -472,7 +472,7 @@ type GeoFilter struct {
 
 // ListCountries returns the countries sessions came from, most sessions
 // first. Sessions without a location are not counted.
-func ListCountries(ctx context.Context, db bun.IDB, f GeoFilter) ([]CountryCount, error) {
+func ListCountries(ctx context.Context, db bun.IDB, f StatsFilter) ([]CountryCount, error) {
 	out := []CountryCount{}
 	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country").ColumnExpr("COUNT(*) AS n").
 		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
@@ -482,7 +482,7 @@ func ListCountries(ctx context.Context, db bun.IDB, f GeoFilter) ([]CountryCount
 	return out, err
 }
 
-func (f GeoFilter) apply(q *bun.SelectQuery) *bun.SelectQuery {
+func (f StatsFilter) apply(q *bun.SelectQuery) *bun.SelectQuery {
 	if f.Sensor != "" {
 		q = q.Where("s.sensor_id = (SELECT id FROM sensors WHERE name = ?)", f.Sensor)
 	}
@@ -512,7 +512,7 @@ const MaxCities = 500
 // ListCities returns the cities sessions came from, most sessions first,
 // for the sessions with coordinates. A city's position is the average of
 // its sessions': databases of different dates may differ slightly.
-func ListCities(ctx context.Context, db bun.IDB, f GeoFilter) ([]CityCount, error) {
+func ListCities(ctx context.Context, db bun.IDB, f StatsFilter) ([]CityCount, error) {
 	out := []CityCount{}
 	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country", "geo_city").
 		ColumnExpr("AVG(s.geo_lat) AS lat, AVG(s.geo_lon) AS lon, COUNT(*) AS n").
