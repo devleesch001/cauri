@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -243,21 +244,52 @@ func TestCountries(t *testing.T) {
 			t.Errorf("sessions from IR = %q", got)
 		}
 		// Session 1 (IR) obtained a shell.
-		countries, err := store.ListCountries(ctx, db, store.CountryFilter{})
+		countries, err := store.ListCountries(ctx, db, store.GeoFilter{})
 		if err != nil || len(countries) != 2 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 2, Shells: 1}) ||
 			countries[1] != (store.CountryCount{Country: "FR", Sessions: 1}) {
 			t.Errorf("countries = %+v, %v", countries, err)
 		}
-		if c, _ := store.ListCountries(ctx, db, store.CountryFilter{Sensor: "hp-02"}); len(c) != 1 || c[0].Country != "IR" {
+		if c, _ := store.ListCountries(ctx, db, store.GeoFilter{Sensor: "hp-02"}); len(c) != 1 || c[0].Country != "IR" {
 			t.Errorf("countries of hp-02 = %+v", c)
 		}
-		if c, _ := store.ListCountries(ctx, db, store.CountryFilter{From: ptr(t0.Add(time.Hour))}); len(c) != 2 || c[0].Sessions != 1 {
+		if c, _ := store.ListCountries(ctx, db, store.GeoFilter{From: ptr(t0.Add(time.Hour))}); len(c) != 2 || c[0].Sessions != 1 {
 			t.Errorf("countries from t0+1h = %+v", c)
 		}
 		// 1 is uncertain, 2 and 3 without interaction: all bots.
-		if c, _ := store.ListCountries(ctx, db, store.CountryFilter{Verdict: store.VerdictHuman}); len(c) != 0 {
+		if c, _ := store.ListCountries(ctx, db, store.GeoFilter{Verdict: store.VerdictHuman}); len(c) != 0 {
 			t.Errorf("countries of humans = %+v", c)
 		}
+		// Cities: 1 and 3 in Tehran, at positions of two database dates; 2 in
+		// France without city nor coordinates (a country database).
+		for sess, c := range map[string][3]any{"1": {"Tehran", 35.6, 51.4}, "3": {"Tehran", 35.8, 51.6}} {
+			sensor := "hp-01"
+			if sess == "3" {
+				sensor = "hp-02"
+			}
+			if _, err := db.NewUpdate().Model((*store.Session)(nil)).
+				Set("geo_city = ?", c[0]).Set("geo_lat = ?", c[1]).Set("geo_lon = ?", c[2]).
+				Where("id = ?", lookup(t, db, sensor, sess)).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cities, err := store.ListCities(ctx, db, store.GeoFilter{})
+		if err != nil || len(cities) != 1 {
+			t.Fatalf("cities = %+v, %v", cities, err)
+		}
+		if c := cities[0]; c.Country != "IR" || c.City != "Tehran" || c.Sessions != 2 || c.Shells != 1 ||
+			math.Abs(c.Lat-35.7) > 1e-9 || math.Abs(c.Lon-51.5) > 1e-9 {
+			t.Errorf("Tehran = %+v, want the average position", c)
+		}
+		if c, _ := store.ListCities(ctx, db, store.GeoFilter{Sensor: "hp-02"}); len(c) != 1 || c[0].Sessions != 1 {
+			t.Errorf("cities of hp-02 = %+v", c)
+		}
+		if _, got := sessions(t, db, store.SessionFilter{Country: "IR", City: "Tehran"}); got != "31" {
+			t.Errorf("sessions from Tehran = %q", got)
+		}
+		if _, got := sessions(t, db, store.SessionFilter{Country: "FR", City: "Tehran"}); got != "" {
+			t.Errorf("sessions from Tehran, France = %q", got)
+		}
+
 		rows, _, err := store.ListLoginAttempts(ctx, db, store.LoginAttemptFilter{Country: "FR"})
 		if err != nil || len(rows) != 1 || *rows[0].Country != "FR" {
 			t.Errorf("attempts from FR = %+v, %v", rows, err)

@@ -587,7 +587,7 @@ func TestVerdict(t *testing.T) {
 func TestGeoIP(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		path := geoiptest.Write(t, t.TempDir(), "DBIP-City-Lite", time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
-			geoiptest.Network{CIDR: "203.0.113.0/24", Country: "IR", City: "Tehran"})
+			geoiptest.Network{CIDR: "203.0.113.0/24", Country: "IR", City: "Tehran", Lat: 35.6944, Lon: 51.4215})
 		geo, err := geoip.Open(path, slog.New(slog.NewTextHandler(io.Discard, nil)))
 		if err != nil {
 			t.Fatal(err)
@@ -619,6 +619,16 @@ func TestGeoIP(t *testing.T) {
 		get(t, e, "/api/countries", http.StatusOK, &countries)
 		if len(countries) != 1 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 1, Shells: 1}) {
 			t.Errorf("countries = %+v", countries)
+		}
+		var cities []store.CityCount
+		get(t, e, "/api/cities?verdict=bot", http.StatusOK, &cities)
+		if len(cities) != 1 || cities[0] != (store.CityCount{Country: "IR", City: "Tehran", Lat: 35.6944, Lon: 51.4215, Sessions: 1, Shells: 1}) {
+			t.Errorf("cities = %+v", cities)
+		}
+		get(t, e, "/api/cities?verdict=robot", http.StatusBadRequest, nil)
+		get(t, e, "/api/sessions?country=IR&city=Tehran", http.StatusOK, &list)
+		if len(list.Items) != 1 || *list.Items[0].GeoLat != 35.6944 {
+			t.Errorf("sessions from Tehran = %+v", list.Items)
 		}
 
 		var a struct {

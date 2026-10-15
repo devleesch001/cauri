@@ -68,6 +68,7 @@ func New(c Config) http.Handler {
 			r.Use(c.ReadAuth)
 			r.Get("/sensors", s.listSensors)
 			r.Get("/countries", s.listCountries)
+			r.Get("/cities", s.listCities)
 			r.Get("/about", s.getAbout)
 			r.Get("/sessions", s.listSessions)
 			r.Get("/sessions/{id}", s.getSession)

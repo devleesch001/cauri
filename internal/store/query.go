@@ -59,6 +59,7 @@ type SessionFilter struct {
 	// Client matches a substring of the client version, ignoring case.
 	Client      string
 	Country     string     // ISO 3166-1 alpha-2 code of the source address
+	City        string     // with Country: names are only unique within a country
 	From, To    *time.Time // on started_at, To exclusive
 	Login       string     // LoginSuccess or LoginFailed
 	Verdict     string     // VerdictHuman or VerdictBot
@@ -109,6 +110,9 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 	}
 	if f.Country != "" {
 		q = q.Where("s.geo_country = ?", f.Country)
+	}
+	if f.City != "" {
+		q = q.Where("s.geo_city = ?", f.City)
 	}
 	if f.Client != "" {
 		q = q.Where(`LOWER(s.client_version) LIKE ? ESCAPE '\'`, likeContains(f.Client))
@@ -458,9 +462,9 @@ type CountryCount struct {
 	Shells   int    `bun:"shells" json:"shells"` // sessions that obtained a shell
 }
 
-// CountryFilter selects the sessions counted by country. Zero values do
-// not filter.
-type CountryFilter struct {
+// GeoFilter selects the sessions counted by country or city. Zero values
+// do not filter.
+type GeoFilter struct {
 	Sensor   string     // name
 	From, To *time.Time // on started_at, To exclusive
 	Verdict  string     // VerdictHuman or VerdictBot, as in SessionFilter
@@ -468,11 +472,17 @@ type CountryFilter struct {
 
 // ListCountries returns the countries sessions came from, most sessions
 // first. Sessions without a location are not counted.
-func ListCountries(ctx context.Context, db bun.IDB, f CountryFilter) ([]CountryCount, error) {
+func ListCountries(ctx context.Context, db bun.IDB, f GeoFilter) ([]CountryCount, error) {
 	out := []CountryCount{}
 	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country").ColumnExpr("COUNT(*) AS n").
 		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
-		Where("s.geo_country IS NOT NULL").GroupExpr("s.geo_country").OrderExpr("n DESC, s.geo_country")
+		Where("s.geo_country IS NOT NULL")
+	q = f.apply(q).GroupExpr("s.geo_country").OrderExpr("n DESC, s.geo_country")
+	err := q.Scan(ctx, &out)
+	return out, err
+}
+
+func (f GeoFilter) apply(q *bun.SelectQuery) *bun.SelectQuery {
 	if f.Sensor != "" {
 		q = q.Where("s.sensor_id = (SELECT id FROM sensors WHERE name = ?)", f.Sensor)
 	}
@@ -482,7 +492,34 @@ func ListCountries(ctx context.Context, db bun.IDB, f CountryFilter) ([]CountryC
 	if f.To != nil {
 		q = q.Where("s.started_at < ?", Micro(*f.To))
 	}
-	q = whereVerdict(q, f.Verdict)
+	return whereVerdict(q, f.Verdict)
+}
+
+// CityCount is a city, where it is, and what came from it.
+type CityCount struct {
+	Country  string  `bun:"geo_country" json:"country"`
+	City     string  `bun:"geo_city" json:"city"`
+	Lat      float64 `bun:"lat" json:"lat"`
+	Lon      float64 `bun:"lon" json:"lon"`
+	Sessions int     `bun:"n" json:"sessions"`
+	Shells   int     `bun:"shells" json:"shells"`
+}
+
+// MaxCities bounds the cities returned, the most active first: enough for
+// a world map, small enough to read.
+const MaxCities = 500
+
+// ListCities returns the cities sessions came from, most sessions first,
+// for the sessions with coordinates. A city's position is the average of
+// its sessions': databases of different dates may differ slightly.
+func ListCities(ctx context.Context, db bun.IDB, f GeoFilter) ([]CityCount, error) {
+	out := []CityCount{}
+	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country", "geo_city").
+		ColumnExpr("AVG(s.geo_lat) AS lat, AVG(s.geo_lon) AS lon, COUNT(*) AS n").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
+		Where("s.geo_city IS NOT NULL").Where("s.geo_lat IS NOT NULL")
+	q = f.apply(q).GroupExpr("s.geo_country, s.geo_city").
+		OrderExpr("n DESC, s.geo_country, s.geo_city").Limit(MaxCities)
 	err := q.Scan(ctx, &out)
 	return out, err
 }

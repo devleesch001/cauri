@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/uptrace/bun"
 
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/store"
@@ -38,6 +40,7 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 		Sensor:      q.str("sensor"),
 		SrcIP:       q.str("ip"),
 		Country:     q.country("country"),
+		City:        q.str("city"),
 		Username:    q.str("username"),
 		Password:    q.str("password"),
 		Client:      q.str("client"),
@@ -204,8 +207,18 @@ func (q *query) page() store.Page {
 }
 
 func (s *server) listCountries(w http.ResponseWriter, r *http.Request) {
+	listGeo(s, w, r, store.ListCountries)
+}
+
+func (s *server) listCities(w http.ResponseWriter, r *http.Request) {
+	listGeo(s, w, r, store.ListCities)
+}
+
+// listGeo answers a count of sessions by place, with the filters of the
+// session list that apply to places.
+func listGeo[T any](s *server, w http.ResponseWriter, r *http.Request, list func(context.Context, bun.IDB, store.GeoFilter) ([]T, error)) {
 	q := query{v: r.URL.Query()}
-	f := store.CountryFilter{
+	f := store.GeoFilter{
 		Sensor:  q.str("sensor"),
 		From:    q.time("from"),
 		To:      q.time("to"),
@@ -215,12 +228,12 @@ func (s *server) listCountries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, q.err.Error())
 		return
 	}
-	countries, err := store.ListCountries(r.Context(), s.DB, f)
+	rows, err := list(r.Context(), s.DB, f)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, countries)
+	writeJSON(w, http.StatusOK, rows)
 }
 
 type about struct {
