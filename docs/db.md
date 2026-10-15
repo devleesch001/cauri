@@ -221,6 +221,38 @@ One feature still reads raw lines: replays take the terminal sizes from
 (`store.RawKept`); projecting them into their own table would remove the
 exception.
 
+## Foreign keys
+
+Every foreign key is named `fk_<table>_<column>`, the same in both engines
+(`TestForeignKeyNamesAndActions` reads them back), and says what removing
+its parent does (migration 00005):
+
+| Constraint | Parent | When the parent is deleted |
+|---|---|---|
+| `fk_ingest_tokens_sensor_id` | `sensors` | `CASCADE`: a token means nothing without its sensor |
+| `fk_sessions_sensor_id` | `sensors` | `RESTRICT`: a sensor with sessions cannot be deleted by accident |
+| `fk_events_sensor_id` | `sensors` | `RESTRICT`, as above |
+| `fk_sessions_tty_file_id` | `tty_files` | `SET NULL`: removing a recording leaves its sessions, without it |
+| `fk_events_session_id` | `sessions` | `CASCADE`: the events belong to the session |
+| `fk_event_data_event_id` | `events` | `CASCADE`: the raw line follows its event |
+| `fk_login_attempts_session_id`, `fk_commands_session_id`, `fk_transfers_session_id` | `sessions` | `CASCADE`: projections of the session |
+
+So deleting a session takes its events, raw lines, logins, commands and
+transfers with it, and to remove a sensor one first removes its sessions
+(and so its events). `TestForeignKeyActions` runs these cases on both
+engines. Every referencing column has an index, which the parent's
+deletion needs (`sessions (tty_file_id)`, `events (sensor_id)`,
+`ingest_tokens (sensor_id)`, migration 00005; the others were already
+indexed).
+
+SQLite cannot change a constraint in place: migration 00005 rebuilds the
+six tables that hold one, under temporary names that refer to each other,
+drops the old ones children first and renames the new ones, with foreign
+keys on throughout (they cannot be switched off inside a transaction, and no
+action reaches an old table once its children are gone). Tried on a copy of a
+real database (2,949 sessions, 16,103 events), up, down and up again: same
+rows, `foreign_key_check` empty.
+
 ## Types
 
 | Value | SQLite | PostgreSQL | Go |
@@ -258,6 +290,9 @@ constraints are indexes too.
 | `transfers (session_id)` | Transfers of a session |
 | `transfers (sha256)` | Payloads by digest, sessions that transferred a file (migration 00003) |
 | `tty_files (sha256)` unique | Find a recording by digest at upload |
+| `sessions (tty_file_id)` | Sessions of a recording; deleting a recording (migration 00005) |
+| `events (sensor_id)` | Deleting a sensor checks its events (migration 00005) |
+| `ingest_tokens (sensor_id)` | Tokens of a sensor; deleting a sensor (migration 00005) |
 
 Dropped from the first schema: `raw_events (eventid, ts)` (no query) and
 `sessions (tty_sha256)` (no query found; to add back when a feature

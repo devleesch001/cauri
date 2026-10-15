@@ -67,6 +67,13 @@ Times are integer microseconds (`store.Time`), durations milliseconds.
 Times are stored in UTC (SQLite compares them as text). The API is the
 only writer, except `cauri token`, accepted by the user.
 
+**Foreign keys** are named `fk_<table>_<column>` and carry an explicit
+`ON DELETE` (`docs/db.md`): projections and events cascade from their
+session, a recording's removal sets the session's reference to null,
+sensors are `RESTRICT`ed while they have sessions. Code relies on them
+(`Service.ForgetTTY` only deletes the `tty_files` row): keep both engines
+and `TestForeignKeyNamesAndActions` in step.
+
 **Migrations.** bun's `migrate` package, one set per engine
 (`internal/store/migrations/sqlite/` and `postgres/`, same names, `.tx.up.sql`
 and `.tx.down.sql`), embedded and applied when the API starts;

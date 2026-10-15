@@ -3,8 +3,10 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -136,8 +138,9 @@ func TestSchemasMatch(t *testing.T) {
 	}
 }
 
-// schema lists "table.column null|not null" and "index table(columns)
-// [unique]" lines, sorted, without bun's own tables.
+// schema lists "table.column null|not null", "index table(columns) [unique]"
+// and "fk name: table(column) -> table(column) action" lines, sorted, without
+// bun's own tables.
 func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []string {
 	t.Helper()
 	var lines []string
@@ -161,6 +164,27 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 				CASE WHEN il."unique" = 1 THEN ' unique' ELSE '' END
 			FROM sqlite_master AS m, pragma_index_list(m.name) AS il
 			WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND il.origin != 'pk'`)
+		// SQLite does not tell the name of a constraint: read it from the
+		// definition of the table.
+		var defs []struct{ Name, SQL string }
+		if err := db.NewRaw(`SELECT name, sql AS "sql" FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'bun_%'`).Scan(ctx, &defs); err != nil {
+			t.Fatal(err)
+		}
+		fk := regexp.MustCompile(`CONSTRAINT (\w+) FOREIGN KEY \((\w+)\) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?`)
+		unnamed := regexp.MustCompile(`REFERENCES `)
+		for _, d := range defs {
+			named := fk.FindAllStringSubmatch(d.SQL, -1)
+			for _, m := range named {
+				action := strings.ToLower(m[5])
+				if action == "" {
+					action = "no action"
+				}
+				lines = append(lines, fmt.Sprintf("fk %s: %s(%s) -> %s(%s) %s", m[1], d.Name, m[2], m[3], m[4], action))
+			}
+			if n := len(unnamed.FindAllString(d.SQL, -1)); n != len(named) {
+				t.Errorf("%s: %d foreign keys, %d named", d.Name, n, len(named))
+			}
+		}
 	} else {
 		add(`SELECT table_name || '.' || column_name || CASE WHEN is_nullable = 'NO' THEN ' not null' ELSE ' null' END
 			FROM information_schema.columns WHERE table_schema = current_schema()`)
@@ -173,7 +197,107 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 			JOIN pg_attribute AS a ON a.attrelid = t.oid AND a.attnum = k.attnum
 			WHERE ns.nspname = current_schema() AND NOT ix.indisprimary
 			GROUP BY t.relname, ix.indexrelid, ix.indisunique`)
+		add(`SELECT 'fk ' || c.conname || ': ' || t.relname || '(' || a.attname || ') -> ' || r.relname || '(' || ra.attname || ') ' ||
+				CASE c.confdeltype WHEN 'c' THEN 'cascade' WHEN 'r' THEN 'restrict' WHEN 'n' THEN 'set null' WHEN 'd' THEN 'set default' ELSE 'no action' END
+			FROM pg_constraint AS c
+			JOIN pg_class AS t ON t.oid = c.conrelid
+			JOIN pg_class AS r ON r.oid = c.confrelid
+			JOIN pg_namespace AS ns ON ns.oid = t.relnamespace
+			JOIN pg_attribute AS a ON a.attrelid = t.oid AND a.attnum = c.conkey[1]
+			JOIN pg_attribute AS ra ON ra.attrelid = r.oid AND ra.attnum = c.confkey[1]
+			WHERE c.contype = 'f' AND ns.nspname = current_schema()`)
 	}
 	slices.Sort(lines)
 	return lines
+}
+
+// Every foreign key is named fk_<table>_<column> and has the action its
+// parent's removal calls for (see docs/db.md), on both engines.
+func TestForeignKeyNamesAndActions(t *testing.T) {
+	want := []string{
+		"fk fk_commands_session_id: commands(session_id) -> sessions(id) cascade",
+		"fk fk_event_data_event_id: event_data(event_id) -> events(id) cascade",
+		"fk fk_events_sensor_id: events(sensor_id) -> sensors(id) restrict",
+		"fk fk_events_session_id: events(session_id) -> sessions(id) cascade",
+		"fk fk_ingest_tokens_sensor_id: ingest_tokens(sensor_id) -> sensors(id) cascade",
+		"fk fk_login_attempts_session_id: login_attempts(session_id) -> sessions(id) cascade",
+		"fk fk_sessions_sensor_id: sessions(sensor_id) -> sensors(id) restrict",
+		"fk fk_sessions_tty_file_id: sessions(tty_file_id) -> tty_files(id) set null",
+		"fk fk_transfers_session_id: transfers(session_id) -> sessions(id) cascade",
+	}
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		engine := store.SQLite
+		if db.Dialect().Name().String() == "pg" {
+			engine = store.Postgres
+		}
+		var got []string
+		for _, l := range schema(t, context.Background(), db, engine) {
+			if strings.HasPrefix(l, "fk ") {
+				got = append(got, l)
+			}
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("foreign keys:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
+	})
+}
+
+// What removing a parent does, as the actions say: a session takes its
+// events, their raw lines and its projections with it; a recording leaves
+// its sessions without one; a sensor that has sessions cannot go, one with
+// only tokens takes them along.
+func TestForeignKeyActions(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		ctx := context.Background()
+		exec := func(q string, args ...any) {
+			t.Helper()
+			if _, err := db.ExecContext(ctx, q, args...); err != nil {
+				t.Fatalf("%s: %v", q, err)
+			}
+		}
+		count := func(table string) int {
+			t.Helper()
+			var n int
+			if err := db.NewRaw("SELECT COUNT(*) FROM "+table).Scan(ctx, &n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		exec("INSERT INTO sensors (id, name) VALUES (1, 'hp-01'), (2, 'idle')")
+		exec("INSERT INTO ingest_tokens (sensor_id, name, token_hash, created_at) VALUES (1, 'a', 'h1', 0), (2, 'b', 'h2', 0)")
+		exec("INSERT INTO tty_files (id, sha256, size, path, stored_at) VALUES (1, 'sha', 1, 'p', 0)")
+		exec("INSERT INTO sessions (id, sensor_id, cowrie_session, started_at, tty_file_id) VALUES (1, 1, 's1', 0, 1), (2, 1, 's2', 0, 1)")
+		exec("INSERT INTO events (id, hash, sensor_id, session_id, type, ts, received_at) VALUES (1, ?, 1, 1, 'cowrie.session.connect', 0, 0), (2, ?, 1, 2, 'cowrie.session.connect', 0, 0)", []byte{1}, []byte{2})
+		exec("INSERT INTO event_data (event_id, data) VALUES (1, '{}'), (2, '{}')")
+		exec("INSERT INTO login_attempts (session_id, ts, username, password, success) VALUES (1, 0, 'root', 'x', ?)", false)
+		exec("INSERT INTO commands (session_id, ts, input) VALUES (1, 0, 'id')")
+		exec("INSERT INTO transfers (session_id, ts, direction) VALUES (1, 0, 'download')")
+
+		// A sensor with sessions or events stays.
+		if _, err := db.ExecContext(ctx, "DELETE FROM sensors WHERE id = 1"); err == nil {
+			t.Error("a sensor with sessions was deleted")
+		}
+		// One with only tokens goes with them.
+		exec("DELETE FROM sensors WHERE id = 2")
+		if n := count("ingest_tokens"); n != 1 {
+			t.Errorf("tokens = %d after deleting their sensor, want 1", n)
+		}
+
+		// A recording removed: its sessions stay, without it.
+		exec("DELETE FROM tty_files WHERE id = 1")
+		var detached int
+		if err := db.NewRaw("SELECT COUNT(*) FROM sessions WHERE tty_file_id IS NULL").Scan(ctx, &detached); err != nil || detached != 2 {
+			t.Errorf("sessions without recording = %d, %v; want 2", detached, err)
+		}
+
+		// A session removed: everything of it.
+		exec("DELETE FROM sessions WHERE id = 1")
+		for table, want := range map[string]int{
+			"sessions": 1, "events": 1, "event_data": 1, "login_attempts": 0, "commands": 0, "transfers": 0,
+		} {
+			if got := count(table); got != want {
+				t.Errorf("%s = %d after deleting a session, want %d", table, got, want)
+			}
+		}
+	})
 }

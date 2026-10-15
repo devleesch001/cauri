@@ -249,16 +249,9 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 // was judged on the recording, which cannot be read again. A recording
 // stored again later is recorded again.
 func (s *Service) ForgetTTY(ctx context.Context, sha256 string) error {
-	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		_, err := tx.NewUpdate().Model((*store.Session)(nil)).
-			Set("tty_file_id = NULL").
-			Where("tty_file_id IN (SELECT id FROM tty_files WHERE sha256 = ?)", sha256).Exec(ctx)
-		if err != nil {
-			return err
-		}
-		_, err = tx.NewDelete().Model((*store.TTYFile)(nil)).Where("sha256 = ?", sha256).Exec(ctx)
-		return err
-	})
+	// Its sessions let go of it by the foreign key (ON DELETE SET NULL).
+	_, err := s.db.NewDelete().Model((*store.TTYFile)(nil)).Where("sha256 = ?", sha256).Exec(ctx)
+	return err
 }
 
 // ForgetPartialTTYs detaches the recordings of sessions that opened several
