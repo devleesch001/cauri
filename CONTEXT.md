@@ -65,6 +65,7 @@ module path is `github.com/devleesch001/cauri`.
 | GeoIP | Any MMDB database, DB-IP Lite documented by default (CC BY 4.0, no account), GeoLite2 supported; none bundled; sessions located at ingestion with the database recorded, older ones once at start | User: DB-IP is free and compatible with an MIT project; locate at the time of the attack. The file is read into memory, not mapped: replacing a mapped file in place can crash the API (SIGBUS). |
 | Human/bot verdict | Points per signal (typing granularity, rhythm, speed, editing keys, pauses between commands, no terminal, automation client), human ≥ 3, bot ≤ −3; computed on read, every reason shown; also stored per session for the list filter (All / Humans / Bots; the Bots filter includes uncertain and no-interaction sessions, whose verdict stays unchanged) | User approved the criteria and the filter. Stored at ingestion and when the recording arrives, in the same transaction; recomputed at API start when `verdict.Version` changes, so tuning needs no migration. The session page still computes on read, with the same code. |
 | Replay format | asciicast v3, the converter structured so that a v2 encoder can be added (not implemented) | User: the player is embedded (asciinema-player ≥ 3.10); CLI compatibility is not a priority. |
+| Recordings and simulated replays (2026-10-15) | The ingestor sends a TTY only for a session with a single channel (not a duplicate), no merging; all others, and sessions whose file was removed from the volume, are replayed by the API from their commands (`asciicast.Simulate`, no output), with a "Simulated" badge. The criterion is the channel count, not the pty. | User: the replay is the main feature, but `cowrie.json` has no terminal output, so dropping TTYs altogether was refused; bots running a command per channel gain nothing from merged files. Removing old files from the volume becomes a retention policy that keeps the attack's story. Session 360c0aaa5fe0 (libssh, a pty and a channel per command) showed that a pty does not tell a human from a bot. |
 | Keystrokes in replays | Included as `"i"` events | User: in a honeypot they hold input the terminal does not show (passwords at `sudo`, `passwd`…). |
 | Replay timing | Real timing in the cast; `idle_time_limit` 2 s in the header by default, removable (`?idle_time_limit=0`, "Real time" switch) | User: the real rhythm tells a human from a bot. |
 
@@ -85,7 +86,12 @@ Checked against the official image v3.1.2:
   are the first run's, maybe hours earlier in another session. The user
   chose to keep one recording per session and make the ingestor merge the
   channels, a duplicate moved to its own channel's start, rather than
-  store each channel; existing sessions are re-ingested.
+  store each channel; existing sessions are re-ingested. Superseded the
+  same day: merged files only gave the output of one command, and a
+  libssh bot asked for a pty on every channel (session 360c0aaa5fe0), so
+  the pty is no criterion either. Sessions with several channels now send
+  no recording and are replayed, simulated, from their commands; merging
+  was removed.
 - **Durations are `duration_ms`** (integer milliseconds); older versions
   wrote `duration` in seconds, as number or string. Both are read.
 - **Field types can surprise.** A field of an unexpected type used to make

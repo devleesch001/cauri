@@ -27,15 +27,15 @@ Do not break these without the user's explicit agreement.
 `api --ui`, `ui`, `ingestor`, `token`, `version`. A future all-in-one
 binary is a build tag (`allinone`), not a fork.
 
-**The ingestor only assembles recordings.** It sends each `cowrie.json`
-line unparsed, plus the sensor id and an event id (`protocol.EventID`:
-SHA-256 of sensor id and line). It reads only what it needs to send a
-session's recording: `cowrie.log.closed` (one per SSH channel, one per
-command for many bots) and `cowrie.session.closed`. It then sends one
-recording per session: Cowrie's file for a single channel of its own,
-else the channels merged in the order they opened (`ttylog.Join`), a
-duplicate moved to its own channel's start; it waits for
-`cowrie.session.closed`, an hour at most. All interpretation of Cowrie
+**The ingestor only decides which recording to send.** It sends each
+`cowrie.json` line unparsed, plus the sensor id and an event id
+(`protocol.EventID`: SHA-256 of sensor id and line). It reads only what it
+needs for that: `cowrie.log.closed` (one per SSH channel, one per command
+for many bots) and `cowrie.session.closed`. It sends a recording only for a
+session with exactly one channel whose file is its own (not `duplicate`),
+as Cowrie wrote it; sessions with several channels send none, and there is
+no merging. It waits for `cowrie.session.closed`, an hour at most. The pty
+is not the criterion: bots ask for one too. All interpretation of Cowrie
 events happens in the API.
 
 **One ingestion service.** Validation, deduplication, projection into
@@ -78,7 +78,7 @@ may reference it except its event. Projections point to sessions. What
 still needs the raw line (terminal sizes for replays) is listed in
 `docs/db.md`, for the retention to keep.
 
-**TTY recordings** are stored as the ingestor sends them (one per
+**TTY recordings** are stored as the ingestor sends them (at most one per
 session, see above), never modified, in a volume, named by the SHA-256 of
 the file (`internal/ttystore`); the database keeps the reference. They
 are converted to asciicast at read time (`/api/sessions/{id}/cast`,
@@ -93,6 +93,15 @@ grouped there to be tuned. The verdict is also stored per session (for
 the list filter), computed in `internal/ingest`: bump `verdict.Version`
 with any change of the criteria so stored verdicts are recomputed. A new asciicast version is a new `Encoder`, not a
 change of the converter.
+
+**Simulated replays.** `/cast` and `/chapters` serve the stored recording
+if the session has one and its file exists. Otherwise (bots, or a file
+the operator removed from the volume to limit retention) they are
+simulated from the commands (`asciicast.Simulate`): marker, prompt (`# `
+for root, `$ ` otherwise) and command at their real times, no output;
+chapters carry `simulated: true` and the UI shows a badge. `cowrie.json`
+never holds terminal output, so a simulated replay cannot have any. The
+choice is made on read, never stored.
 
 **Same origin.** The UI calls relative `/api/...` paths: no CORS, no API
 URL in the UI. The reverse proxy routes `/api` to the API.
@@ -124,12 +133,12 @@ mandatory.
 | `internal/ingest/` | Ingestion service; Cowrie parsing in `cowrie.go`, projection in `batch.go` |
 | `internal/store/` | bun models, migrations, read queries, statistics (`stats.go`), raw-data retention; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
-| `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model and v3 encoder |
+| `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model, v3 encoder and simulated replay |
 | `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |
 | `internal/verdict/` | Human/bot verdict: signals from the recording and the events, points, thresholds |
 | `internal/auth/` | Ingestor tokens |
 | `internal/api/` | chi router, ingestion and read handlers, middlewares |
-| `internal/ingestor/` | Ingestor loop, TTY queue, `Sink`; `tail/` follows the log files |
+| `internal/ingestor/` | Ingestor loop, TTY queue (one channel only), `Sink`; `tail/` follows the log files |
 | `internal/webui/` | Serves the UI embedded from `internal/webui/dist` |
 | `ui/` | Vue app; builds into `../internal/webui/dist`; `ui/go.mod` keeps `node_modules` out of the Go module |
 | `deploy/` | Compose examples (mode 1: api/ui/ingestor; mode 2: api --ui/ingestor), `.env.example` |
@@ -196,8 +205,9 @@ in `internal/ingest/testdata/cowrie-v3.1.2.json`):
   terminal output (Cowrie's `ttylog_inputhash`: the keys typed, or the
   command of an exec channel), not the file: `sessions.tty_log` keeps
   Cowrie's name, `tty_sha256`/`tty_size` come only from the uploaded file;
-- Cowrie writes a recording per SSH channel; bots open one exec channel
-  per command in a connection (sample in
+- Cowrie writes a recording per SSH channel; bots (libssh, often with a
+  pty) open one channel per command in a connection, each with its own
+  `cowrie.session.params` and `cowrie.log.closed` (sample in
   `internal/ingest/testdata/cowrie-v3.1.2-exec.json`);
 - Cowrie keeps one file per input: a later recording of the same input is
   `"duplicate": true` and its file is the first one's, with that one's

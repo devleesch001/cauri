@@ -37,10 +37,12 @@ Cowrie ──► cowrie.json ──┐
 **The ingestor does not interpret events.** It sends each line of
 `cowrie.json` as is, with the sensor id and an event id: the SHA-256 of
 the sensor id and the line, so that the API can drop events it already
-has. It sends one TTY recording per session, with its SHA-256, once the
-session ends (`cowrie.session.closed`). Cowrie writes a recording per SSH
-channel, and many bots run each command on its own exec channel: the
-ingestor merges them, in order, into one recording.
+has. It sends the TTY recording of a session, with its SHA-256, once the
+session ends (`cowrie.session.closed`), only if the session had a single
+SSH channel whose file is its own: that is a human at a shell. Cowrie
+writes a recording per channel, and bots run each command on its own
+channel (often with a pty): such sessions send no recording, and the API
+replays them from their commands.
 
 **The API owns all the logic**, in a single ingestion service (`internal/ingest`): validation, deduplication, projection
 of the events
@@ -150,11 +152,16 @@ request and never modified.
 - Each command typed (`cowrie.command.input`) becomes an `"m"` marker,
   which players show as chapters on the progress bar. Cowrie logs a
   command within a millisecond of its Enter key in the recording.
-- `404` if the session has no stored recording, `422` if the file cannot
-  be read; an `ETag` makes repeated loads cheap.
+- `422` if the file cannot be read; an `ETag` makes repeated loads cheap.
+- Without a stored recording, or when its file was removed from the TTY
+  volume, the replay is **simulated** from the commands: each one, with
+  the prompt (`# ` for root, `$ ` otherwise), at its real time, and no
+  output. `404` if there is no command either. The UI marks it
+  "Simulated". Deleting old recordings from the volume is thus a retention
+  policy: those sessions stay replayable as commands only.
 
 `GET /api/sessions/{id}/chapters` returns those commands with what each
-printed, as plain text: the terminal output after the echo of the command
+printed (empty, with `"simulated": true`, without a recording), as plain text: the terminal output after the echo of the command
 line, until the next key typed, without colours, escape sequences or the
 final prompt. A full-screen program (an editor, a pager) is flagged
 instead of rendered. Output is capped (64 KiB per command, 4 MiB per
