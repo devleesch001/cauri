@@ -181,7 +181,7 @@ function open(country: string, city?: string) {
       </FloatingPanel>
     </div>
 
-    <div class="bottom card float">
+    <div class="bottom">
       <StatsFilters>
         <label class="toggle">
           <ToggleSwitch v-model="showCities" />
@@ -233,11 +233,36 @@ function open(country: string, city?: string) {
   width: 15.5rem;
 }
 
+/* Each control sits in a small card of its own over the map. */
 .bottom {
   position: absolute;
   bottom: var(--space-3);
   left: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  right: 24rem;
+}
+
+.bottom :deep(.filters) {
+  margin: 0;
+}
+
+.bottom :deep(.filters > *) {
+  padding: 3px;
+  background: color-mix(in srgb, var(--c-surface) 90%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--c-rule);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+}
+
+/* The card is the frame: the field inside needs none of its own. */
+.bottom :deep(.filters .p-inputtext) {
+  border-color: transparent;
+  box-shadow: none;
+  background: transparent;
+}
+
+.bottom :deep(.filters .toggle) {
+  padding: 3px var(--space-2);
 }
 
 .notices {
