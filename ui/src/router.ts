@@ -5,6 +5,9 @@ export const router: Router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'overview', component: () => import('./views/OverviewView.vue') },
+    { path: '/activity', name: 'activity', component: () => import('./views/ActivityView.vue') },
+    { path: '/credentials', name: 'credentials', component: () => import('./views/CredentialsView.vue') },
+    { path: '/payloads', name: 'payloads', component: () => import('./views/PayloadsView.vue') },
     { path: '/sessions', name: 'sessions', component: () => import('./views/SessionsView.vue') },
     { path: '/sessions/:id', name: 'session', component: () => import('./views/SessionDetailView.vue'), props: true },
     { path: '/login-attempts', name: 'login-attempts', component: () => import('./views/LoginAttemptsView.vue') },

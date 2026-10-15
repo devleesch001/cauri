@@ -1,53 +1,44 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import SelectButton from 'openvue/selectbutton'
 import ToggleSwitch from 'openvue/toggleswitch'
-import Button from 'openvue/button'
 import { api } from '@/api/client'
-import type { CityCount, CountryCount } from '@/api/types'
+import type { CityCount, CountryCount, Origins, Summary } from '@/api/types'
+import BarList from '@/components/BarList.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
-import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
+import KpiCard from '@/components/KpiCard.vue'
+import LiveFeed from '@/components/LiveFeed.vue'
+import StatsFilters from '@/components/StatsFilters.vue'
 import WorldMap from '@/components/WorldMap.vue'
-import { dayRange } from '@/dates'
-import { patchQuery, queryValue } from '@/router'
+import { patchQuery } from '@/router'
+import { useStatsFilters } from '@/stats'
 
 const { t } = useI18n()
-const route = useRoute()
 const router = useRouter()
-const q = (k: string) => queryValue(route.query, k)
+const { params, link, q } = useStatsFilters()
 
-const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
-const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
-const verdict = computed({
-  get: () => q('verdict') || 'any',
-  set: (v: string) => void patchQuery({ verdict: v === 'any' ? undefined : v }),
-})
-const verdictOptions = computed(() => [
-  { label: t('sessions.filters.anyVerdict'), value: 'any' },
-  { label: t('sessions.filters.humans'), value: 'human' },
-  { label: t('sessions.filters.bots'), value: 'bot' },
-])
 // Cities are shown unless hidden: the choice is kept in the URL too.
 const showCities = computed({
   get: () => q('cities') !== 'hide',
   set: (v: boolean) => void patchQuery({ cities: v ? undefined : 'hide' }),
 })
-const filtered = computed(() => ['from', 'to', 'verdict'].some((k) => q(k)))
 
+const summary = ref<Summary | null>(null)
 const countries = ref<CountryCount[]>([])
 const cities = ref<CityCount[]>([])
+const origins = ref<Origins | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 watch(
-  () => route.query,
-  async () => {
+  params,
+  async (p) => {
     loading.value = true
     try {
-      const params = { sensor: q('sensor'), verdict: q('verdict'), ...dayRange(q('from'), q('to')) }
-      ;[countries.value, cities.value] = await Promise.all([api.countries(params), api.cities(params)])
+      ;[summary.value, countries.value, cities.value, origins.value] = await Promise.all([
+        api.summary(p), api.countries(p), api.cities(p), api.origins(p),
+      ])
       error.value = null
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -57,9 +48,12 @@ watch(
   },
   { immediate: true },
 )
-const total = computed(() => countries.value.reduce((n, c) => n + c.sessions, 0))
+const located = computed(() => countries.value.reduce((n, c) => n + c.sessions, 0))
 const top = computed(() => countries.value.slice(0, 20))
-const most = computed(() => top.value[0]?.sessions ?? 1)
+const accepted = computed(() => {
+  const s = summary.value
+  return s && s.logins ? Math.round((1000 * s.accepted) / s.logins) / 10 : 0
+})
 
 // Without a GeoIP database no session is located: say how to get one.
 const geoip = ref(true)
@@ -69,18 +63,10 @@ onMounted(() => {
 
 // A country or a city leads to its sessions, with the same filters.
 function sessionsOf(country: string, city?: string) {
-  const query: Record<string, string> = { country }
-  if (city) query.city = city
-  for (const k of ['sensor', 'from', 'to', 'verdict']) {
-    if (q(k)) query[k] = q(k)
-  }
-  return { name: 'sessions', query }
+  return link('sessions', city ? { country, city } : { country })
 }
 function open(country: string, city?: string) {
   void router.push(sessionsOf(country, city))
-}
-function clearFilters() {
-  void patchQuery({ from: undefined, to: undefined, verdict: undefined })
 }
 </script>
 
@@ -88,49 +74,59 @@ function clearFilters() {
   <div class="page">
     <div class="page-head">
       <h1>{{ t('overview.title') }}</h1>
-      <span class="muted">{{ t('overview.summary', { n: total.toLocaleString(), c: countries.length }, total) }}</span>
+      <span class="muted">{{ t('overview.summary', { n: located.toLocaleString(), c: countries.length }, located) }}</span>
     </div>
 
-    <div
-      class="filters"
-      role="search"
-    >
-      <DayRange
-        v-model:from="from"
-        v-model:to="to"
-      />
-      <SelectButton
-        v-model="verdict"
-        :options="verdictOptions"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        :aria-label="t('sessions.filters.verdict')"
-      />
+    <StatsFilters>
       <label class="toggle">
         <ToggleSwitch v-model="showCities" />
         {{ t('overview.map.cities') }}
       </label>
-      <Button
-        v-if="filtered"
-        :label="t('filters.clear')"
-        severity="secondary"
-        text
-        @click="clearFilters"
+    </StatsFilters>
+
+    <ErrorNotice :error="error" />
+
+    <div
+      v-if="summary"
+      class="kpis"
+    >
+      <KpiCard
+        :label="t('stats.sessions')"
+        :value="summary.sessions"
+        :previous="summary.previous?.sessions"
+      />
+      <KpiCard
+        :label="t('stats.shells')"
+        :value="summary.shells"
+        :previous="summary.previous?.shells"
+      />
+      <KpiCard
+        :label="t('stats.logins')"
+        :value="summary.logins"
+        :detail="t('stats.acceptedShare', { n: accepted })"
+        :previous="summary.previous?.logins"
+      />
+      <KpiCard
+        :label="t('stats.sourceIps')"
+        :value="summary.source_ips"
+        :previous="summary.previous?.source_ips"
+      />
+      <KpiCard
+        :label="t('stats.countries')"
+        :value="summary.countries"
       />
     </div>
 
-    <ErrorNotice :error="error" />
     <p
       v-if="!geoip && !countries.length"
-      class="notice"
+      class="notice card"
     >
       {{ t('overview.noGeoip') }}
     </p>
 
     <div class="layout">
       <section
-        class="card map-card"
+        class="card"
         :aria-busy="loading"
       >
         <h2>{{ t('overview.map.title') }}</h2>
@@ -153,70 +149,74 @@ function clearFilters() {
         class="card"
       >
         <h2>{{ t('overview.ranking.title') }}</h2>
-        <table class="ranking">
-          <thead>
-            <tr>
-              <th scope="col">
-                {{ t('overview.ranking.country') }}
-              </th>
-              <th
-                scope="col"
-                class="num"
-              >
-                {{ t('overview.ranking.sessions') }}
-              </th>
-              <th
-                scope="col"
-                class="num"
-              >
-                {{ t('overview.ranking.shells') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="c in top"
-              :key="c.country"
-            >
-              <td>
-                <RouterLink :to="sessionsOf(c.country)">
-                  <CountryFlag :code="c.country" />
-                </RouterLink>
-                <span
-                  class="bar"
-                  :style="{ width: `${(100 * c.sessions) / most}%` }"
-                  aria-hidden="true"
-                />
-              </td>
-              <td class="num">
-                {{ c.sessions.toLocaleString() }}
-              </td>
-              <td class="num">
-                <span
-                  v-if="c.shells"
-                  class="shell"
-                >{{ c.shells.toLocaleString() }}</span>
-                <span
-                  v-else
-                  class="muted"
-                >—</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <BarList
+          :items="top"
+          :value="(c) => c.sessions"
+          :item-key="(c) => c.country"
+          :to="(c) => sessionsOf(c.country)"
+        >
+          <template #label="{ item }">
+            <CountryFlag :code="item.country" />
+          </template>
+          <template #value="{ item }">
+            {{ item.sessions.toLocaleString() }}
+            <span
+              v-if="item.shells"
+              class="shell"
+              :title="t('overview.shells', { n: item.shells.toLocaleString() }, item.shells)"
+            > · {{ item.shells.toLocaleString() }}</span>
+          </template>
+        </BarList>
+      </section>
+    </div>
+
+    <div class="panels below">
+      <LiveFeed
+        :sensor="q('sensor')"
+        :verdict="q('verdict')"
+      />
+      <section
+        v-if="origins?.sources.length"
+        class="card"
+      >
+        <h2>{{ t('overview.sources') }}</h2>
+        <BarList
+          :items="origins.sources"
+          :value="(s) => s.sessions"
+          :item-key="(s) => s.ip"
+          :to="(s) => link('sessions', { ip: s.ip })"
+        >
+          <template #label="{ item }">
+            <span class="data">{{ item.ip }}</span>
+            <CountryFlag
+              v-if="item.country"
+              :code="item.country"
+              class="muted country"
+            />
+          </template>
+        </BarList>
+      </section>
+      <section
+        v-if="origins?.clients.length"
+        class="card"
+      >
+        <h2>{{ t('overview.clients') }}</h2>
+        <BarList
+          :items="origins.clients"
+          :value="(c) => c.sessions"
+          :item-key="(c) => c.client"
+          :to="(c) => link('sessions', { client: c.client })"
+        >
+          <template #label="{ item }">
+            <span class="data">{{ item.client }}</span>
+          </template>
+        </BarList>
       </section>
     </div>
   </div>
 </template>
 
 <style scoped>
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--c-muted);
-}
-
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 20rem;
@@ -230,67 +230,16 @@ function clearFilters() {
   }
 }
 
-.card {
-  padding: var(--space-3);
-  background: var(--c-surface);
-  border: 1px solid var(--c-rule);
-  border-radius: 8px;
-}
-
-h2 {
-  margin: 0 0 var(--space-3);
-  font-size: 1rem;
-}
-
 .notice {
-  padding: var(--space-3);
-  background: var(--c-surface);
-  border: 1px solid var(--c-rule);
-  border-radius: 8px;
+  margin: 0 0 var(--space-4);
 }
 
-.ranking {
-  width: 100%;
-  border-collapse: collapse;
+.below {
+  margin-top: var(--space-4);
 }
 
-.ranking th {
-  font-weight: 500;
-  color: var(--c-muted);
-  text-align: left;
-}
-
-.ranking th,
-.ranking td {
-  padding: var(--space-1) 0;
-}
-
-.ranking td:first-child {
-  position: relative;
-  padding-bottom: var(--space-2);
-}
-
-.ranking a {
-  text-decoration: none;
-}
-
-.ranking a:hover {
-  text-decoration: underline;
-}
-
-/* Share of the first country, under the name. */
-.bar {
-  position: absolute;
-  bottom: 2px;
-  left: 0;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--p-primary-color);
-  opacity: 0.5;
-}
-
-.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.country {
+  margin-left: var(--space-2);
+  font-size: 0.9em;
 }
 </style>

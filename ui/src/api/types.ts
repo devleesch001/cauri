@@ -151,3 +151,72 @@ export interface About {
   version: string
   geoip: { type: string; built: string; provider: 'db-ip' | 'maxmind' | '' } | null
 }
+
+/** Headline numbers (GET /api/stats/summary); previous: the period of equal length before. */
+export interface Summary {
+  sessions: number
+  shells: number
+  source_ips: number
+  countries: number
+  logins: number
+  accepted: number
+  previous: Omit<Summary, 'previous'> | null
+}
+
+/** When sessions start, in UTC (GET /api/stats/activity). */
+export interface Activity {
+  hours: { weekday: number; hour: number; sessions: number }[] // weekday 0 is Sunday
+  days: { day: string; sessions: number; shells: number }[] // day: YYYY-MM-DD
+}
+
+export interface ValueCount {
+  value: string
+  count: number
+}
+
+export interface PairCount {
+  username: string
+  password: string
+  count: number
+  accepted: number
+}
+
+/** Logins tried (GET /api/stats/credentials). */
+export interface Credentials {
+  attempts: number
+  accepted: number
+  distinct_usernames: number
+  distinct_passwords: number
+  top_usernames: ValueCount[]
+  top_passwords: ValueCount[]
+  top_pairs: PairCount[]
+  worked: PairCount[]
+  password_lengths: { length: number; count: number }[] // the last length means "and more"
+}
+
+/** A file transferred, by digest (GET /api/stats/payloads). */
+export interface Payload {
+  sha256: string
+  transfers: number
+  downloads: number
+  uploads: number
+  sessions: number
+  sources: number
+  first: string
+  last: string
+  url: string | null
+  filename: string | null
+  countries: string[]
+}
+
+export interface Payloads {
+  sessions: number
+  files: number
+  items: Payload[]
+}
+
+/** Who attacks (GET /api/stats/origins). */
+export interface Origins {
+  sources: { ip: string; country: string | null; sessions: number; shells: number; last: string }[]
+  clients: { client: string; sessions: number; sources: number }[]
+}

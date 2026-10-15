@@ -98,7 +98,7 @@ watch(
     try {
       const res = await api.sessions({
         sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        client: q('client'), country: q('country'), city: q('city'), login: q('login'), verdict: q('verdict'),
+        client: q('client'), country: q('country'), city: q('city'), file: q('file'), login: q('login'), verdict: q('verdict'),
         has_commands: q('has_commands'),
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
@@ -197,6 +197,13 @@ function clearFilters() {
         :label="q('city')"
         :aria-label="t('sessions.filters.city', { city: q('city') })"
         @remove="patchQuery({ city: undefined })"
+      />
+      <Chip
+        v-if="q('file')"
+        removable
+        :label="t('sessions.filters.fileChip', { sha: q('file').slice(0, 12) })"
+        :aria-label="t('sessions.filters.file', { sha: q('file') })"
+        @remove="patchQuery({ file: undefined })"
       />
       <DayRange
         v-model:from="from"
@@ -361,13 +368,6 @@ function clearFilters() {
 </template>
 
 <style scoped>
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--c-muted);
-}
-
 .time {
   white-space: nowrap;
   text-decoration: none;
