@@ -122,6 +122,7 @@ export interface Chapter {
 
 export interface Chapters {
   records: number // records in the raw recording
+  simulated: boolean // no recording: the commands, without output
   chapters: Chapter[]
 }
 

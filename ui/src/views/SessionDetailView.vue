@@ -37,7 +37,7 @@ watch(
       error.value = null
       // Optional: the page works without it.
       void api.verdict(id).then((v) => (verdict.value = v)).catch(() => undefined)
-      if (session.value.tty_available) {
+      if (replayable.value) {
         // Without chapters, the commands are listed without their output.
         chapters.value = await api.chapters(id).catch(() => null)
       }
@@ -48,6 +48,11 @@ watch(
   },
   { immediate: true },
 )
+
+// With a recording the replay is the terminal's; without one, but with
+// commands, the API simulates it from them.
+const replayable = computed(() => !!session.value && (session.value.tty_available || session.value.command_list.length > 0))
+const simulated = computed(() => !!chapters.value?.simulated)
 
 const entries = computed(() => (session.value ? timeline(session.value.events) : []))
 const offset = (ts: string) => (session.value ? formatOffset(session.value.started_at, ts) : '')
@@ -89,12 +94,12 @@ const terminal = computed(() => {
   return size ? `${String(size.width)}×${String(size.height)}` : undefined
 })
 
-// A recording or a terminal size means an interactive shell (pty);
-// commands without them were run directly (ssh host command).
+// A stored recording means one shell channel; commands without it come
+// from several channels (one per command, as bots do) or a purged file.
 const mode = computed(() => {
   const s = session.value
   if (!s) return '—'
-  if (s.tty_log || s.tty_sha256 || terminal.value) return t('session.mode.pty')
+  if (s.tty_available) return t('session.mode.shell')
   if (s.command_list.length) return t('session.mode.exec')
   return '—'
 })
@@ -160,12 +165,17 @@ const logins = computed(() => {
 
       <div class="layout">
         <section
-          v-if="session.tty_available"
+          v-if="replayable"
           class="replay-area"
           aria-labelledby="replay-title"
         >
           <h2 id="replay-title">
             {{ t('session.replay.title') }}
+            <span
+              v-if="simulated"
+              class="badge"
+              :title="t('session.replay.simulatedHint')"
+            >{{ t('session.replay.simulated') }}</span>
           </h2>
           <ReplayPlayer
             ref="player"
@@ -245,12 +255,6 @@ const logins = computed(() => {
                   v-if="chapters"
                   class="muted"
                 >{{ t('session.recording.records', { n: chapters.records }) }}</span>
-              </dd>
-              <dd
-                v-else-if="session.tty_log"
-                class="muted"
-              >
-                {{ t('session.recording.pending') }}
               </dd>
               <dd
                 v-else

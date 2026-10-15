@@ -219,8 +219,8 @@ export default {
       terminal: 'Terminal',
     },
     mode: {
-      pty: 'Interactive shell (pty)',
-      exec: 'Commands without a terminal (exec)',
+      shell: 'Shell session',
+      exec: 'Commands, one channel each (exec)',
     },
     chapters: {
       noOutput: 'No output.',
@@ -248,6 +248,8 @@ export default {
       realTime: 'Real time',
       realTimeOff: 'Pauses longer than 2 s are shortened.',
       realTimeOn: 'Real timing, pauses included.',
+      simulated: 'Simulated',
+      simulatedHint: 'No terminal recording for this session: the replay shows the commands at their real times, without their output.',
       failed: 'The replay could not be loaded.',
       controls: 'Replay controls',
       back: 'Back {n} seconds',
@@ -260,8 +262,7 @@ export default {
       title: 'Recording',
       stored: 'Stored, {size} over {duration}.',
       records: '{n} records',
-      pending: 'Cowrie recorded the terminal; the file has not reached the API yet.',
-      none: 'No terminal was opened.',
+      none: 'No terminal recording.',
     },
     files: {
       title: 'Files',
