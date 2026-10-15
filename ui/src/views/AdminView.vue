@@ -160,9 +160,6 @@ async function revoke() {
       >
         {{ t('admin.wrongPassword') }}
       </p>
-      <p class="muted hint">
-        {{ t('admin.passwordHint') }}
-      </p>
       <Button
         type="submit"
         :label="t('admin.signIn')"
