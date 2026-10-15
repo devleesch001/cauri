@@ -35,6 +35,7 @@ func (s *Service) judge(ctx context.Context, db bun.IDB, id int64) (verdict.Resu
 	}
 	return verdict.Judge(verdict.Facts{
 		Terminal: facts.Terminal, Commands: facts.Commands, ClientVersion: facts.ClientVersion,
+		Channels: facts.Channels,
 	}, typing), nil
 }
 
@@ -65,6 +66,9 @@ const judgeBatch = 200
 // criteria than the current ones, or never judged (stored before verdicts
 // were), and returns how many it judged.
 func (s *Service) JudgeSessions(ctx context.Context) (int, error) {
+	if err := s.keepVerdictsWithoutRecording(ctx); err != nil {
+		return 0, err
+	}
 	total := 0
 	for {
 		var ids []int64
@@ -82,4 +86,21 @@ func (s *Service) JudgeSessions(ctx context.Context) (int, error) {
 		}
 		total += len(ids)
 	}
+}
+
+// keepVerdictsWithoutRecording moves to the current version the verdicts of
+// sessions that had one recording, which is gone (an operator removed the
+// file to limit retention): judging them again could only see the events,
+// and would lose what the typing told. A session of one channel or none is
+// judged by the same criteria whatever their version (only the number of
+// channels was added), so its stored verdict stands. Sessions of several
+// channels have no recording and are judged again.
+func (s *Service) keepVerdictsWithoutRecording(ctx context.Context) error {
+	_, err := s.db.NewUpdate().Model((*store.Session)(nil)).
+		Set("verdict_version = ?", verdict.Version).
+		Where("verdict IS NOT NULL").Where("verdict_version IS NOT NULL").Where("verdict_version <> ?", verdict.Version).
+		Where("tty_log IS NOT NULL").Where("tty_file_id IS NULL").
+		Where("(SELECT COUNT(*) FROM events AS e WHERE e.session_id = s.id AND e.type = ?) <= 1", "cowrie.log.closed").
+		Exec(ctx)
+	return err
 }

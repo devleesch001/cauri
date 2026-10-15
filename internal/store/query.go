@@ -514,6 +514,8 @@ type SessionFacts struct {
 	Terminal bool
 	// RecordingSHA256 is the stored recording, nil if there is none.
 	RecordingSHA256 *string
+	// Channels is the number of SSH channels closed: a recording each.
+	Channels int
 }
 
 // GetSessionFacts returns the facts of a session.
@@ -535,6 +537,12 @@ func GetSessionFacts(ctx context.Context, db bun.IDB, id int64) (*SessionFacts, 
 		return nil, err
 	}
 	f.Commands = int(n)
+	n, err = db.NewSelect().Model((*Event)(nil)).
+		Where("session_id = ?", id).Where("type = ?", "cowrie.log.closed").Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+	f.Channels = int(n)
 	if !f.Terminal {
 		f.Terminal, err = db.NewSelect().Model((*Event)(nil)).
 			Where("session_id = ?", id).Where("type = ?", "cowrie.client.size").Exists(ctx)

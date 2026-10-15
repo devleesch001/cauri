@@ -749,3 +749,62 @@ func TestNetworks(t *testing.T) {
 		}
 	})
 }
+
+// Sessions that opened several channels are judged on that, and again when
+// the criteria change; a session of one channel whose recording was removed
+// keeps the verdict it was given with it.
+func TestJudgeChannels(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		closed := func(sess string, at float64, name string) []byte {
+			return line("cowrie.log.closed", sess, at, map[string]any{"ttylog": "var/lib/cowrie/tty/" + name, "duration_ms": 4})
+		}
+		// Four channels, a command each, as a libssh bot does.
+		bot := []([]byte){line(evConnect, "bot", 0, nil)}
+		for i, name := range []string{"c1", "c2", "c3", "c4"} {
+			bot = append(bot, line("cowrie.command.input", "bot", float64(i+1), map[string]any{"input": "id"}), closed("bot", float64(i+1)+0.1, name))
+		}
+		human := []([]byte){
+			line(evConnect, "human", 0, nil),
+			line("cowrie.command.input", "human", 1, map[string]any{"input": "id"}),
+			closed("human", 2, "h1"),
+		}
+		for _, lines := range [][][]byte{bot, human} {
+			if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, lines...)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// The recording names make a terminal: only the three channels beyond
+		// the first count, -1 each.
+		if s := getSession(t, db, sensor, "bot"); *s.VerdictScore != -3 || *s.Verdict != "bot" {
+			t.Fatalf("bot = %v %v", *s.Verdict, *s.VerdictScore)
+		}
+		if s := getSession(t, db, sensor, "human"); *s.VerdictScore != 0 {
+			t.Fatalf("one channel = %v", *s.VerdictScore)
+		}
+
+		// Both were judged by the previous criteria, which knew no channels;
+		// the human's verdict was made with a recording since removed.
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).
+			Set("verdict = 'human'").Set("verdict_score = 5").Set("verdict_version = '1'").
+			Where("id = ?", sessionID(t, db, sensor, "human")).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).
+			Set("verdict = 'uncertain'").Set("verdict_score = 0").Set("verdict_version = '1'").
+			Where("id = ?", sessionID(t, db, sensor, "bot")).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := svc.JudgeSessions(ctx); n != 1 || err != nil {
+			t.Fatalf("judged %d, %v", n, err)
+		}
+		if s := getSession(t, db, sensor, "bot"); *s.Verdict != "bot" || *s.VerdictVersion != verdict.Version {
+			t.Errorf("bot after = %v", *s.Verdict)
+		}
+		s := getSession(t, db, sensor, "human")
+		if *s.Verdict != "human" || *s.VerdictScore != 5 || *s.VerdictVersion != verdict.Version {
+			t.Errorf("human after = %v %v %v", *s.Verdict, *s.VerdictScore, *s.VerdictVersion)
+		}
+	})
+}

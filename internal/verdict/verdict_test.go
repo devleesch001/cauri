@@ -155,6 +155,29 @@ func TestWithoutRecording(t *testing.T) {
 	}
 }
 
+// A human holds one shell channel; each further one (an exec, an isolated
+// shell) counts against a human, up to a ceiling.
+func TestManyChannels(t *testing.T) {
+	base := Facts{Terminal: true, Commands: 6, ClientVersion: "SSH-2.0-OpenSSH_9.6"}
+	for channels, want := range map[int]int{0: 0, 1: 0, 2: -1, 4: -3, 7: -6, 50: -6} {
+		f := base
+		f.Channels = channels
+		res := Judge(f, nil)
+		if res.Score != want {
+			t.Errorf("%d channels: score %d, want %d", channels, res.Score, want)
+		}
+		if got := slices.Contains(codes(res), ManyChannels); got != (want != 0) {
+			t.Errorf("%d channels: reason present = %v", channels, got)
+		}
+	}
+	// A bot running a command per channel, as in session 360c0aaa5fe0.
+	f := base
+	f.Channels, f.ClientVersion = 6, "SSH-2.0-libssh_0.9.6"
+	if res := Judge(f, nil); res.Verdict != Bot || res.Score != -6 {
+		t.Errorf("libssh bot = %+v", res)
+	}
+}
+
 func TestAutomationClient(t *testing.T) {
 	for version, want := range map[string]bool{
 		"SSH-2.0-Go": true, "SSH-2.0-libssh_0.9.6": true, "SSH-2.0-libssh2_1.10.0": true,

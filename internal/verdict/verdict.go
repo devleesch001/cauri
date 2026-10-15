@@ -43,11 +43,12 @@ const (
 	ConstantDelay     = "constant_delay"
 	NoTerminal        = "no_terminal"
 	AutomationLibrary = "automation_library"
+	ManyChannels      = "many_channels"
 )
 
 // Version identifies the criteria below. Stored verdicts of another
 // version are recomputed: change it with any threshold or point.
-const Version = "1"
+const Version = "2"
 
 // Thresholds.
 const (
@@ -69,6 +70,13 @@ const (
 	humanPauseMedian = 500 * time.Millisecond
 	irregularPauseCV = 0.3
 	constantPauseCV  = 0.05
+
+	// A human holds one shell channel for the whole session. Bots open one
+	// channel per command (exec), or one shell each: every channel beyond
+	// the first counts against a human, up to a ceiling so that a single
+	// signal cannot outweigh all the others.
+	channelPoints    = 1
+	maxChannelPoints = 6
 
 	maxSamples = 10_000 // intervals kept per kind: bounds memory
 )
@@ -98,6 +106,9 @@ type Facts struct {
 	Terminal      bool
 	Commands      int    // commands typed or run
 	ClientVersion string // as announced, such as "SSH-2.0-Go"
+	// Channels is the number of SSH channels the session opened and
+	// closed (Cowrie's cowrie.log.closed events), shell or exec.
+	Channels int
 }
 
 // Typing is what the recording of a session tells about its input.
@@ -197,6 +208,9 @@ func Judge(f Facts, typing *Typing) Result {
 	}
 	if f.Commands > 0 && !f.Terminal {
 		add(NoTerminal, -2)
+	}
+	if extra := f.Channels - 1; extra > 0 {
+		add(ManyChannels, -min(extra*channelPoints, maxChannelPoints))
 	}
 	if automationClient.MatchString(f.ClientVersion) {
 		add(AutomationLibrary, -1)

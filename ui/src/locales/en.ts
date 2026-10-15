@@ -35,7 +35,7 @@ export default {
     all: 'All sensors',
   },
   colorScheme: {
-    label: 'Colour scheme',
+    current: 'Colour scheme: {scheme} (click to change)',
     light: 'Light',
     dark: 'Dark',
     system: 'System',
@@ -230,6 +230,7 @@ export default {
         constant_delay: 'constant delay between commands',
         no_terminal: 'commands without a terminal',
         automation_library: 'automation library client',
+        many_channels: 'several channels (exec or isolated shells)',
       },
     },
     side: {

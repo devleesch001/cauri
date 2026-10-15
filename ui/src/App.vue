@@ -258,14 +258,20 @@ nav a.router-link-active {
   width: 16rem;
 }
 
+/* As tall as the selects beside it, and as wide: square. */
+.scheme {
+  align-self: stretch;
+  width: 2.6667rem;
+  min-height: 2.6667rem;
+}
+
 @media (max-width: 720px) {
   .bar {
     padding: var(--space-2) var(--space-3);
   }
 
   .search,
-  .sensor,
-  .scheme {
+  .sensor {
     margin-left: 0;
     width: 100%;
   }

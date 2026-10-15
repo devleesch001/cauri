@@ -304,6 +304,7 @@ points (positive: human); the UI shows the verdict with every reason.
 | Irregular (median ≥ 0.5 s) / constant pauses between commands | recording | +1 / −2 |
 | Commands without a terminal (`ssh host command`) | events | −2 |
 | Client from an automation library (Go, libssh, paramiko, …) | events | −1 |
+| Several SSH channels: an exec or an isolated shell each, beyond the first | events | −1 per channel, down to −6 |
 
 A score of 3 or more is `human`, −3 or less `bot`, `uncertain` in
 between; a session with neither commands nor recording is
@@ -317,8 +318,10 @@ The verdict is also stored with each session, to filter the list:
 singled out; the verdict shown stays the computed one). It
 is computed at ingestion, again when the recording arrives, and when
 the API starts for sessions judged by older criteria
-(`verdict.Version`) or stored before verdicts were. The session page
-computes it on read, with the same code.
+(`verdict.Version`) or stored before verdicts were; a session of one channel
+whose recording was removed from the volume keeps its stored verdict, which
+could not be judged again on typing. The session page computes it on read,
+with the same code.
 
 ## Configuration
 
