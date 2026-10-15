@@ -303,6 +303,23 @@ a test compares the schema read back from both engines.
   fingerprint is already in `sessions.hassh`) will be part of that
   discussion.
 
+## Statistics at scale
+
+Statistics are computed on read from the tables above. Measured on
+SQLite with the real sessions replicated to 96,681:
+
+| Endpoint | Time |
+|---|---|
+| `/api/stats/summary`, `activity`, `commands`, `payloads` | 23–72 ms |
+| `/api/stats/origins`, `/api/countries`, `/api/cities` | 65–139 ms |
+| `/api/stats/credentials` | 570 ms (several groupings of every login attempt) |
+| Session list, filtered or not | 13–40 ms |
+
+The cost grows with the number of rows: around a million sessions,
+credentials would take seconds. The next step is then summary tables
+kept up to date at ingestion (counts by day, by username, by password),
+not a different database.
+
 ## Consequences
 
 - Session URLs are `/sessions/{integer}`: not the same after a rebuild
