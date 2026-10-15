@@ -66,6 +66,7 @@ const time = (s: string) => new Date(s).toLocaleTimeString()
         <CountryFlag
           v-if="s.geo_country"
           :code="s.geo_country"
+          compact
           class="where"
         />
         <span

@@ -83,6 +83,7 @@ export default {
       'Sessions are not located: give the API a GeoIP database (CAURI_GEOIP_DB, see the README) to see where attacks come from.',
     empty: 'No located session matches these filters.',
     sources: 'Busiest source addresses',
+    networks: 'Busiest networks',
     clients: 'SSH clients',
     live: {
       title: 'Latest sessions',
@@ -120,6 +121,7 @@ export default {
       verdict: 'Human or bot',
       city: 'City {city}: remove this filter',
       fileChip: 'File {sha}',
+      asn: 'Network AS{asn}: remove this filter',
       file: 'Sessions that transferred the file {sha}: remove this filter',
       anyVerdict: 'All',
       humans: 'Humans',
@@ -190,6 +192,7 @@ export default {
       duration: 'Duration',
       cowrieSession: 'Cowrie session',
       location: 'Location',
+      network: 'Network',
       locationUnknown: 'Unknown to the GeoIP database (private or reserved address)',
       locationSource: 'GeoIP database {source}, when the session was stored',
       sensor: 'Sensor',

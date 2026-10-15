@@ -98,7 +98,7 @@ watch(
     try {
       const res = await api.sessions({
         sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        client: q('client'), country: q('country'), city: q('city'), file: q('file'), login: q('login'), verdict: q('verdict'),
+        client: q('client'), country: q('country'), city: q('city'), file: q('file'), asn: q('asn'), login: q('login'), verdict: q('verdict'),
         has_commands: q('has_commands'),
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
@@ -197,6 +197,13 @@ function clearFilters() {
         :label="q('city')"
         :aria-label="t('sessions.filters.city', { city: q('city') })"
         @remove="patchQuery({ city: undefined })"
+      />
+      <Chip
+        v-if="q('asn')"
+        removable
+        :label="`AS${q('asn')}`"
+        :aria-label="t('sessions.filters.asn', { asn: q('asn') })"
+        @remove="patchQuery({ asn: undefined })"
       />
       <Chip
         v-if="q('file')"

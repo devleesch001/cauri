@@ -197,6 +197,23 @@ function open(country: string, city?: string) {
         </BarList>
       </section>
       <section
+        v-if="origins?.networks.length"
+        class="card"
+      >
+        <h2>{{ t('overview.networks') }}</h2>
+        <BarList
+          :items="origins.networks"
+          :value="(n) => n.sessions"
+          :item-key="(n) => String(n.asn)"
+          :to="(n) => link('sessions', { asn: String(n.asn) })"
+        >
+          <template #label="{ item }">
+            <span class="data">AS{{ item.asn }}</span>
+            <span class="muted org">{{ item.org }}</span>
+          </template>
+        </BarList>
+      </section>
+      <section
         v-if="origins?.clients.length"
         class="card"
       >
@@ -238,7 +255,8 @@ function open(country: string, city?: string) {
   margin-top: var(--space-4);
 }
 
-.country {
+.country,
+.org {
   margin-left: var(--space-2);
   font-size: 0.9em;
 }

@@ -43,6 +43,8 @@ export interface Session {
   geo_source: string | null // GeoIP database used; set with no country: unknown address
   geo_lat: number | null // centre of the city
   geo_lon: number | null
+  asn: number | null // autonomous system, with an ASN database
+  as_org: string | null
   verdict: Verdict['verdict'] | null // stored; null until judged
   verdict_score: number | null
 }
@@ -149,7 +151,15 @@ export interface CountryCount {
 /** GET /api/about. */
 export interface About {
   version: string
-  geoip: { type: string; built: string; provider: 'db-ip' | 'maxmind' | '' } | null
+  geoip: GeoDatabase | null
+  asn: GeoDatabase | null
+}
+
+/** A GeoIP or ASN database: its provider requires an attribution. */
+export interface GeoDatabase {
+  type: string
+  built: string
+  provider: 'db-ip' | 'maxmind' | ''
 }
 
 /** Headline numbers (GET /api/stats/summary); previous: the period of equal length before. */
@@ -218,5 +228,6 @@ export interface Payloads {
 /** Who attacks (GET /api/stats/origins). */
 export interface Origins {
   sources: { ip: string; country: string | null; sessions: number; shells: number; last: string }[]
+  networks: { asn: number; org: string; sessions: number; sources: number }[] // with an ASN database
   clients: { client: string; sessions: number; sources: number }[]
 }

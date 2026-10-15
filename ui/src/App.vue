@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watchEffect } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from 'openvue/button'
@@ -14,6 +14,11 @@ const { t } = useI18n()
 const sensors = useSensors()
 // The GeoIP database, when there is one, requires an attribution.
 const about = ref<About | null>(null)
+// The GeoIP and ASN databases may come from different providers: each
+// one's attribution is shown once.
+const providers = computed(
+  () => new Set([about.value?.geoip?.provider, about.value?.asn?.provider].filter((p) => !!p)),
+)
 
 // Pages are capped in width (style.css); this lifts the cap, remembered
 // per browser. Storage can be unavailable: then it lasts for the visit.
@@ -95,17 +100,17 @@ onMounted(() => {
     </template>
   </Button>
   <footer
-    v-if="about?.geoip?.provider"
+    v-if="providers.size"
     class="attribution muted"
   >
     <a
-      v-if="about.geoip.provider === 'db-ip'"
+      v-if="providers.has('db-ip')"
       href="https://db-ip.com"
     >{{ t('attribution.dbip') }}</a>
-    <template v-else>
+    <span v-if="providers.has('maxmind')">
       {{ t('attribution.maxmind') }}
       <a href="https://www.maxmind.com">https://www.maxmind.com</a>
-    </template>
+    </span>
   </footer>
 </template>
 

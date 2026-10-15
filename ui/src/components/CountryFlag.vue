@@ -16,20 +16,24 @@ import { computed } from 'vue'
 import { countryName } from '@/format'
 
 // A country from its ISO 3166-1 alpha-2 code: its flag, then its name,
-// then the slot (such as a city).
-const props = defineProps<{ code: string }>()
+// then the slot (such as a city). Compact: the flag alone, the name in a
+// tooltip and for screen readers, where space is short.
+const props = defineProps<{ code: string; compact?: boolean }>()
 const flag = computed(() => byCode.get(props.code.toLowerCase()))
 </script>
 
 <template>
-  <span class="country-flag">
+  <span
+    class="country-flag"
+    :title="compact ? countryName(code) : undefined"
+  >
     <img
       v-if="flag"
       :src="flag"
       alt=""
       width="20"
       height="15"
-    ><span>{{ countryName(code) }}<slot /></span>
+    ><span :class="{ 'sr-only': compact && flag }">{{ countryName(code) }}<slot /></span>
   </span>
 </template>
 

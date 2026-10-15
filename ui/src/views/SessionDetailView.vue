@@ -203,6 +203,15 @@ const logins = computed(() => {
                   {{ t('session.facts.locationUnknown') }}
                 </dd>
               </template>
+              <template v-if="session.asn">
+                <dt>{{ t('session.facts.network') }}</dt>
+                <dd>
+                  <RouterLink :to="{ name: 'sessions', query: { asn: String(session.asn) } }">
+                    AS{{ session.asn }}
+                  </RouterLink>
+                  {{ session.as_org ?? '' }}
+                </dd>
+              </template>
               <dt>{{ t('session.facts.sensor') }}</dt>
               <dd>{{ session.sensor }}</dd>
               <dt>{{ t('session.facts.user') }}</dt>
