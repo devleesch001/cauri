@@ -642,3 +642,34 @@ func LookupSession(ctx context.Context, db bun.IDB, sensor, cowrieSession string
 	}
 	return id, err
 }
+
+// Simulation is what a replay without recording needs: the commands of a
+// session and who ran them.
+type Simulation struct {
+	User     string // the account that logged in, empty if unknown
+	Commands []Command
+}
+
+// GetSimulation returns what a simulated replay of a session needs.
+func GetSimulation(ctx context.Context, db bun.IDB, id int64) (*Simulation, error) {
+	var s Session
+	err := selectSessions(db, &s).Where("s.id = ?", id).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	sim := &Simulation{}
+	if err := db.NewSelect().Model(&sim.Commands).Where("session_id = ?", id).
+		Order("ts", "id").Scan(ctx); err != nil {
+		return nil, err
+	}
+	err = db.NewSelect().Model((*LoginAttempt)(nil)).Column("username").
+		Where("session_id = ?", id).Where("success = ?", true).
+		Order("ts", "id").Limit(1).Scan(ctx, &sim.User)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	return sim, nil
+}

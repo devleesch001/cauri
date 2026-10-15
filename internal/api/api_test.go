@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -399,8 +400,10 @@ func TestCast(t *testing.T) {
 		id := sid(t, e, "hp-01", "a1b2c3d4e5f6")
 		path := "/api/sessions/" + id + "/cast"
 
+		// No recording yet: the replay is simulated from the commands.
 		resp, body := getRaw(t, e, path, nil)
-		if resp.code != http.StatusNotFound || !strings.Contains(body, "no stored recording") {
+		if resp.code != http.StatusOK || resp.header.Get("ETag") != "" ||
+			!strings.Contains(body, `"m", "id"]`) || !strings.Contains(body, `"o", "# id\r\n"]`) {
 			t.Fatalf("before upload: %d %s", resp.code, body)
 		}
 
@@ -866,6 +869,74 @@ func TestJSONOnly(t *testing.T) {
 		_ = resp.Body.Close()
 		if resp.StatusCode != code || resp.Header.Get("Content-Type") != "application/json" || !json.Valid(body) {
 			t.Errorf("%s = %d %s %s", path, resp.StatusCode, resp.Header.Get("Content-Type"), body)
+		}
+	}
+}
+
+// Without a recording, chapters are the commands without output; once the
+// file is removed from the volume the stored recording is replaced the same way.
+func TestSimulatedReplay(t *testing.T) {
+	dir := t.TempDir()
+	e := setup(t, storetest.SQLite(t), func(c *api.Config) {
+		tty, err := ttystore.New(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.TTY, c.Ingest = tty, ingest.New(c.DB, tty, 1<<16)
+	})
+	ctx := context.Background()
+	if _, err := e.client.SendEvents(ctx, events("hp-01")); err != nil {
+		t.Fatal(err)
+	}
+	id := sid(t, e, "hp-01", "a1b2c3d4e5f6")
+	type chapters struct {
+		Simulated bool `json:"simulated"`
+		Chapters  []struct {
+			Command string `json:"command"`
+			Output  string `json:"output"`
+		} `json:"chapters"`
+	}
+	var got chapters
+	get(t, e, "/api/sessions/"+id+"/chapters", http.StatusOK, &got)
+	if !got.Simulated || len(got.Chapters) != 1 || got.Chapters[0].Command != "id" || got.Chapters[0].Output != "" {
+		t.Fatalf("simulated chapters = %+v", got)
+	}
+
+	// With the recording the replay is real, and no longer after removal.
+	m, data := realRecording(t)
+	if _, err := e.client.SendTTY(ctx, m, bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	got = chapters{}
+	get(t, e, "/api/sessions/"+id+"/chapters", http.StatusOK, &got)
+	if got.Simulated {
+		t.Fatal("recording stored but replay simulated")
+	}
+	if err := os.RemoveAll(filepath.Join(dir, m.SHA256[:2])); err != nil {
+		t.Fatal(err)
+	}
+	got = chapters{}
+	get(t, e, "/api/sessions/"+id+"/chapters", http.StatusOK, &got)
+	if !got.Simulated || len(got.Chapters) != 1 {
+		t.Fatalf("after removal: %+v", got)
+	}
+	if resp, body := getRaw(t, e, "/api/sessions/"+id+"/cast", nil); resp.code != http.StatusOK || !strings.Contains(body, `"m", "id"]`) {
+		t.Errorf("cast after removal: %d %s", resp.code, body)
+	}
+}
+
+// A session with neither recording nor command has nothing to replay.
+func TestNothingToReplay(t *testing.T) {
+	e := setup(t, storetest.SQLite(t), nil)
+	raw := []byte(`{"eventid":"cowrie.session.connect","session":"b1b2b3b4b5b6","src_ip":"203.0.113.9","timestamp":"2026-10-14T09:00:00Z"}`)
+	b := protocol.EventBatch{SensorID: "hp-01", Events: []protocol.Event{{ID: protocol.EventID("hp-01", raw), Raw: raw}}}
+	if _, err := e.client.SendEvents(context.Background(), b); err != nil {
+		t.Fatal(err)
+	}
+	id := sid(t, e, "hp-01", "b1b2b3b4b5b6")
+	for _, p := range []string{"/cast", "/chapters"} {
+		if resp, body := getRaw(t, e, "/api/sessions/"+id+p, nil); resp.code != http.StatusNotFound || !strings.Contains(body, "nothing") && !strings.Contains(body, "no command") {
+			t.Errorf("%s = %d %s", p, resp.code, body)
 		}
 	}
 }

@@ -55,3 +55,23 @@ func TestV3OptionalHeaderFields(t *testing.T) {
 		t.Fatalf("header = %s", got)
 	}
 }
+
+func TestSimulate(t *testing.T) {
+	var b strings.Builder
+	err := Simulate(NewV3(&b), Header{Cols: 80, Rows: 24}, "# ", []Step{
+		{Time: 0, Command: "uname -a"},
+		{Time: 1500 * time.Millisecond, Command: "echo a\necho b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"version":3,"term":{"cols":80,"rows":24}}
+[0, "m", "uname -a"]
+[0, "o", "# uname -a\r\n"]
+[1.5, "m", "echo a\necho b"]
+[0, "o", "# echo a\r\necho b\r\n"]
+`
+	if b.String() != want {
+		t.Errorf("got\n%s\nwant\n%s", b.String(), want)
+	}
+}
