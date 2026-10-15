@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devleesch001/cauri/internal/ttylog"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
@@ -397,10 +396,10 @@ func TestDirectoriesCreatedLater(t *testing.T) {
 
 // Bots run one command per exec channel: Cowrie writes a recording per
 // channel, and keeps one file per input (a later one is a duplicate, with
-// the times of the first). Each session is sent as one recording, its
-// channels in the order they opened, a duplicate at its own channel's
-// start (sample of the official Cowrie v3.1.2, see internal/ingest).
-func TestTTYMergedChannels(t *testing.T) {
+// the times of the first). No recording is sent for such sessions: the API
+// replays them from their events (sample of the official Cowrie v3.1.2,
+// see internal/ingest).
+func TestTTYSeveralChannelsNotSent(t *testing.T) {
 	f := newFixture(t)
 	sample := "../ingest/testdata/cowrie-v3.1.2-exec"
 	files, err := filepath.Glob(sample + "-tty/*")
@@ -420,58 +419,25 @@ func TestTTYMergedChannels(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(cowrieLog)), "\n")
 	f.write(t, LogName, lines...)
 	f.start(t, f.config(f.sink))
-	waitFor(t, "one upload per session", func() bool { _, ttys := f.sink.snapshot(); return len(ttys) == 2 })
-
-	// When each channel opened: its log.closed time minus its duration.
-	starts := map[string][]time.Time{}
-	for _, l := range lines {
-		if se, ok := sessionEventOf([]byte(l)); ok && se.channel != nil {
-			starts[se.session] = append(starts[se.session], se.channel.start())
-		}
+	waitFor(t, "events", func() bool { return eventCount(f.sink)() == len(lines) })
+	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
+	waitFor(t, "empty queue", func() bool { q, _ = loadTTYQueue(q.path); return q.len() == 0 })
+	if _, ttys := f.sink.snapshot(); len(ttys) != 0 {
+		t.Errorf("recordings sent for sessions with several channels: %v", ttys)
 	}
-	_, ttys := f.sink.snapshot()
-	for sess, want := range map[string][]string{
-		"7dfe84911c9f": {"uname -a", "Linux svr04", "whoami", "root", "uname -a", "Linux svr04"},
-		"246b6f85171f": {"whoami", "root", "cat /proc/cpuinfo | grep name | wc -l", "2"},
-	} {
-		// The merge is one Cowrie recording: each channel opens, gets its
-		// command as input, prints its output.
-		var got []string
-		var opens []time.Time
-		rd := ttylog.NewReader(strings.NewReader(ttys[sess]))
-		for {
-			rec, err := rd.Next()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				t.Fatalf("%s: %v", sess, err)
-			}
-			switch {
-			case rec.Op == ttylog.OpOpen:
-				opens = append(opens, rec.Time)
-			case rec.Op == ttylog.OpWrite && len(rec.Data) > 0:
-				got = append(got, strings.TrimSpace(string(rec.Data)))
-			}
-		}
-		if len(got) != len(want) {
-			t.Fatalf("%s: writes %q", sess, got)
-		}
-		for i := range want {
-			if !strings.HasPrefix(got[i], want[i]) {
-				t.Errorf("%s: write %d = %q, want %q…", sess, i, got[i], want[i])
-			}
-		}
-		// Every channel at its own start, duplicates included: within the
-		// millisecond Cowrie's times allow.
-		if len(opens) != len(starts[sess]) {
-			t.Fatalf("%s: %d channels opened, want %d", sess, len(opens), len(starts[sess]))
-		}
-		for i, at := range opens {
-			if d := at.Sub(starts[sess][i]); d < -time.Millisecond || d > time.Millisecond {
-				t.Errorf("%s: channel %d opens %v from its start", sess, i, d)
-			}
-		}
+}
+
+// One channel whose file is a duplicate holds another run's output: not sent.
+func TestTTYDuplicateNotSent(t *testing.T) {
+	f := newFixture(t)
+	tty := writeTTY(t, f, "output")
+	dup := `{"eventid":"cowrie.log.closed","session":"s1","timestamp":"2026-10-14T09:59:00.000000Z","ttylog":"var/lib/cowrie/tty/` + tty + `","duplicate":true}`
+	f.write(t, LogName, dup, sessionClosedEvent("s1"))
+	f.start(t, f.config(f.sink))
+	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
+	waitFor(t, "empty queue", func() bool { q, _ = loadTTYQueue(q.path); return eventCount(f.sink)() == 2 && q.len() == 0 })
+	if _, ttys := f.sink.snapshot(); len(ttys) != 0 {
+		t.Errorf("duplicate sent: %v", ttys)
 	}
 }
 
@@ -508,7 +474,7 @@ func TestTTYQueueOfOlderVersion(t *testing.T) {
 }
 
 // The attacker chooses how many channels a session opens: the queue keeps
-// a bounded number, each one a file held open while merging.
+// a bounded number: it only needs to know there is more than one.
 func TestTTYChannelsBounded(t *testing.T) {
 	q, err := loadTTYQueue(filepath.Join(t.TempDir(), "q.json"))
 	if err != nil {

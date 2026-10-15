@@ -11,10 +11,9 @@ import (
 // anyway: Cowrie may stop before writing it.
 const sessionWait = time.Hour
 
-// maxChannels bounds the recordings kept per session: the attacker chooses
-// how many channels it opens, and each is a file held open while merging.
-// Bots run a few dozen commands.
-const maxChannels = 256
+// maxChannels bounds the channels kept per session: only whether there is
+// more than one matters, and the attacker chooses how many it opens.
+const maxChannels = 2
 
 // ttyChannel is the recording of one SSH channel of a session, as its
 // cowrie.log.closed tells it.
@@ -27,13 +26,8 @@ type ttyChannel struct {
 	Duplicate bool `json:"duplicate"`
 }
 
-// start is when the channel opened, in its own session.
-func (c ttyChannel) start() time.Time {
-	return c.ClosedAt.Add(-time.Duration(c.DurationMS) * time.Millisecond)
-}
-
 // ttyJob is the recording of a session waiting to be uploaded: its
-// channels, merged into one file when it is sent.
+// channels, of which one alone is sent.
 type ttyJob struct {
 	Session  string       `json:"session"`
 	Channels []ttyChannel `json:"channels,omitempty"`

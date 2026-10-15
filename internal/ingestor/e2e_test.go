@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -122,10 +121,10 @@ func TestEndToEnd(t *testing.T) {
 	}
 }
 
-// Sessions running one command per exec channel, as bots do, replay with
-// every command and its output (sample of the official Cowrie v3.1.2, see
-// internal/ingest): the ingestor merges the channels, the API serves one
-// recording.
+// Sessions running one command per exec channel, as bots do, send no
+// recording (a file per channel, duplicates of other runs): the API replays
+// them, simulated, with every command (sample of the official Cowrie
+// v3.1.2, see internal/ingest).
 func TestEndToEndExecChannels(t *testing.T) {
 	ctx := context.Background()
 	db := storetest.SQLite(t)
@@ -166,11 +165,11 @@ func TestEndToEndExecChannels(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		rows, _, err := store.ListSessions(ctx, db, store.SessionFilter{})
-		if err == nil && len(rows) == 2 && rows[0].TTYAvailable && rows[1].TTYAvailable {
+		if err == nil && len(rows) == 2 && rows[0].Commands+rows[1].Commands == 5 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("sessions not ingested with their recording: %+v, %v", rows, err)
+			t.Fatalf("sessions not ingested: %+v, %v", rows, err)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -179,9 +178,15 @@ func TestEndToEndExecChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Let the TTY queue settle: nothing must have been stored.
+	time.Sleep(100 * time.Millisecond)
+	if n, _ := db.NewSelect().Model((*store.TTYFile)(nil)).Count(ctx); n != 0 {
+		t.Fatalf("%d recordings stored for sessions with several channels", n)
+	}
+
 	for sess, want := range map[string][]string{
-		"7dfe84911c9f": {"uname -a", "Linux svr04", "whoami", "root", "uname -a", "Linux svr04"},
-		"246b6f85171f": {"whoami", "root", "cat /proc/cpuinfo | grep name | wc -l", "2"},
+		"7dfe84911c9f": {"uname -a", "whoami", "uname -a"},
+		"246b6f85171f": {"whoami", "cat /proc/cpuinfo | grep name | wc -l"},
 	} {
 		id, err := store.LookupSession(ctx, db, "hp-01", sess)
 		if err != nil {
@@ -192,22 +197,21 @@ func TestEndToEndExecChannels(t *testing.T) {
 			t.Fatal(err)
 		}
 		var got struct {
-			Chapters []struct {
+			Simulated bool `json:"simulated"`
+			Chapters  []struct {
 				Time    float64 `json:"time"`
 				Command string  `json:"command"`
-				Output  string  `json:"output"`
 			} `json:"chapters"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&got)
 		_ = resp.Body.Close()
-		if err != nil || len(got.Chapters) != len(want)/2 {
+		if err != nil || !got.Simulated || len(got.Chapters) != len(want) {
 			t.Fatalf("%s: chapters = %+v, %v", sess, got.Chapters, err)
 		}
 		last := -1.0
 		for i, ch := range got.Chapters {
-			// In order, a few tenths of a second apart as run: a duplicate
-			// is at its own channel, not at its file's times.
-			if ch.Command != want[2*i] || !strings.HasPrefix(ch.Output, want[2*i+1]) || ch.Time <= last || ch.Time > 5 {
+			// In order, a few tenths of a second apart as run.
+			if ch.Command != want[i] || ch.Time < last || ch.Time > 5 {
 				t.Errorf("%s #%d = %+v", sess, i, ch)
 			}
 			last = ch.Time

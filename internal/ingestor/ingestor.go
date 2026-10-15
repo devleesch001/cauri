@@ -19,11 +19,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/devleesch001/cauri/internal/ingestor/tail"
-	"github.com/devleesch001/cauri/internal/ttylog"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
@@ -102,7 +100,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("read tty queue: %w", err)
 	}
 	in.queue = queue
-	// Merges left by a stop during an upload: the job is still queued.
+	// Merges left by older versions.
 	if stale, err := filepath.Glob(filepath.Join(cfg.StateDir, "tty-*.merge")); err == nil {
 		for _, f := range stale {
 			_ = os.Remove(f)
@@ -333,19 +331,23 @@ func (in *ingestor) uploadTTYs(ctx context.Context) error {
 // errors are returned.
 func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	log := in.Logger.With("session", job.Session, "channels", len(job.Channels))
+	if len(job.Channels) != 1 || job.Channels[0].Duplicate {
+		log.Debug("several channels or a duplicate, no recording sent")
+		return in.queue.done(job.Session)
+	}
 	if err := in.openTTYRoot(); err != nil {
 		// Misconfiguration or directory not created yet: keep the job.
 		delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
 		log.Warn("tty directory unavailable, retrying", "err", err, "in", delay.String())
 		return in.queue.retry(job.Session, time.Now().Add(delay))
 	}
-	f, m, release, err := in.recording(job, log)
+	f, m, err := in.recording(job)
 	if err != nil {
 		log.Warn("tty recording unreadable, dropping it", "err", err)
 		return in.queue.done(job.Session)
 	}
 	res, err := in.Sink.SendTTY(ctx, m, f)
-	release()
+	_ = f.Close()
 	if err == nil {
 		log.Debug("tty recording delivered", "status", res.Status)
 		return in.queue.done(job.Session)
@@ -362,84 +364,22 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	return in.queue.retry(job.Session, time.Now().Add(delay))
 }
 
-// maxMerge bounds a merged recording, as the API does by default
-// (ingest.DefaultMaxTTYSize): the attacker controls what it prints.
-const maxMerge = 128 << 20
-
-// recording returns the file to upload for a session, at its start, its
-// metadata, and how to release it. A session has a recording per SSH
-// channel, one per command for many bots: they are merged into one, in
-// the order the channels opened. Cowrie keeps one file per input and marks
-// later recordings of it duplicate: their file has the times of the
-// first, maybe of another session, and is moved to its own channel's
-// start. A single recording of its own is sent as Cowrie wrote it.
-func (in *ingestor) recording(job ttyJob, log *slog.Logger) (*os.File, protocol.TTYMeta, func(), error) {
-	chans := slices.Clone(job.Channels)
-	slices.SortStableFunc(chans, func(a, b ttyChannel) int { return a.start().Compare(b.start()) })
-	if len(chans) == 1 && !chans[0].Duplicate {
-		f, err := in.openTTY(chans[0].TTYLog)
-		if err != nil {
-			return nil, protocol.TTYMeta{}, nil, err
-		}
-		m, err := in.describe(job.Session, f)
-		if err != nil {
-			_ = f.Close()
-			return nil, m, nil, err
-		}
-		return f, m, func() { _ = f.Close() }, nil
-	}
-
-	var parts []ttylog.Part
-	var opened []*os.File
-	defer func() {
-		for _, f := range opened {
-			_ = f.Close()
-		}
-	}()
-	for _, c := range chans {
-		f, err := in.openTTY(c.TTYLog)
-		if err != nil {
-			log.Warn("channel recording unreadable, leaving it out", "ttylog", c.TTYLog, "err", err)
-			continue
-		}
-		opened = append(opened, f)
-		p := ttylog.Part{R: f}
-		if c.Duplicate && !c.ClosedAt.IsZero() {
-			p.At = c.start()
-		}
-		parts = append(parts, p)
-	}
-	if len(parts) == 0 {
-		return nil, protocol.TTYMeta{}, nil, errors.New("no channel recording readable")
-	}
-	if len(job.Channels) >= maxChannels {
-		log.Warn("too many channels in the session, the last ones are left out", "kept", maxChannels)
-	}
-	// Written to a file of the state directory, not kept in memory: a
-	// recording can be large. Beyond the API's default limit, the rest
-	// would be refused anyway.
-	tmp, err := os.CreateTemp(in.StateDir, "tty-*.merge")
+// recording opens the file to upload for a session and describes it. Only a
+// session with a single channel, whose file is its own, has a recording
+// worth keeping: a human holds one shell channel open. Bots open one channel
+// per command, and Cowrie reuses the file of an earlier identical input
+// (duplicate), with its times and output: the API replays those sessions
+// from their events.
+func (in *ingestor) recording(job ttyJob) (*os.File, protocol.TTYMeta, error) {
+	f, err := in.openTTY(job.Channels[0].TTYLog)
 	if err != nil {
-		return nil, protocol.TTYMeta{}, nil, err
+		return nil, protocol.TTYMeta{}, err
 	}
-	release := func() { _ = tmp.Close(); _ = os.Remove(tmp.Name()) }
-	n, err := io.Copy(tmp, io.LimitReader(ttylog.Join(parts...), maxMerge))
-	if n == maxMerge {
-		log.Warn("merged recording too large, truncated", "bytes", maxMerge)
-	}
+	m, err := in.describe(job.Session, f)
 	if err != nil {
-		if n == 0 {
-			release()
-			return nil, protocol.TTYMeta{}, nil, err
-		}
-		log.Warn("damaged channel recording, sending what could be read", "err", err)
+		_ = f.Close()
 	}
-	m, err := in.describe(job.Session, tmp)
-	if err != nil {
-		release()
-		return nil, m, nil, err
-	}
-	return tmp, m, release, nil
+	return f, m, err
 }
 
 // openTTYRoot opens the TTY directory on first use: Cowrie creates it
