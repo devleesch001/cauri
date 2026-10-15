@@ -56,6 +56,7 @@ func sessionFilter(q *query) store.SessionFilter {
 	return store.SessionFilter{
 		Sensor:      q.str("sensor"),
 		SrcIP:       q.str("ip"),
+		Session:     q.str("session"),
 		Country:     q.country("country"),
 		City:        q.str("city"),
 		Username:    q.str("username"),

@@ -53,6 +53,8 @@ const (
 type SessionFilter struct {
 	Sensor string // name
 	SrcIP  string
+	// Session is a Cowrie session identifier, exactly.
+	Session string
 	// Username and Password match sessions with such a login attempt.
 	Username string
 	Password string
@@ -154,6 +156,9 @@ func (f SessionFilter) query(db bun.IDB, dst any) *bun.SelectQuery {
 	}
 	if f.SrcIP != "" {
 		q = q.Where("s.src_ip = ?", f.SrcIP)
+	}
+	if f.Session != "" {
+		q = q.Where("s.cowrie_session = ?", f.Session)
 	}
 	if f.Country != "" {
 		q = q.Where("s.geo_country = ?", f.Country)

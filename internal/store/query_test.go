@@ -117,6 +117,7 @@ func TestListSessions(t *testing.T) {
 			"all, latest first": {store.SessionFilter{}, "321"},
 			"sensor":            {store.SessionFilter{Sensor: "hp-01"}, "21"},
 			"ip":                {store.SessionFilter{SrcIP: "203.0.113.2"}, "2"},
+			"session id":        {store.SessionFilter{Session: "3"}, "3"},
 			"login success":     {store.SessionFilter{Login: store.LoginSuccess}, "1"},
 			"login failed":      {store.SessionFilter{Login: store.LoginFailed}, "32"},
 			"username":          {store.SessionFilter{Username: "root"}, "1"},
