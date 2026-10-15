@@ -36,7 +36,22 @@ func (s *server) listSensors(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
-	f := store.SessionFilter{
+	f := sessionFilter(&q)
+	if q.err != nil {
+		writeError(w, http.StatusBadRequest, q.err.Error())
+		return
+	}
+	rows, total, err := store.ListSessions(r.Context(), s.DB, f)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, newList(rows, total, f.Page))
+}
+
+// sessionFilter reads the filters of the session list.
+func sessionFilter(q *query) store.SessionFilter {
+	return store.SessionFilter{
 		Sensor:      q.str("sensor"),
 		SrcIP:       q.str("ip"),
 		Country:     q.country("country"),
@@ -56,16 +71,6 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 		HASSH:       q.str("hassh"),
 		Page:        q.page(),
 	}
-	if q.err != nil {
-		writeError(w, http.StatusBadRequest, q.err.Error())
-		return
-	}
-	rows, total, err := store.ListSessions(r.Context(), s.DB, f)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, newList(rows, total, f.Page))
 }
 
 // sessionID returns the session id of the URL. An invalid one is 0,
@@ -93,7 +98,22 @@ func (s *server) getSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) listLoginAttempts(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
-	f := store.LoginAttemptFilter{
+	f := loginAttemptFilter(&q)
+	if q.err != nil {
+		writeError(w, http.StatusBadRequest, q.err.Error())
+		return
+	}
+	rows, total, err := store.ListLoginAttempts(r.Context(), s.DB, f)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, newList(rows, total, f.Page))
+}
+
+// loginAttemptFilter reads the filters of the login attempt list.
+func loginAttemptFilter(q *query) store.LoginAttemptFilter {
+	return store.LoginAttemptFilter{
 		Sensor:      q.str("sensor"),
 		SrcIP:       q.str("ip"),
 		Country:     q.country("country"),
@@ -105,16 +125,6 @@ func (s *server) listLoginAttempts(w http.ResponseWriter, r *http.Request) {
 		Interactive: q.bool("interactive"),
 		Page:        q.page(),
 	}
-	if q.err != nil {
-		writeError(w, http.StatusBadRequest, q.err.Error())
-		return
-	}
-	rows, total, err := store.ListLoginAttempts(r.Context(), s.DB, f)
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, newList(rows, total, f.Page))
 }
 
 func newList[T any](items []T, total int, p store.Page) list[T] {

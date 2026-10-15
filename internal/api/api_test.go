@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -755,5 +756,36 @@ func TestStats(t *testing.T) {
 		}
 
 		get(t, e, "/api/stats/credentials?from=yesterday", http.StatusBadRequest, nil)
+	})
+}
+
+// Exports follow the list filters, and neutralise cells a spreadsheet
+// would run: attackers choose usernames.
+func TestExport(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		realSession(t, e)
+		raw := `{"session":"evil01","timestamp":"2026-10-14T10:00:00Z","eventid":"cowrie.login.failed","src_ip":"203.0.113.9","username":"=HYPERLINK(\"http://x\")","password":"-1+1"}`
+		if _, err := e.client.SendEvents(context.Background(), protocol.EventBatch{SensorID: "hp-01",
+			Events: []protocol.Event{{ID: protocol.EventID("hp-01", []byte(raw)), Raw: json.RawMessage(raw)}}}); err != nil {
+			t.Fatal(err)
+		}
+
+		resp, body := getRaw(t, e, "/api/sessions.csv?verdict=bot", nil)
+		if resp.code != http.StatusOK || !strings.HasPrefix(resp.header.Get("Content-Type"), "text/csv") ||
+			!strings.Contains(resp.header.Get("Content-Disposition"), "attachment") {
+			t.Fatalf("export = %d %v", resp.code, resp.header)
+		}
+		records, err := csv.NewReader(strings.NewReader(body)).ReadAll()
+		if err != nil || len(records) != 6 || records[0][0] != "id" || records[1][3] != "evil01" {
+			t.Fatalf("sessions csv = %v, %v", records, err)
+		}
+
+		_, body = getRaw(t, e, "/api/login-attempts.csv?username="+url.QueryEscape(`=HYPERLINK("http://x")`), nil)
+		records, err = csv.NewReader(strings.NewReader(body)).ReadAll()
+		if err != nil || len(records) != 2 || records[1][8] != `'=HYPERLINK("http://x")` || records[1][9] != "'-1+1" {
+			t.Fatalf("login attempts csv = %v, %v", records, err)
+		}
+		get(t, e, "/api/sessions.csv?from=yesterday", http.StatusBadRequest, nil)
 	})
 }

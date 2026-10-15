@@ -79,11 +79,13 @@ func New(c Config) http.Handler {
 			r.Get("/stats/commands", s.getCommands)
 			r.Get("/about", s.getAbout)
 			r.Get("/sessions", s.listSessions)
+			r.Get("/sessions.csv", s.exportSessions)
 			r.Get("/sessions/{id}", s.getSession)
 			r.Get("/sessions/{id}/cast", s.getCast)
 			r.Get("/sessions/{id}/chapters", s.getChapters)
 			r.Get("/sessions/{id}/verdict", s.getVerdict)
 			r.Get("/login-attempts", s.listLoginAttempts)
+			r.Get("/login-attempts.csv", s.exportLoginAttempts)
 		})
 
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {

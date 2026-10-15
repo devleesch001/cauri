@@ -105,7 +105,50 @@ func selectSessions(db bun.IDB, dst any) *bun.SelectQuery {
 // of sessions matching the filter.
 func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSummary, int, error) {
 	var rows []Session
-	q := selectSessions(db, &rows)
+	total, err := f.Page.apply(f.query(db, &rows)).OrderExpr("s.started_at DESC, s.id DESC").ScanAndCount(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	sums, err := summarize(ctx, db, rows)
+	return sums, int(total), err
+}
+
+// exportBatch is the number of rows read per query when exporting.
+var exportBatch = 1000 // a variable for tests
+
+// EachSession calls fn with the sessions f selects, latest first, by
+// batches, up to limit sessions: an export reads them all without holding
+// them in memory. Page is ignored.
+func EachSession(ctx context.Context, db bun.IDB, f SessionFilter, limit int, fn func([]SessionSummary) error) error {
+	var last *Session // keyset: the order is unique, (started_at, id)
+	for limit > 0 {
+		var rows []Session
+		q := f.query(db, &rows)
+		if last != nil {
+			q = q.Where("(s.started_at < ? OR (s.started_at = ? AND s.id < ?))", last.StartedAt, last.StartedAt, last.ID)
+		}
+		if err := q.OrderExpr("s.started_at DESC, s.id DESC").Limit(int64(min(exportBatch, limit))).Scan(ctx); err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		sums, err := summarize(ctx, db, rows)
+		if err != nil {
+			return err
+		}
+		if err := fn(sums); err != nil {
+			return err
+		}
+		limit -= len(rows)
+		last = &rows[len(rows)-1]
+	}
+	return nil
+}
+
+// query selects the sessions of the filter, without order or page.
+func (f SessionFilter) query(db bun.IDB, dst any) *bun.SelectQuery {
+	q := selectSessions(db, dst)
 	if f.Sensor != "" {
 		q = q.Where("sn.name = ?", f.Sensor)
 	}
@@ -171,13 +214,7 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 			q = q.Where("s.tty_file_id IS NULL")
 		}
 	}
-
-	total, err := f.Page.apply(q).OrderExpr("s.started_at DESC, s.id DESC").ScanAndCount(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	sums, err := summarize(ctx, db, rows)
-	return sums, int(total), err
+	return q
 }
 
 func existsExpr(exists bool) string {
@@ -314,6 +351,38 @@ type LoginAttemptRow struct {
 // ListLoginAttempts returns a page of login attempts, latest first, and
 // the number of attempts matching the filter.
 func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([]LoginAttemptRow, int, error) {
+	rows := []LoginAttemptRow{}
+	total, err := f.Page.apply(f.query(db)).OrderExpr("la.ts DESC, la.id DESC").ScanAndCount(ctx, &rows)
+	return rows, int(total), err
+}
+
+// EachLoginAttempt calls fn with the login attempts f selects, latest
+// first, by batches, up to limit attempts. Page is ignored.
+func EachLoginAttempt(ctx context.Context, db bun.IDB, f LoginAttemptFilter, limit int, fn func([]LoginAttemptRow) error) error {
+	var last *LoginAttemptRow
+	for limit > 0 {
+		rows := []LoginAttemptRow{}
+		q := f.query(db)
+		if last != nil {
+			q = q.Where("(la.ts < ? OR (la.ts = ? AND la.id < ?))", last.TS, last.TS, last.ID)
+		}
+		if err := q.OrderExpr("la.ts DESC, la.id DESC").Limit(int64(min(exportBatch, limit))).Scan(ctx, &rows); err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		if err := fn(rows); err != nil {
+			return err
+		}
+		limit -= len(rows)
+		last = &rows[len(rows)-1]
+	}
+	return nil
+}
+
+// query selects the login attempts of the filter, without order or page.
+func (f LoginAttemptFilter) query(db bun.IDB) *bun.SelectQuery {
 	q := db.NewSelect().Model((*LoginAttempt)(nil)).
 		ColumnExpr("la.id, la.session_id, la.ts, la.username, la.password, la.success").
 		ColumnExpr("sn.name AS sensor, s.cowrie_session, s.src_ip, s.client_version, s.geo_country").
@@ -346,9 +415,7 @@ func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([
 	if f.Interactive != nil {
 		q = q.Where("s.login_success = ?", *f.Interactive)
 	}
-	rows := []LoginAttemptRow{}
-	total, err := f.Page.apply(q).OrderExpr("la.ts DESC, la.id DESC").ScanAndCount(ctx, &rows)
-	return rows, int(total), err
+	return q
 }
 
 // ListSensors returns every sensor that sent events, by name.
