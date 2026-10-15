@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -35,12 +38,18 @@ func runAPI(ctx context.Context, args []string) error {
 	geoDB := fs.String("geoip-db", "", "MMDB GeoIP database (DB-IP Lite or MaxMind GeoLite2) to locate sessions; none by default")
 	asnDB := fs.String("geoip-asn-db", "", "MMDB ASN database (DB-IP ASN Lite or MaxMind GeoLite2-ASN) to find the network of sessions; none by default")
 	retention := fs.Int("raw-retention-days", 0, "delete the raw Cowrie lines of events older than this many days, keeping sessions and their details; 0 keeps them")
+	adminPassword := fs.String("admin-password", "", "password of the administration pages; a random one is generated and logged at each start if neither it nor --admin-password-file is set")
+	adminPasswordFile := fs.String("admin-password-file", "", "file holding the password of the administration pages, such as a container secret")
 	logLevel := fs.String("log-level", "info", "log level: debug, info, warn or error")
 	if err := envflag.Parse(fs, args); err != nil {
 		return err
 	}
 
 	log, err := newLogger(*logLevel)
+	if err != nil {
+		return err
+	}
+	admin, err := adminPasswordOf(*adminPassword, *adminPasswordFile, log)
 	if err != nil {
 		return err
 	}
@@ -60,6 +69,7 @@ func runAPI(ctx context.Context, args []string) error {
 		Ingest:  svc,
 		TTY:     tty,
 		Tokens:  auth.NewTokens(conn),
+		Admin:   auth.NewAdmin(admin),
 		Logger:  log,
 		Version: buildVersion(),
 	}
@@ -163,4 +173,29 @@ func purgeRaw(ctx context.Context, db *bun.DB, keep time.Duration, log *slog.Log
 		case <-t.C:
 		}
 	}
+}
+
+// adminPasswordOf returns the administration password set by the
+// operator, or generates one and logs it: it then changes at each start.
+func adminPasswordOf(password, file string, log *slog.Logger) (string, error) {
+	switch {
+	case password != "" && file != "":
+		return "", errors.New("--admin-password and --admin-password-file: set only one")
+	case file != "":
+		b, err := os.ReadFile(file) //nolint:gosec // G304: path given by the operator
+		if err != nil {
+			return "", fmt.Errorf("--admin-password-file: %w", err)
+		}
+		password = strings.TrimSpace(string(b))
+		if password == "" {
+			return "", fmt.Errorf("--admin-password-file: %s is empty", file)
+		}
+		return password, nil
+	case password != "":
+		return password, nil
+	}
+	password = auth.GeneratePassword()
+	log.Warn("administration password generated: it changes at each start, set CAURI_ADMIN_PASSWORD or CAURI_ADMIN_PASSWORD_FILE to keep one",
+		"password", password)
+	return password, nil
 }

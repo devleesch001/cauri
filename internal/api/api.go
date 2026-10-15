@@ -12,8 +12,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/uptrace/bun"
 
+	"github.com/devleesch001/cauri/internal/auth"
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
@@ -23,12 +25,21 @@ type Authenticator interface {
 	Authenticate(ctx context.Context, token string) (sensorID string, err error)
 }
 
+// Tokens are the ingestor tokens: checked on ingestion, managed from the
+// administration pages.
+type Tokens interface {
+	Authenticator
+	Create(ctx context.Context, sensor, name string) (store.IngestToken, string, error)
+	List(ctx context.Context) ([]store.IngestToken, error)
+	Revoke(ctx context.Context, id int64) error
+}
+
 // Config holds the dependencies of the HTTP handler.
 type Config struct {
 	DB     *bun.DB
 	Ingest *ingest.Service
 	TTY    *ttystore.Store // stored recordings, read for replays
-	Tokens Authenticator
+	Tokens Tokens
 	Logger *slog.Logger
 	// Version is shown by GET /api/about.
 	Version string
@@ -37,6 +48,9 @@ type Config struct {
 	GeoIP interface{ Info() geoip.Info }
 	// ASN is the ASN database, nil without one; same attribution rules.
 	ASN interface{ Info() geoip.Info }
+	// Admin opens the administration routes (/api/admin) to the holder of
+	// its password; nil leaves them out.
+	Admin *auth.Admin
 	// ReadAuth protects the read endpoints. Nil lets every request through;
 	// UI authentication will plug in here.
 	ReadAuth func(http.Handler) http.Handler
@@ -88,6 +102,20 @@ func New(c Config) http.Handler {
 			r.Get("/login-attempts.csv", s.exportLoginAttempts)
 		})
 
+		if c.Admin != nil {
+			r.Route("/admin", func(r chi.Router) {
+				r.Post("/login", s.adminLogin)
+				r.Post("/logout", s.adminLogout)
+				r.Group(func(r chi.Router) {
+					r.Use(s.adminSession)
+					r.Get("/session", s.adminCheck)
+					r.Get("/tokens", s.listTokens)
+					r.Post("/tokens", s.createToken)
+					r.Post("/tokens/{id}/revoke", s.revokeToken)
+				})
+			})
+		}
+
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 			writeError(w, http.StatusNotFound, "not found")
 		})
@@ -103,6 +131,7 @@ func New(c Config) http.Handler {
 
 type server struct {
 	Config
+	admin adminState
 }
 
 func (s *server) healthz(w http.ResponseWriter, r *http.Request) {
