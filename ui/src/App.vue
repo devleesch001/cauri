@@ -255,10 +255,6 @@ nav a.router-link-active {
   width: 16rem;
 }
 
-.search :deep(input) {
-  width: 100%;
-}
-
 @media (max-width: 720px) {
   .bar {
     padding: var(--space-2) var(--space-3);

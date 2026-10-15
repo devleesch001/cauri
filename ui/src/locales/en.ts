@@ -17,7 +17,7 @@ export default {
   },
   search: {
     label: 'Search',
-    placeholder: 'Search… (Ctrl+K)',
+    placeholder: 'Search a page, an address, a session…',
     pages: 'Pages',
     sessions: 'Sessions',
     none: 'No match.',
