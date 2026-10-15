@@ -70,6 +70,7 @@ module path is `github.com/devleesch001/cauri`.
 | Partial recordings of old sessions (2026-10-15) | At start the API detaches the recordings of sessions with several channels (`Service.ForgetPartialTTYs`: `tty_file_id` cleared, orphan `tty_files` rows deleted, files and verdicts kept). | Before the ingestor stopped sending them, the API kept the first channel's file alone (session 360c0aaa5fe0: 218 ms of 20 s; session 150 as well, 155 ms of 281 s), so replays showed one command out of dozens. A size criterion given to the user earlier (under 2,000 bytes) wrongly spared session 150. |
 | Foreign keys (2026-10-15) | Named `fk_<table>_<column>`, with `ON DELETE`: `CASCADE` for the events and projections of a session and the tokens of a sensor, `SET NULL` for a session's recording, `RESTRICT` for a sensor that has sessions or events. Migration 00005 (SQLite rebuilds the tables). | User saw missing cascades and unnamed keys: only `event_data` cascaded, and deleting a session, a recording or a sensor needed the right order by hand. `RESTRICT` on sensors chosen by the user so that none is deleted by accident. |
 | Channels in the verdict (2026-10-15) | Every SSH channel beyond the first (`cowrie.log.closed` events: an exec or an isolated shell each) is −1 for a human, down to −6; `verdict.Version` is 2. At the version change, a session of one channel whose recording is gone keeps its stored verdict. | User: bots that run a command per channel (libssh, session 360c0aaa5fe0) scored "uncertain"; a human holds one shell channel. The kept verdicts protect the retention policy (removing old TTY files): judging again without the recording would have lost the typing points. |
+| Attackers (2026-10-15) | An attacker is a source address; sessions grouped by `src_ip` on read, no table and no migration. A list page (`/attackers`) and a profile (`/attackers/{ip}`) built on the statistics, which all take `ip`. Addresses elsewhere link to the profile. | User asked for a page identifying an attacker and gathering its attacks, "for example by IP", as a dedicated page because the overview is incomplete. Grouping on read measured at 64–196 ms for the list on ~97k sessions, 2–6 ms for one address. Other groupings left for later (see Next steps). |
 | Replay timing | Real timing in the cast; `idle_time_limit` 2 s in the header by default, removable (`?idle_time_limit=0`, "Real time" switch) | User: the real rhythm tells a human from a bot. |
 
 ## What real Cowrie data changed
@@ -138,6 +139,10 @@ Checked against the official image v3.1.2:
 - **All-in-one binary** (build tag `allinone`): an in-process `Sink`
   calling `ingest.Service`.
 - **GeoIP, message broker**: not designed yet; nothing prevents them.
+- **Other attacker groupings** (asked by the user for later): by network
+  (ASN or /24), by tool (HASSH, client version), or linking addresses that
+  share credentials or payloads. An attacker is only a source address so
+  far.
 
 ## Original brief (verbatim, from the user)
 

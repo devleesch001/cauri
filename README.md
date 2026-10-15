@@ -274,6 +274,24 @@ API serves them under `/api/stats/` (`summary`, `activity`,
 `credentials`, `commands`, `payloads`, `origins`) and `/api/countries`,
 `/api/cities`, with the parameters `sensor`, `from`, `to`, `verdict`.
 
+### Attackers
+
+An attacker is, for now, a source address. The **Attackers** page lists
+them with their sessions, shells, login attempts, first and last seen,
+location, network and the verdict most of their sessions got; it filters
+by address prefix, country, network, verdict, period and whether they got
+a shell, and sorts by sessions, shells or last seen. A profile
+(`/attackers/{ip}`) gathers everything from one address: where it comes
+from, the sensors it reached, its SSH clients and HASSH, the statistics
+of the pages above narrowed to it (days, credentials, commands,
+payloads) and its latest sessions. Addresses in the other pages, and an
+address typed in the search, lead to it.
+
+The API serves them as `GET /api/attackers` (parameters of the
+statistics plus `country`, `asn`, `ip_prefix`, `shell`, `sort` =
+`sessions`, `shells` or `last_seen`, `limit`, `offset`) and
+`GET /api/attackers/{ip}`; every `/api/stats/` route also takes `ip`.
+
 ### Exports
 
 The session list and the failed logins have an **Export CSV** link: the
