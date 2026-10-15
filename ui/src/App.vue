@@ -62,6 +62,9 @@ onMounted(() => {
       <RouterLink to="/credentials">
         {{ t('nav.credentials') }}
       </RouterLink>
+      <RouterLink to="/commands">
+        {{ t('nav.commands') }}
+      </RouterLink>
       <RouterLink to="/payloads">
         {{ t('nav.payloads') }}
       </RouterLink>

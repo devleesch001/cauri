@@ -247,12 +247,13 @@ Besides the lists, the UI has pages that count:
 | Overview | Headline numbers (sessions, shells, login attempts and the share accepted, source addresses, countries) with their change from the previous period of the same length; the world map; the latest sessions, refreshed every 10 s; the busiest addresses, networks (with an ASN database) and SSH clients |
 | Activity | Sessions by hour and weekday, the busiest hours, sessions and shells by day (UTC) |
 | Credentials | Usernames, passwords and pairs tried, those that let attackers in, password lengths |
+| Commands | Command lines run, by how many sessions and addresses ran each; client fingerprints (HASSH) of those sessions |
 | Payloads | Files downloaded or uploaded, by SHA-256: sessions, addresses and countries that fetched each, first and last seen, a VirusTotal link (by digest: the file never leaves cauri) |
 
 Every page takes the filters of the lists (period, sensor, human or bot)
 and every number leads to the matching sessions or login attempts. The
 API serves them under `/api/stats/` (`summary`, `activity`,
-`credentials`, `payloads`, `origins`) and `/api/countries`,
+`credentials`, `commands`, `payloads`, `origins`) and `/api/countries`,
 `/api/cities`, with the parameters `sensor`, `from`, `to`, `verdict`.
 
 ### Raw data retention

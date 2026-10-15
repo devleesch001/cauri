@@ -225,6 +225,15 @@ export interface Payloads {
   items: Payload[]
 }
 
+/** What attackers run (GET /api/stats/commands). */
+export interface Commands {
+  total: number
+  distinct: number
+  sessions: number
+  top: { input: string; count: number; sessions: number; sources: number; last: string }[]
+  hassh: { hassh: string; client: string; clients: number; sessions: number; sources: number }[]
+}
+
 /** Who attacks (GET /api/stats/origins). */
 export interface Origins {
   sources: { ip: string; country: string | null; sessions: number; shells: number; last: string }[]

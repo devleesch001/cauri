@@ -98,7 +98,7 @@ watch(
     try {
       const res = await api.sessions({
         sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-        client: q('client'), country: q('country'), city: q('city'), file: q('file'), asn: q('asn'), login: q('login'), verdict: q('verdict'),
+        client: q('client'), country: q('country'), city: q('city'), file: q('file'), asn: q('asn'), command: q('command'), hassh: q('hassh'), login: q('login'), verdict: q('verdict'),
         has_commands: q('has_commands'),
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
@@ -197,6 +197,21 @@ function clearFilters() {
         :label="q('city')"
         :aria-label="t('sessions.filters.city', { city: q('city') })"
         @remove="patchQuery({ city: undefined })"
+      />
+      <Chip
+        v-if="q('command')"
+        removable
+        class="data"
+        :label="q('command')"
+        :aria-label="t('sessions.filters.command', { command: q('command') })"
+        @remove="patchQuery({ command: undefined })"
+      />
+      <Chip
+        v-if="q('hassh')"
+        removable
+        :label="t('sessions.filters.hasshChip', { hassh: q('hassh').slice(0, 12) })"
+        :aria-label="t('sessions.filters.hassh', { hassh: q('hassh') })"
+        @remove="patchQuery({ hassh: undefined })"
       />
       <Chip
         v-if="q('asn')"
