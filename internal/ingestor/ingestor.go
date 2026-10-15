@@ -19,9 +19,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/devleesch001/cauri/internal/ingestor/tail"
+	"github.com/devleesch001/cauri/internal/ttylog"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
@@ -100,6 +102,12 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("read tty queue: %w", err)
 	}
 	in.queue = queue
+	// Merges left by a stop during an upload: the job is still queued.
+	if stale, err := filepath.Glob(filepath.Join(cfg.StateDir, "tty-*.merge")); err == nil {
+		for _, f := range stale {
+			_ = os.Remove(f)
+		}
+	}
 
 	follower, err := tail.Open(tail.Options{
 		Dir: cfg.LogDir, Name: LogName, Poll: cfg.PollInterval,
@@ -188,11 +196,44 @@ func (in *ingestor) batch(ctx context.Context, lines <-chan tail.Line) error {
 	}
 }
 
-// logClosed holds the fields of cowrie.log.closed the ingestor needs.
-type logClosed struct {
-	EventID string `json:"eventid"`
-	Session string `json:"session"`
-	TTYLog  string `json:"ttylog"`
+// sessionEventOf reads what the TTY queue needs of a Cowrie line: a
+// channel's recording (cowrie.log.closed) or the end of its session. A
+// field of an unexpected type is ignored, not the event.
+func sessionEventOf(raw []byte) (sessionEvent, bool) {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return sessionEvent{}, false
+	}
+	str := func(k string) string {
+		var s string
+		_ = json.Unmarshal(m[k], &s)
+		return s
+	}
+	e := sessionEvent{session: str("session")}
+	if e.session == "" {
+		return e, false
+	}
+	switch str("eventid") {
+	case "cowrie.session.closed":
+		return e, true
+	case "cowrie.log.closed":
+		c := ttyChannel{TTYLog: str("ttylog")}
+		if c.TTYLog == "" {
+			return e, false
+		}
+		c.ClosedAt, _ = time.Parse(time.RFC3339Nano, str("timestamp"))
+		// Cowrie 3 writes duration_ms, older versions duration in seconds.
+		var ms, sec float64
+		if json.Unmarshal(m["duration_ms"], &ms) == nil && ms >= 0 && ms < 1e15 {
+			c.DurationMS = int64(ms)
+		} else if json.Unmarshal(m["duration"], &sec) == nil && sec >= 0 && sec < 1e12 {
+			c.DurationMS = int64(sec * 1000)
+		}
+		_ = json.Unmarshal(m["duplicate"], &c.Duplicate)
+		e.channel = &c
+		return e, true
+	}
+	return e, false
 }
 
 // deliver sends lines until acknowledged, then queues their recordings and
@@ -222,14 +263,13 @@ func (in *ingestor) deliver(ctx context.Context, lines []tail.Line) error {
 		}
 		in.Logger.Debug("batch delivered", "accepted", res.Accepted, "duplicates", res.Duplicates, "rejected", len(res.Rejected))
 
-		var jobs []ttyJob
+		var events []sessionEvent
 		for _, e := range b.Events {
-			var lc logClosed
-			if json.Unmarshal(e.Raw, &lc) == nil && lc.EventID == "cowrie.log.closed" && lc.TTYLog != "" && lc.Session != "" {
-				jobs = append(jobs, ttyJob{Session: lc.Session, TTYLog: lc.TTYLog})
+			if se, ok := sessionEventOf(e.Raw); ok {
+				events = append(events, se)
 			}
 		}
-		if err := in.queue.add(jobs...); err != nil {
+		if err := in.queue.record(events, time.Now()); err != nil {
 			return fmt.Errorf("save tty queue: %w", err)
 		}
 	}
@@ -292,20 +332,20 @@ func (in *ingestor) uploadTTYs(ctx context.Context) error {
 // uploadTTY tries one upload and updates the queue. Only queue persistence
 // errors are returned.
 func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
-	log := in.Logger.With("session", job.Session, "ttylog", job.TTYLog)
+	log := in.Logger.With("session", job.Session, "channels", len(job.Channels))
 	if err := in.openTTYRoot(); err != nil {
 		// Misconfiguration or directory not created yet: keep the job.
 		delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
 		log.Warn("tty directory unavailable, retrying", "err", err, "in", delay.String())
 		return in.queue.retry(job.Session, time.Now().Add(delay))
 	}
-	f, m, err := in.openTTY(job)
+	f, m, release, err := in.recording(job, log)
 	if err != nil {
 		log.Warn("tty recording unreadable, dropping it", "err", err)
 		return in.queue.done(job.Session)
 	}
 	res, err := in.Sink.SendTTY(ctx, m, f)
-	_ = f.Close()
+	release()
 	if err == nil {
 		log.Debug("tty recording delivered", "status", res.Status)
 		return in.queue.done(job.Session)
@@ -320,6 +360,75 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
 	log.Warn("tty upload failed, retrying", "err", err, "in", delay.String())
 	return in.queue.retry(job.Session, time.Now().Add(delay))
+}
+
+// recording returns the file to upload for a session, at its start, its
+// metadata, and how to release it. A session has a recording per SSH
+// channel, one per command for many bots: they are merged into one, in
+// the order the channels opened. Cowrie keeps one file per input and marks
+// later recordings of it duplicate: their file has the times of the
+// first, maybe of another session, and is moved to its own channel's
+// start. A single recording of its own is sent as Cowrie wrote it.
+func (in *ingestor) recording(job ttyJob, log *slog.Logger) (*os.File, protocol.TTYMeta, func(), error) {
+	chans := slices.Clone(job.Channels)
+	slices.SortStableFunc(chans, func(a, b ttyChannel) int { return a.start().Compare(b.start()) })
+	if len(chans) == 1 && !chans[0].Duplicate {
+		f, err := in.openTTY(chans[0].TTYLog)
+		if err != nil {
+			return nil, protocol.TTYMeta{}, nil, err
+		}
+		m, err := in.describe(job.Session, f)
+		if err != nil {
+			_ = f.Close()
+			return nil, m, nil, err
+		}
+		return f, m, func() { _ = f.Close() }, nil
+	}
+
+	var parts []ttylog.Part
+	var opened []*os.File
+	defer func() {
+		for _, f := range opened {
+			_ = f.Close()
+		}
+	}()
+	for _, c := range chans {
+		f, err := in.openTTY(c.TTYLog)
+		if err != nil {
+			log.Warn("channel recording unreadable, leaving it out", "ttylog", c.TTYLog, "err", err)
+			continue
+		}
+		opened = append(opened, f)
+		p := ttylog.Part{R: f}
+		if c.Duplicate && !c.ClosedAt.IsZero() {
+			p.At = c.start()
+		}
+		parts = append(parts, p)
+	}
+	if len(parts) == 0 {
+		return nil, protocol.TTYMeta{}, nil, errors.New("no channel recording readable")
+	}
+	// Written to a file of the state directory, not kept in memory: a
+	// recording can be large.
+	tmp, err := os.CreateTemp(in.StateDir, "tty-*.merge")
+	if err != nil {
+		return nil, protocol.TTYMeta{}, nil, err
+	}
+	release := func() { _ = tmp.Close(); _ = os.Remove(tmp.Name()) }
+	n, err := io.Copy(tmp, ttylog.Join(parts...))
+	if err != nil {
+		if n == 0 {
+			release()
+			return nil, protocol.TTYMeta{}, nil, err
+		}
+		log.Warn("damaged channel recording, sending what could be read", "err", err)
+	}
+	m, err := in.describe(job.Session, tmp)
+	if err != nil {
+		release()
+		return nil, m, nil, err
+	}
+	return tmp, m, release, nil
 }
 
 // openTTYRoot opens the TTY directory on first use: Cowrie creates it
@@ -338,33 +447,37 @@ func (in *ingestor) openTTYRoot() error {
 	return nil
 }
 
-// openTTY opens the recording of a job, which must be a regular file of
-// the TTY directory, and hashes it: the digest lets the API check the
-// upload and recognise one it already has. The file is returned at its
-// start, ready to send.
-func (in *ingestor) openTTY(job ttyJob) (*os.File, protocol.TTYMeta, error) {
-	var m protocol.TTYMeta
-	f, err := in.ttyRoot.Open(filepath.Base(job.TTYLog))
+// openTTY opens a recording written by Cowrie, which must be a regular
+// file of the TTY directory.
+func (in *ingestor) openTTY(ttyLog string) (*os.File, error) {
+	f, err := in.ttyRoot.Open(filepath.Base(ttyLog))
 	if err != nil {
-		return nil, m, err
+		return nil, err
 	}
 	fi, err := f.Stat()
 	if err == nil && !fi.Mode().IsRegular() {
 		err = errors.New("not a regular file")
 	}
-	var n int64
-	h := sha256.New()
-	if err == nil {
-		n, err = io.Copy(h, f)
+	if err != nil {
+		_ = f.Close()
+		return nil, err
 	}
+	return f, nil
+}
+
+// describe hashes a file to upload, from its start, and leaves it at its
+// start: the digest lets the API check the upload and recognise one it
+// already has.
+func (in *ingestor) describe(session string, f *os.File) (protocol.TTYMeta, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return protocol.TTYMeta{}, err
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, f)
 	if err == nil {
 		_, err = f.Seek(0, io.SeekStart)
 	}
-	if err != nil {
-		_ = f.Close()
-		return nil, m, err
-	}
-	return f, protocol.TTYMeta{
-		SensorID: in.SensorID, Session: job.Session, SHA256: hex.EncodeToString(h.Sum(nil)), Size: n,
-	}, nil
+	return protocol.TTYMeta{
+		SensorID: in.SensorID, Session: session, SHA256: hex.EncodeToString(h.Sum(nil)), Size: n,
+	}, err
 }

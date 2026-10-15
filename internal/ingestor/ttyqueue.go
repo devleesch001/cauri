@@ -1,14 +1,42 @@
 package ingestor
 
 import (
+	"slices"
 	"sync"
 	"time"
 )
 
-// ttyJob is a TTY recording waiting to be uploaded.
+// sessionWait is how long a session's recordings wait for its
+// cowrie.session.closed, after its last channel closed, before being sent
+// anyway: Cowrie may stop before writing it.
+const sessionWait = time.Hour
+
+// ttyChannel is the recording of one SSH channel of a session, as its
+// cowrie.log.closed tells it.
+type ttyChannel struct {
+	TTYLog     string    `json:"ttylog"` // path written by Cowrie; only its base name is used
+	ClosedAt   time.Time `json:"closed_at"`
+	DurationMS int64     `json:"duration_ms"`
+	// Duplicate: Cowrie kept the file of an earlier recording of the same
+	// input, with that one's times.
+	Duplicate bool `json:"duplicate"`
+}
+
+// start is when the channel opened, in its own session.
+func (c ttyChannel) start() time.Time {
+	return c.ClosedAt.Add(-time.Duration(c.DurationMS) * time.Millisecond)
+}
+
+// ttyJob is the recording of a session waiting to be uploaded: its
+// channels, merged into one file when it is sent.
 type ttyJob struct {
-	Session  string    `json:"session"`
-	TTYLog   string    `json:"ttylog"` // path written by Cowrie; only its base name is used
+	Session  string       `json:"session"`
+	Channels []ttyChannel `json:"channels,omitempty"`
+	// Closed: the session's cowrie.session.closed was delivered, no
+	// channel will come.
+	Closed bool `json:"closed,omitempty"`
+	// TTYLog is the single recording of a job queued by an older version.
+	TTYLog   string    `json:"ttylog,omitempty"`
 	Attempts int       `json:"attempts"`
 	NextTry  time.Time `json:"next_try"`
 }
@@ -24,19 +52,50 @@ type ttyQueue struct {
 func loadTTYQueue(path string) (*ttyQueue, error) {
 	q := &ttyQueue{path: path, notify: make(chan struct{}, 1)}
 	_, err := loadJSON(path, &q.jobs)
+	for i, j := range q.jobs {
+		if len(j.Channels) == 0 && j.TTYLog != "" {
+			q.jobs[i].Channels, q.jobs[i].Closed, q.jobs[i].TTYLog = []ttyChannel{{TTYLog: j.TTYLog}}, true, ""
+		}
+	}
 	return q, err
 }
 
-// add queues jobs not already queued and saves the queue.
-func (q *ttyQueue) add(jobs ...ttyJob) error {
-	if len(jobs) == 0 {
+// sessionEvent is what the queue needs of a delivered event: a channel's
+// recording closed, or its session closed (channel nil).
+type sessionEvent struct {
+	session string
+	channel *ttyChannel
+}
+
+// record adds delivered events to the queue, in order, and saves it. A
+// session's job waits for its cowrie.session.closed, or sessionWait after
+// its last channel. Events sent again add nothing.
+func (q *ttyQueue) record(events []sessionEvent, now time.Time) error {
+	if len(events) == 0 {
 		return nil
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	for _, j := range jobs {
-		if q.find(j.Session) < 0 {
-			q.jobs = append(q.jobs, j)
+	for _, e := range events {
+		i := q.find(e.session)
+		if e.channel == nil {
+			if i >= 0 && !q.jobs[i].Closed {
+				q.jobs[i].Closed, q.jobs[i].NextTry = true, now
+			}
+			continue
+		}
+		if i < 0 {
+			q.jobs = append(q.jobs, ttyJob{Session: e.session})
+			i = len(q.jobs) - 1
+		}
+		j := &q.jobs[i]
+		if !slices.ContainsFunc(j.Channels, func(c ttyChannel) bool {
+			return c.TTYLog == e.channel.TTYLog && c.ClosedAt.Equal(e.channel.ClosedAt)
+		}) {
+			j.Channels = append(j.Channels, *e.channel)
+		}
+		if !j.Closed {
+			j.NextTry = now.Add(sessionWait)
 		}
 	}
 	select {

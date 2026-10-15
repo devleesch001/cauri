@@ -20,12 +20,12 @@ type Part struct {
 }
 
 // Join returns recordings one after the other as a single recording, as
-// Cowrie would have written it, for the readers of this package and of
-// package verdict: a session runs a recording per SSH channel, one per
-// command for many bots. A record never goes back before the previous one,
-// so that time only moves forward. A part that cannot be read ends the
-// recording there, with its error. Seeking is only supported back to the
-// start, which reads the parts again (Chapters reads twice).
+// Cowrie would have written it: a session runs a recording per SSH
+// channel, one per command for many bots, and the ingestor sends them as
+// one. A record never goes back before the previous one, so that time only
+// moves forward. A part that cannot be read ends the recording there, with
+// its error. Seeking is only supported back to the start, which reads the
+// parts again.
 func Join(parts ...Part) io.ReadSeeker { return &joined{parts: parts} }
 
 type joined struct {

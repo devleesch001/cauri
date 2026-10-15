@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,8 +41,8 @@ func TestEndToEnd(t *testing.T) {
 	logDir, ttyDir, stateDir := filepath.Join(root, "log"), filepath.Join(root, "tty"), filepath.Join(root, "state")
 	_ = os.MkdirAll(logDir, 0o755)
 	_ = os.MkdirAll(ttyDir, 0o755)
-	// Cowrie names a recording after a hash of the terminal output, not of
-	// the file: name and digest differ.
+	// Cowrie names a recording after a hash of its input, not of the
+	// file: name and digest differ.
 	recording := "\x01\x00\x00\x00ttylog header\x1b[0mroot@svr04:~# wget http://x/y\r\n"
 	sum := sha256.Sum256([]byte(recording))
 	sha := hex.EncodeToString(sum[:])
@@ -117,5 +119,98 @@ func TestEndToEnd(t *testing.T) {
 	run()
 	if n, _ := db.NewSelect().Model((*store.Event)(nil)).Count(ctx); n != 5 {
 		t.Fatalf("events = %d after resend, want 5", n)
+	}
+}
+
+// Sessions running one command per exec channel, as bots do, replay with
+// every command and its output (sample of the official Cowrie v3.1.2, see
+// internal/ingest): the ingestor merges the channels, the API serves one
+// recording.
+func TestEndToEndExecChannels(t *testing.T) {
+	ctx := context.Background()
+	db := storetest.SQLite(t)
+	tty, _ := ttystore.New(t.TempDir())
+	tokens := auth.NewTokens(db)
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := httptest.NewServer(api.New(api.Config{DB: db, Ingest: ingest.New(db, tty, 0), TTY: tty, Tokens: tokens, Logger: quiet}))
+	defer srv.Close()
+	_, token, _ := tokens.Create(ctx, "hp-01", "e2e")
+	c, _ := client.New(srv.URL, token, srv.Client())
+
+	root := t.TempDir()
+	logDir, ttyDir, stateDir := filepath.Join(root, "log"), filepath.Join(root, "tty"), filepath.Join(root, "state")
+	_ = os.MkdirAll(logDir, 0o755)
+	_ = os.MkdirAll(ttyDir, 0o755)
+	sample := "../ingest/testdata/cowrie-v3.1.2-exec"
+	files, _ := filepath.Glob(sample + "-tty/*")
+	for _, p := range files {
+		data, _ := os.ReadFile(p)
+		_ = os.WriteFile(filepath.Join(ttyDir, filepath.Base(p)), data, 0o644)
+	}
+	data, err := os.ReadFile(sample + ".json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(logDir, ingestor.LogName), data, 0o644)
+
+	rctx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- ingestor.Run(rctx, ingestor.Config{
+			SensorID: "hp-01", LogDir: logDir, TTYDir: ttyDir, StateDir: stateDir,
+			Sink: ingestor.NewHTTPSink(c), FlushInterval: 10 * time.Millisecond,
+			PollInterval: 5 * time.Millisecond, FromStart: true,
+			MinBackoff: 5 * time.Millisecond, Logger: quiet,
+		})
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		rows, _, err := store.ListSessions(ctx, db, store.SessionFilter{})
+		if err == nil && len(rows) == 2 && rows[0].TTYAvailable && rows[1].TTYAvailable {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sessions not ingested with their recording: %+v, %v", rows, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	for sess, want := range map[string][]string{
+		"7dfe84911c9f": {"uname -a", "Linux svr04", "whoami", "root", "uname -a", "Linux svr04"},
+		"246b6f85171f": {"whoami", "root", "cat /proc/cpuinfo | grep name | wc -l", "2"},
+	} {
+		id, err := store.LookupSession(ctx, db, "hp-01", sess)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := srv.Client().Get(fmt.Sprintf("%s/api/sessions/%d/chapters", srv.URL, id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			Chapters []struct {
+				Time    float64 `json:"time"`
+				Command string  `json:"command"`
+				Output  string  `json:"output"`
+			} `json:"chapters"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&got)
+		_ = resp.Body.Close()
+		if err != nil || len(got.Chapters) != len(want)/2 {
+			t.Fatalf("%s: chapters = %+v, %v", sess, got.Chapters, err)
+		}
+		last := -1.0
+		for i, ch := range got.Chapters {
+			// In order, a few tenths of a second apart as run: a duplicate
+			// is at its own channel, not at its file's times.
+			if ch.Command != want[2*i] || !strings.HasPrefix(ch.Output, want[2*i+1]) || ch.Time <= last || ch.Time > 5 {
+				t.Errorf("%s #%d = %+v", sess, i, ch)
+			}
+			last = ch.Time
+		}
 	}
 }

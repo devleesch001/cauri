@@ -11,10 +11,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/devleesch001/cauri/internal/ttylog"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
@@ -143,6 +145,11 @@ func event(n int) string {
 	return fmt.Sprintf(`{"eventid":"cowrie.command.input","session":"s%d","timestamp":"2026-10-14T09:00:%02d.000000Z","input":"cmd %d"}`, n, n%60, n)
 }
 
+// sessionClosedEvent ends a session: its recordings can be sent.
+func sessionClosedEvent(session string) string {
+	return fmt.Sprintf(`{"eventid":"cowrie.session.closed","session":%q,"timestamp":"2026-10-14T09:59:30.000000Z","duration_ms":1000}`, session)
+}
+
 func logClosedEvent(session, ttyFile string) string {
 	return fmt.Sprintf(`{"eventid":"cowrie.log.closed","session":%q,"timestamp":"2026-10-14T09:59:00.000000Z","ttylog":"var/lib/cowrie/tty/%s"}`, session, ttyFile)
 }
@@ -267,7 +274,8 @@ func writeTTY(t *testing.T, f *fixture, content string) string {
 func TestTTYUpload(t *testing.T) {
 	f := newFixture(t)
 	tty := writeTTY(t, f, "\x1b[0mroot@svr04:~# ls\r\n")
-	f.write(t, LogName, event(1), logClosedEvent("s1", tty), logClosedEvent("s2", "missing"))
+	f.write(t, LogName, event(1), logClosedEvent("s1", tty), logClosedEvent("s2", "missing"),
+		sessionClosedEvent("s1"), sessionClosedEvent("s2"))
 	f.start(t, f.config(f.sink))
 	waitFor(t, "tty upload", func() bool { _, ttys := f.sink.snapshot(); return len(ttys) == 1 })
 	_, ttys := f.sink.snapshot()
@@ -284,9 +292,9 @@ func TestTTYRetryAcrossRestart(t *testing.T) {
 	tty := writeTTY(t, f, "output")
 	f.sink.failTTY = 1 << 30
 	f.sink.ttyErr = errors.New("api unreachable")
-	f.write(t, LogName, logClosedEvent("s1", tty))
+	f.write(t, LogName, logClosedEvent("s1", tty), sessionClosedEvent("s1"))
 	stop := f.start(t, f.config(f.sink))
-	waitFor(t, "event", func() bool { return eventCount(f.sink)() == 1 })
+	waitFor(t, "events", func() bool { return eventCount(f.sink)() == 2 })
 	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
 	waitFor(t, "a failed attempt", func() bool {
 		q, _ = loadTTYQueue(q.path)
@@ -308,7 +316,7 @@ func TestTTYPermanentError(t *testing.T) {
 	tty := writeTTY(t, f, "output")
 	f.sink.failTTY = 1
 	f.sink.ttyErr = fmt.Errorf("%w: conflict", ErrPermanent)
-	f.write(t, LogName, logClosedEvent("s1", tty))
+	f.write(t, LogName, logClosedEvent("s1", tty), sessionClosedEvent("s1"))
 	f.start(t, f.config(f.sink))
 	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
 	waitFor(t, "dropped job", func() bool {
@@ -349,12 +357,13 @@ func TestTTYOutsideDirectory(t *testing.T) {
 		logClosedEvent("s1", "link"),
 		logClosedEvent("s2", "../secret"), // base name only: "secret", absent from the directory
 		logClosedEvent("s3", "dir"),
+		sessionClosedEvent("s1"), sessionClosedEvent("s2"), sessionClosedEvent("s3"),
 	)
 	f.start(t, f.config(f.sink))
 	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
 	waitFor(t, "jobs dropped", func() bool {
 		q, _ = loadTTYQueue(q.path)
-		return eventCount(f.sink)() == 3 && q.len() == 0
+		return eventCount(f.sink)() == 6 && q.len() == 0
 	})
 	if _, ttys := f.sink.snapshot(); len(ttys) != 0 {
 		t.Fatalf("uploaded %v", ttys)
@@ -379,9 +388,121 @@ func TestDirectoriesCreatedLater(t *testing.T) {
 		}
 	}
 	tty := writeTTY(t, f, "output")
-	f.write(t, LogName, event(1), logClosedEvent("s1", tty))
+	f.write(t, LogName, event(1), logClosedEvent("s1", tty), sessionClosedEvent("s1"))
 	waitFor(t, "events and recording", func() bool {
 		_, ttys := f.sink.snapshot()
-		return eventCount(f.sink)() == 2 && ttys["s1"] == "output"
+		return eventCount(f.sink)() == 3 && ttys["s1"] == "output"
 	})
+}
+
+// Bots run one command per exec channel: Cowrie writes a recording per
+// channel, and keeps one file per input (a later one is a duplicate, with
+// the times of the first). Each session is sent as one recording, its
+// channels in the order they opened, a duplicate at its own channel's
+// start (sample of the official Cowrie v3.1.2, see internal/ingest).
+func TestTTYMergedChannels(t *testing.T) {
+	f := newFixture(t)
+	sample := "../ingest/testdata/cowrie-v3.1.2-exec"
+	files, err := filepath.Glob(sample + "-tty/*")
+	if err != nil || len(files) != 3 {
+		t.Fatalf("sample files: %v %v", files, err)
+	}
+	for _, p := range files {
+		data, _ := os.ReadFile(p)
+		if err := os.WriteFile(filepath.Join(f.ttyDir, filepath.Base(p)), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cowrieLog, err := os.ReadFile(sample + ".json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(cowrieLog)), "\n")
+	f.write(t, LogName, lines...)
+	f.start(t, f.config(f.sink))
+	waitFor(t, "one upload per session", func() bool { _, ttys := f.sink.snapshot(); return len(ttys) == 2 })
+
+	// When each channel opened: its log.closed time minus its duration.
+	starts := map[string][]time.Time{}
+	for _, l := range lines {
+		if se, ok := sessionEventOf([]byte(l)); ok && se.channel != nil {
+			starts[se.session] = append(starts[se.session], se.channel.start())
+		}
+	}
+	_, ttys := f.sink.snapshot()
+	for sess, want := range map[string][]string{
+		"7dfe84911c9f": {"uname -a", "Linux svr04", "whoami", "root", "uname -a", "Linux svr04"},
+		"246b6f85171f": {"whoami", "root", "cat /proc/cpuinfo | grep name | wc -l", "2"},
+	} {
+		// The merge is one Cowrie recording: each channel opens, gets its
+		// command as input, prints its output.
+		var got []string
+		var opens []time.Time
+		rd := ttylog.NewReader(strings.NewReader(ttys[sess]))
+		for {
+			rec, err := rd.Next()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				t.Fatalf("%s: %v", sess, err)
+			}
+			switch {
+			case rec.Op == ttylog.OpOpen:
+				opens = append(opens, rec.Time)
+			case rec.Op == ttylog.OpWrite && len(rec.Data) > 0:
+				got = append(got, strings.TrimSpace(string(rec.Data)))
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s: writes %q", sess, got)
+		}
+		for i := range want {
+			if !strings.HasPrefix(got[i], want[i]) {
+				t.Errorf("%s: write %d = %q, want %q…", sess, i, got[i], want[i])
+			}
+		}
+		// Every channel at its own start, duplicates included: within the
+		// millisecond Cowrie's times allow.
+		if len(opens) != len(starts[sess]) {
+			t.Fatalf("%s: %d channels opened, want %d", sess, len(opens), len(starts[sess]))
+		}
+		for i, at := range opens {
+			if d := at.Sub(starts[sess][i]); d < -time.Millisecond || d > time.Millisecond {
+				t.Errorf("%s: channel %d opens %v from its start", sess, i, d)
+			}
+		}
+	}
+}
+
+// A session's recordings wait for its end: more channels may come.
+func TestTTYWaitsForSessionEnd(t *testing.T) {
+	f := newFixture(t)
+	tty := writeTTY(t, f, "output")
+	f.write(t, LogName, logClosedEvent("s1", tty))
+	f.start(t, f.config(f.sink))
+	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
+	waitFor(t, "queued", func() bool { q, _ = loadTTYQueue(q.path); return q.len() == 1 })
+	j, _, due := q.next(time.Now())
+	if due || j.Closed || len(j.Channels) != 1 || time.Until(j.NextTry) < sessionWait-time.Minute {
+		t.Errorf("job = %+v, due %v", j, due)
+	}
+	if _, ttys := f.sink.snapshot(); len(ttys) != 0 {
+		t.Errorf("uploaded before the session ended: %v", ttys)
+	}
+}
+
+// Jobs queued by a version that sent one recording per job are sent.
+func TestTTYQueueOfOlderVersion(t *testing.T) {
+	f := newFixture(t)
+	tty := writeTTY(t, f, "output")
+	if err := os.MkdirAll(f.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := `[{"session":"s1","ttylog":"var/lib/cowrie/tty/` + tty + `","attempts":0,"next_try":"2026-10-14T09:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(f.stateDir, "tty-queue.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.start(t, f.config(f.sink))
+	waitFor(t, "upload", func() bool { _, ttys := f.sink.snapshot(); return ttys["s1"] == "output" })
 }
