@@ -180,7 +180,7 @@ a {
 /* Headline numbers, as many per row as fit. */
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }

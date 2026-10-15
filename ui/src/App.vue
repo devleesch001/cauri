@@ -162,6 +162,7 @@ onMounted(() => {
 
 nav {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
 }
 
