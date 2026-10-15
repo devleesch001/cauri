@@ -1,35 +1,68 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-// A panel folded to its title, which grows over the page, without pushing
-// its neighbours, when the pointer or the keyboard focus is on it (a tap
-// on a touch screen focuses it). Escape folds it until the pointer or the
-// focus leaves and returns.
+// A panel folded to its title, which opens beside the titles when the
+// mouse is on it or the keyboard focus is in it. A click or a tap on the
+// title opens it when folded and folds it when open, and a tap outside
+// folds it: touch screens have no hover. Escape folds it too, until the
+// pointer or the focus leaves and returns.
 defineProps<{ title: string }>()
 
+const root = ref<HTMLElement | null>(null)
 const hovered = ref(false)
 const focused = ref(false)
 const dismissed = ref(false)
 const open = computed(() => (hovered.value || focused.value) && !dismissed.value)
 
-function leave() {
+function enter(e: PointerEvent) {
+  // A touch is not a hover: a finger lifted leaves nothing to end it.
+  if (e.pointerType === 'mouse') hovered.value = true
+}
+function leave(e: PointerEvent) {
+  if (e.pointerType !== 'mouse') return
   hovered.value = false
   dismissed.value = false
 }
 function blur(e: FocusEvent) {
   const next = e.relatedTarget as Node | null
-  if (next && (e.currentTarget as HTMLElement).contains(next)) return
+  if (next && root.value?.contains(next)) return
   focused.value = false
-  dismissed.value = false
+  if (!hovered.value) dismissed.value = false
 }
+// Pressing the title focuses it, which opens the panel before the click
+// arrives: what the click toggles is what the press found. A keyboard
+// click has no press, and finds the panel as it is.
+let wasOpen = false
+function press() {
+  wasOpen = open.value
+}
+function toggle(e: MouseEvent) {
+  if (e.detail === 0 ? open.value : wasOpen) {
+    dismissed.value = true
+    focused.value = false
+    ;(e.currentTarget as HTMLElement).blur()
+  } else {
+    dismissed.value = false
+    focused.value = true
+  }
+}
+function away(e: PointerEvent) {
+  if (root.value && !root.value.contains(e.target as Node)) {
+    focused.value = false
+    if (!hovered.value) dismissed.value = false
+  }
+}
+onMounted(() => document.addEventListener('pointerdown', away))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', away))
 </script>
 
 <template>
   <div class="dock">
     <section
+      ref="root"
       class="panel"
       :class="{ open }"
-      @pointerenter="hovered = true"
+      @pointerenter="enter"
       @pointerleave="leave"
       @focusin="focused = true"
       @focusout="blur"
@@ -39,7 +72,8 @@ function blur(e: FocusEvent) {
         type="button"
         class="card float head"
         :aria-expanded="open"
-        @click="dismissed = false; focused = true"
+        @pointerdown="press"
+        @click="toggle"
       >
         <h2>{{ title }}</h2>
         <span
