@@ -100,6 +100,8 @@ func New(c Config) http.Handler {
 			r.Get("/stats/origins", s.getOrigins)
 			r.Get("/stats/commands", s.getCommands)
 			r.Get("/about", s.getAbout)
+			r.Get("/attackers", s.listAttackers)
+			r.Get("/attackers/{ip}", s.getAttacker)
 			r.Get("/sessions", s.listSessions)
 			r.Get("/sessions.csv", s.exportSessions)
 			r.Get("/sessions/{id}", s.getSession)

@@ -1009,3 +1009,62 @@ func TestNothingToReplay(t *testing.T) {
 		}
 	}
 }
+
+// Attackers are the source addresses, their sessions grouped.
+func TestAttackers(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		ctx := context.Background()
+		if _, err := e.client.SendEvents(ctx, events("hp-01")); err != nil {
+			t.Fatal(err)
+		}
+		// A second session of the same address, and one over IPv6.
+		b := protocol.EventBatch{SensorID: "hp-01"}
+		for _, l := range []string{
+			`{"eventid":"cowrie.session.connect","session":"b1b2c3d4e5f6","src_ip":"203.0.113.9","timestamp":"2026-10-14T10:00:00Z"}`,
+			`{"eventid":"cowrie.session.connect","session":"c1b2c3d4e5f6","src_ip":"2001:db8::1","timestamp":"2026-10-14T11:00:00Z"}`,
+		} {
+			b.Events = append(b.Events, protocol.Event{ID: protocol.EventID("hp-01", []byte(l)), Raw: []byte(l)})
+		}
+		if _, err := e.client.SendEvents(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+
+		var list struct {
+			Items []store.Attacker `json:"items"`
+			Total int              `json:"total"`
+		}
+		get(t, e, "/api/attackers", http.StatusOK, &list)
+		if list.Total != 2 || list.Items[0].IP != "203.0.113.9" || list.Items[0].Sessions != 2 || list.Items[0].Shells != 1 {
+			t.Fatalf("attackers = %+v", list)
+		}
+		get(t, e, "/api/attackers?shell=true", http.StatusOK, &list)
+		if list.Total != 1 {
+			t.Errorf("with a shell = %+v", list)
+		}
+		get(t, e, "/api/attackers?ip_prefix=2001:", http.StatusOK, &list)
+		if list.Total != 1 || list.Items[0].IP != "2001:db8::1" {
+			t.Errorf("by prefix = %+v", list)
+		}
+		get(t, e, "/api/attackers?sort=name", http.StatusBadRequest, nil)
+		get(t, e, "/api/attackers?shell=maybe", http.StatusBadRequest, nil)
+
+		var d store.AttackerDetail
+		get(t, e, "/api/attackers/203.0.113.9", http.StatusOK, &d)
+		if d.Sessions != 2 || !slices.Equal(d.Sensors, []string{"hp-01"}) || d.Logins != 1 {
+			t.Errorf("attacker = %+v", d)
+		}
+		get(t, e, "/api/attackers/2001:db8::1", http.StatusOK, &d)
+		if d.IP != "2001:db8::1" {
+			t.Errorf("IPv6 attacker = %+v", d)
+		}
+		get(t, e, "/api/attackers/198.51.100.1", http.StatusNotFound, nil)
+
+		// Statistics narrow to one attacker.
+		var sum store.Summary
+		get(t, e, "/api/stats/summary?ip=203.0.113.9", http.StatusOK, &sum)
+		if sum.Sessions != 2 || sum.SourceIPs != 1 {
+			t.Errorf("summary of 203.0.113.9 = %+v", sum)
+		}
+	})
+}

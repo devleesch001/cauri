@@ -259,12 +259,7 @@ func (s *server) getOrigins(w http.ResponseWriter, r *http.Request) {
 // that apply to statistics: sensor, period, human or bot.
 func serveStats[T any](s *server, w http.ResponseWriter, r *http.Request, get func(context.Context, bun.IDB, store.StatsFilter) (T, error)) {
 	q := query{v: r.URL.Query()}
-	f := store.StatsFilter{
-		Sensor:  q.str("sensor"),
-		From:    q.time("from"),
-		To:      q.time("to"),
-		Verdict: q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
-	}
+	f := statsFilter(&q)
 	if q.err != nil {
 		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
 		return
@@ -275,6 +270,63 @@ func serveStats[T any](s *server, w http.ResponseWriter, r *http.Request, get fu
 		return
 	}
 	render.JSON(w, r, out)
+}
+
+// statsFilter reads the filters statistics share: sensor, period, human
+// or bot, and one attacker's address.
+func statsFilter(q *query) store.StatsFilter {
+	return store.StatsFilter{
+		Sensor:  q.str("sensor"),
+		From:    q.time("from"),
+		To:      q.time("to"),
+		Verdict: q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
+		SrcIP:   q.str("ip"),
+	}
+}
+
+// listAttackers pages the source addresses sessions came from.
+func (s *server) listAttackers(w http.ResponseWriter, r *http.Request) {
+	q := query{v: r.URL.Query()}
+	f := store.AttackerFilter{
+		StatsFilter: statsFilter(&q),
+		Country:     q.country("country"),
+		ASN:         int64(q.int("asn")),
+		IPPrefix:    q.str("ip_prefix"),
+		Shell:       q.bool("shell"),
+		Sort:        q.oneOf("sort", store.SortSessions, store.SortLastSeen, store.SortShells),
+		Page:        q.page(),
+	}
+	if q.err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
+		return
+	}
+	rows, total, err := store.ListAttackers(r.Context(), s.DB, f)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	render.JSON(w, r, newList(rows, total, f.Page))
+}
+
+// getAttacker describes the attacker of an address, from its sessions the
+// statistics filters select.
+func (s *server) getAttacker(w http.ResponseWriter, r *http.Request) {
+	q := query{v: r.URL.Query()}
+	f := statsFilter(&q)
+	if q.err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
+		return
+	}
+	d, err := store.GetAttacker(r.Context(), s.DB, chi.URLParam(r, "ip"), f)
+	if errors.Is(err, store.ErrNotFound) {
+		render.Render(w, r, errorOf(http.StatusNotFound, "no session from this address"))
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	render.JSON(w, r, d)
 }
 
 type about struct {

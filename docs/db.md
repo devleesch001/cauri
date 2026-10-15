@@ -314,6 +314,8 @@ SQLite with the real sessions replicated to 96,681:
 | `/api/stats/origins`, `/api/countries`, `/api/cities` | 65–139 ms |
 | `/api/stats/credentials` | 570 ms (several groupings of every login attempt) |
 | Session list, filtered or not | 13–40 ms |
+| `/api/attackers` (sessions grouped by address, 3,564 attackers) | 64–196 ms |
+| `/api/attackers/{ip}`, statistics of one address | 2–6 ms |
 
 The cost grows with the number of rows: around a million sessions,
 credentials would take seconds. The next step is then summary tables
