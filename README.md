@@ -324,6 +324,8 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_GEOIP_ASN_DB` | (none) | MMDB ASN database (DB-IP ASN Lite or GeoLite2-ASN) for the network of sessions, see [GeoIP](#geoip) |
 | `CAURI_MAX_TTY_SIZE` | `134217728` (128 MiB)                     | Largest recording accepted, in bytes                                         |
 | `CAURI_RAW_RETENTION_DAYS` | `0` (keep)                          | Delete the raw Cowrie lines older than this many days, see [Raw data retention](#raw-data-retention) |
+| `CAURI_ADMIN_PASSWORD` | (generated) | Password of the administration page, see [Administration](#administration) |
+| `CAURI_ADMIN_PASSWORD_FILE` | (none) | File holding that password, such as a container secret; set only one of the two |
 | `CAURI_UI`           | `false`                                   | `true`: same as `api --ui`                                                   |
 | `CAURI_LOG_LEVEL`    | `info`                                    | `debug`, `info`, `warn`, `error` (also `cauri ui`)                           |
 
@@ -361,6 +363,20 @@ cauri token verify --token-file <file>                 # is this token valid? (e
 ```
 
 With Docker: `docker compose exec api cauri token create --sensor hp-01`.
+
+### Administration
+
+The administration page (`/admin` in the UI) creates, lists and revokes
+the same tokens. It asks for one password: `CAURI_ADMIN_PASSWORD`, or
+`CAURI_ADMIN_PASSWORD_FILE` for a file such as a container secret.
+Without either, the API generates a password of 64 letters and digits at
+each start and writes it in its log (`administration password
+generated`): set one to keep it across restarts.
+
+Signing in opens a session for 12 hours, in a cookie restricted to
+`/api/admin` and to HTTPS (browsers accept it on `http://localhost` too);
+changing the password ends every session. Wrong passwords are answered
+one per second at most.
 
 ## Deployment
 
@@ -450,7 +466,8 @@ up with the TTY directory, like the SQLite file.
 
 ### Protecting the UI
 
-**The UI and the read API have no authentication yet.** Until they do,
+**The UI and the read API have no authentication yet** (only the
+administration page has a password). Until they do,
 do not expose them as is: protect them at the reverse proxy (basic
 authentication, single sign-on, IP allow list) or keep them on a private
 network or behind a VPN. Leave `/api/ingest` out of that protection:

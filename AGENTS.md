@@ -92,9 +92,13 @@ change of the converter.
 URL in the UI. The reverse proxy routes `/api` to the API.
 
 **Authentication.** Ingestors: one revocable token per sensor, bearer
-header, only its hash stored, bound to its sensor id. UI and read API: none
-yet; it plugs in as the `ReadAuth` middleware of `internal/api`, without
-restructuring.
+header, only its hash stored, bound to its sensor id. Administration
+(`/api/admin`, UI page `/admin`, token management): one password
+(`CAURI_ADMIN_PASSWORD`, else generated and logged at start), sessions in
+a signed `HttpOnly`/`Secure`/`SameSite=Strict` cookie (`internal/auth`
+`Admin`), changes require the `X-Cauri-Admin` header. UI and read API:
+none yet; it plugs in as the `ReadAuth` middleware of `internal/api`,
+without restructuring.
 
 **Deployment.** Never invent values of the user's setup (domains, paths,
 networks, passwords, runner labels): use documented environment variables
