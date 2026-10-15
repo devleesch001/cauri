@@ -223,13 +223,28 @@ a minute, without restarting. The database is held in memory (about
 120 MiB for DB-IP City Lite, 8 MiB for the country version), so replacing
 the file in place is safe.
 
+**Networks.** A second, optional database gives the network (autonomous
+system) of each session, such as `AS4134 Chinanet`: often more telling
+than the country, since most attacks come from a few hosting providers
+(on real data, one network sent 76 % of the sessions). DB-IP ASN Lite
+(same licence as above) or MaxMind GeoLite2-ASN, the same way:
+
+```sh
+curl -fL https://download.db-ip.com/free/dbip-asn-lite-2026-10.mmdb.gz | gunzip > asn.mmdb
+```
+
+then `--geoip-asn-db` / `CAURI_GEOIP_ASN_DB` (about 10 MiB in memory).
+It works with or without the location database. Sessions stored before
+get their network when the API starts; the overview lists the busiest
+networks and each session shows its own.
+
 ### Statistics
 
 Besides the lists, the UI has pages that count:
 
 | Page | Shows |
 |---|---|
-| Overview | Headline numbers (sessions, shells, login attempts and the share accepted, source addresses, countries) with their change from the previous period of the same length; the world map; the latest sessions, refreshed every 10 s; the busiest addresses and SSH clients |
+| Overview | Headline numbers (sessions, shells, login attempts and the share accepted, source addresses, countries) with their change from the previous period of the same length; the world map; the latest sessions, refreshed every 10 s; the busiest addresses, networks (with an ASN database) and SSH clients |
 | Activity | Sessions by hour and weekday, the busiest hours, sessions and shells by day (UTC) |
 | Credentials | Usernames, passwords and pairs tried, those that let attackers in, password lengths |
 | Payloads | Files downloaded or uploaded, by SHA-256: sessions, addresses and countries that fetched each, first and last seen, a VirusTotal link (by digest: the file never leaves cauri) |
@@ -296,6 +311,7 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_DB_DSN`       | `data/cauri.db` (image: `/data/cauri.db`) | SQLite file path, or `postgres://user:password@host:5432/db?sslmode=disable` |
 | `CAURI_TTY_DIR`      | `data/tty` (image: `/data/tty`)           | Directory of the TTY recordings                                              |
 | `CAURI_GEOIP_DB` | (none) | MMDB GeoIP database (DB-IP Lite or GeoLite2) to locate sessions, see [GeoIP](#geoip) |
+| `CAURI_GEOIP_ASN_DB` | (none) | MMDB ASN database (DB-IP ASN Lite or GeoLite2-ASN) for the network of sessions, see [GeoIP](#geoip) |
 | `CAURI_MAX_TTY_SIZE` | `134217728` (128 MiB)                     | Largest recording accepted, in bytes                                         |
 | `CAURI_RAW_RETENTION_DAYS` | `0` (keep)                          | Delete the raw Cowrie lines older than this many days, see [Raw data retention](#raw-data-retention) |
 | `CAURI_UI`           | `false`                                   | `true`: same as `api --ui`                                                   |
