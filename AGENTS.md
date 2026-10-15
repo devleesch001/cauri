@@ -109,7 +109,7 @@ mandatory.
 | `cmd/cauri/` | Subcommands; flags via `internal/envflag` (flag `--db-dsn` = env `CAURI_DB_DSN`) |
 | `pkg/protocol/`, `pkg/client/` | Public ingestion protocol and its HTTP client |
 | `internal/ingest/` | Ingestion service; Cowrie parsing in `cowrie.go`, projection in `batch.go` |
-| `internal/store/` | bun models, migrations, read queries; `storetest/` gives test databases |
+| `internal/store/` | bun models, migrations, read queries, statistics (`stats.go`), raw-data retention; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
 | `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model and v3 encoder |
 | `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |

@@ -213,11 +213,13 @@ WHERE event_id IN (SELECT id FROM events WHERE ts < :limit);
 
 Sessions, events, projections and deduplication are untouched; only the
 raw view of old events and their reprocessing are lost. Retention is an
-operator setting, not implemented yet.
+operator setting, off by default: `CAURI_RAW_RETENTION_DAYS`, run at
+start and every hour, in batches (`store.PurgeRawEvents`).
 
 One feature still reads raw lines: replays take the terminal sizes from
-`cowrie.client.size` lines (`store.GetRecording`). A purge must keep
-those, or they must first be projected into their own table.
+`cowrie.client.size` lines (`store.GetRecording`). The purge keeps those
+(`store.RawKept`); projecting them into their own table would remove the
+exception.
 
 ## Types
 
@@ -254,11 +256,12 @@ constraints are indexes too.
 | `login_attempts (username, session_id)` | Username filter, without the quadratic plan |
 | `commands (session_id)` | Commands of a session |
 | `transfers (session_id)` | Transfers of a session |
+| `transfers (sha256)` | Payloads by digest, sessions that transferred a file (migration 00003) |
 | `tty_files (sha256)` unique | Find a recording by digest at upload |
 
-Dropped from the first schema: `raw_events (eventid, ts)` (no query),
-`transfers (sha256)` and `sessions (tty_sha256)` (no query found; to add
-back when a feature needs them).
+Dropped from the first schema: `raw_events (eventid, ts)` (no query) and
+`sessions (tty_sha256)` (no query found; to add back when a feature
+needs it). `transfers (sha256)` came back with the payloads page.
 
 ## Migrations
 

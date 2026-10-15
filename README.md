@@ -223,6 +223,33 @@ a minute, without restarting. The database is held in memory (about
 120 MiB for DB-IP City Lite, 8 MiB for the country version), so replacing
 the file in place is safe.
 
+### Statistics
+
+Besides the lists, the UI has pages that count:
+
+| Page | Shows |
+|---|---|
+| Overview | Headline numbers (sessions, shells, login attempts and the share accepted, source addresses, countries) with their change from the previous period of the same length; the world map; the latest sessions, refreshed every 10 s; the busiest addresses and SSH clients |
+| Activity | Sessions by hour and weekday, the busiest hours, sessions and shells by day (UTC) |
+| Credentials | Usernames, passwords and pairs tried, those that let attackers in, password lengths |
+| Payloads | Files downloaded or uploaded, by SHA-256: sessions, addresses and countries that fetched each, first and last seen, a VirusTotal link (by digest: the file never leaves cauri) |
+
+Every page takes the filters of the lists (period, sensor, human or bot)
+and every number leads to the matching sessions or login attempts. The
+API serves them under `/api/stats/` (`summary`, `activity`,
+`credentials`, `payloads`, `origins`) and `/api/countries`,
+`/api/cities`, with the parameters `sensor`, `from`, `to`, `verdict`.
+
+### Raw data retention
+
+The raw Cowrie lines are most of the database (31.6 of 40.4 MB on 7,437
+real sessions) and serve only to show an event raw or to reprocess it.
+`CAURI_RAW_RETENTION_DAYS=N` makes the API delete those older than N
+days, at start then every hour; sessions, their events, logins,
+commands, files and the deduplication of resent lines stay. Terminal
+sizes, which replays need, are kept. Off by default. With SQLite, freed
+space is reused by new data; the file only shrinks after a `VACUUM`.
+
 ### Human or bot
 
 `GET /api/sessions/{id}/verdict` tells whether a session looks typed by a
@@ -270,6 +297,7 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_TTY_DIR`      | `data/tty` (image: `/data/tty`)           | Directory of the TTY recordings                                              |
 | `CAURI_GEOIP_DB` | (none) | MMDB GeoIP database (DB-IP Lite or GeoLite2) to locate sessions, see [GeoIP](#geoip) |
 | `CAURI_MAX_TTY_SIZE` | `134217728` (128 MiB)                     | Largest recording accepted, in bytes                                         |
+| `CAURI_RAW_RETENTION_DAYS` | `0` (keep)                          | Delete the raw Cowrie lines older than this many days, see [Raw data retention](#raw-data-retention) |
 | `CAURI_UI`           | `false`                                   | `true`: same as `api --ui`                                                   |
 | `CAURI_LOG_LEVEL`    | `info`                                    | `debug`, `info`, `warn`, `error` (also `cauri ui`)                           |
 
@@ -497,7 +525,6 @@ jobs use the `Dockerfile`, which also builds the UI.
 
 ## Next steps the code is ready for
 
-- **Statistics**: queries on the existing tables.
 - **UI authentication**: a `ReadAuth` middleware.
 - **All-in-one binary** (build tag `allinone`): the ingestor writes to a
   `Sink` interface; an in-process implementation calling
