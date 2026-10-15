@@ -92,11 +92,35 @@ func TestErrors(t *testing.T) {
 		srv.Close()
 
 		var se *StatusError
-		if !errors.As(err, &se) || se.Code != code || se.Message != "nope" {
+		if !errors.As(err, &se) || se.Code != code || se.Message != "nope" || !se.FromAPI {
 			t.Errorf("%d: err = %v", code, err)
 		}
 		if Retryable(err) != retry {
 			t.Errorf("%d: Retryable = %v, want %v", code, !retry, retry)
+		}
+	}
+}
+
+// An answer in another format comes from something in between, such as a
+// proxy asking to sign in: the error says so, with the start of its body.
+func TestErrorNotFromAPI(t *testing.T) {
+	problem := `{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.2","title":"Unauthorized","detail":"Please log in to continue."}`
+	for _, body := range []string{problem, "<html>" + strings.Repeat("x", 2000) + "</html>"} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, body)
+		}))
+		c, _ := New(srv.URL, "tok", nil)
+		_, err := c.SendEvents(context.Background(), protocol.EventBatch{})
+		srv.Close()
+
+		var se *StatusError
+		if !errors.As(err, &se) || se.FromAPI || se.Code != http.StatusUnauthorized ||
+			!strings.Contains(err.Error(), "not answered by the cauri API") || len(se.Message) > maxForeignBody+len("…") {
+			t.Errorf("err = %v", err)
+		}
+		if body == problem && se.Message != problem {
+			t.Errorf("message = %q, want the body", se.Message)
 		}
 	}
 }

@@ -47,11 +47,23 @@ func New(baseURL, token string, httpClient *http.Client) (*Client, error) {
 type StatusError struct {
 	Code    int
 	Message string
+	// FromAPI is false when the answer is not in the API's error format
+	// (protocol.ErrorBody): something between the client and the API, such
+	// as a reverse proxy, answered. Message then holds the start of its body.
+	FromAPI bool
 }
 
 func (e *StatusError) Error() string {
+	if !e.FromAPI {
+		return fmt.Sprintf("api: %d %s, not answered by the cauri API (a proxy in between?): %s",
+			e.Code, http.StatusText(e.Code), e.Message)
+	}
 	return fmt.Sprintf("api: %d %s: %s", e.Code, http.StatusText(e.Code), e.Message)
 }
+
+// maxForeignBody bounds what StatusError keeps of an answer that is not the
+// API's: a proxy may send a whole HTML page.
+const maxForeignBody = 300
 
 // Retryable reports whether sending the same request later may succeed.
 // Network errors and server-side errors are retryable; so is 404 on a TTY
@@ -119,10 +131,14 @@ func (c *Client) do(req *http.Request, out any) error {
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		var eb protocol.ErrorBody
-		if json.Unmarshal(data, &eb) != nil || eb.Error == "" {
-			eb.Error = strings.TrimSpace(string(data))
+		if json.Unmarshal(data, &eb) == nil && eb.Error != "" {
+			return &StatusError{Code: resp.StatusCode, Message: eb.Error, FromAPI: true}
 		}
-		return &StatusError{Code: resp.StatusCode, Message: eb.Error}
+		msg := strings.ToValidUTF8(strings.TrimSpace(string(data)), "")
+		if len(msg) > maxForeignBody {
+			msg = strings.ToValidUTF8(msg[:maxForeignBody], "") + "…"
+		}
+		return &StatusError{Code: resp.StatusCode, Message: msg}
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("api: decode response: %w", err)
