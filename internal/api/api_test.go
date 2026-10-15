@@ -923,6 +923,47 @@ func TestSimulatedReplay(t *testing.T) {
 	if resp, body := getRaw(t, e, "/api/sessions/"+id+"/cast", nil); resp.code != http.StatusOK || !strings.Contains(body, `"m", "id"]`) {
 		t.Errorf("cast after removal: %d %s", resp.code, body)
 	}
+	// The record of the missing file is gone, the session no longer has it.
+	if n, _ := e.db.NewSelect().Model((*store.TTYFile)(nil)).Count(ctx); n != 0 {
+		t.Errorf("%d recordings still recorded", n)
+	}
+	var detail struct {
+		TTYAvailable bool `json:"tty_available"`
+	}
+	get(t, e, "/api/sessions/"+id, http.StatusOK, &detail)
+	if detail.TTYAvailable {
+		t.Error("session still has a recording")
+	}
+}
+
+// A volume that is not there says nothing of the files: nothing is forgotten.
+func TestMissingVolumeKeepsRecordings(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "tty")
+	e := setup(t, storetest.SQLite(t), func(c *api.Config) {
+		tty, err := ttystore.New(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.TTY, c.Ingest = tty, ingest.New(c.DB, tty, 1<<16)
+	})
+	ctx := context.Background()
+	if _, err := e.client.SendEvents(ctx, events("hp-01")); err != nil {
+		t.Fatal(err)
+	}
+	m, data := realRecording(t)
+	if _, err := e.client.SendTTY(ctx, m, bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	id := sid(t, e, "hp-01", "a1b2c3d4e5f6")
+	if resp, _ := getRaw(t, e, "/api/sessions/"+id+"/cast", nil); resp.code != http.StatusOK {
+		t.Fatalf("cast = %d", resp.code)
+	}
+	if n, _ := e.db.NewSelect().Model((*store.TTYFile)(nil)).Count(ctx); n != 1 {
+		t.Errorf("%d recordings recorded, want 1", n)
+	}
 }
 
 // A session with neither recording nor command has nothing to replay.

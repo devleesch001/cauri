@@ -158,7 +158,9 @@ request and never modified.
   the prompt (`# ` for root, `$ ` otherwise), at its real time, and no
   output. `404` if there is no command either. The UI marks it
   "Simulated". Deleting old recordings from the volume is thus a retention
-  policy: those sessions stay replayable as commands only.
+  policy: those sessions stay replayable as commands only. The first read
+  that finds a file missing also removes its row from `tty_files`, unless
+  the whole volume is unavailable (not mounted); the stored verdict stays.
 
 `GET /api/sessions/{id}/chapters` returns those commands with what each
 printed (empty, with `"simulated": true`, without a recording), as plain text: the terminal output after the echo of the command

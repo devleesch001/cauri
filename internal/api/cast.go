@@ -43,6 +43,13 @@ func (s *server) replaySource(r *http.Request) (*store.Recording, *os.File, erro
 	f, err := s.TTY.Open(rec.SHA256)
 	if errors.Is(err, fs.ErrNotExist) {
 		s.Logger.Info("recording file missing, replay simulated", "sha256", rec.SHA256)
+		// Removed by the operator: forget it, unless the whole volume is
+		// missing, which says nothing of the file.
+		if s.TTY.Available() {
+			if err := s.Ingest.ForgetTTY(r.Context(), rec.SHA256); err != nil {
+				s.Logger.Error("cannot forget the missing recording", "sha256", rec.SHA256, "err", err)
+			}
+		}
 		return nil, nil, nil
 	}
 	if err != nil {

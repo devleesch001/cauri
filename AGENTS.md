@@ -101,7 +101,10 @@ simulated from the commands (`asciicast.Simulate`): marker, prompt (`# `
 for root, `$ ` otherwise) and command at their real times, no output;
 chapters carry `simulated: true` and the UI shows a badge. `cowrie.json`
 never holds terminal output, so a simulated replay cannot have any. The
-choice is made on read, never stored.
+choice is made on read, never stored. A recording whose file is missing
+from an available volume is forgotten on that read (`Service.ForgetTTY`:
+`sessions.tty_file_id` cleared, `tty_files` row deleted, verdict kept); an
+unavailable volume (`ttystore.Available`) forgets nothing.
 
 **Same origin.** The UI calls relative `/api/...` paths: no CORS, no API
 URL in the UI. The reverse proxy routes `/api` to the API.

@@ -84,3 +84,10 @@ func (s *Store) Open(sha string) (*os.File, error) {
 	}
 	return os.Open(filepath.Join(s.dir, RelPath(sha)))
 }
+
+// Available tells whether the volume is there: a recording missing from
+// an unavailable volume (not mounted, say) is not a removed one.
+func (s *Store) Available() bool {
+	fi, err := os.Stat(filepath.Join(s.dir, "tmp"))
+	return err == nil && fi.IsDir()
+}
