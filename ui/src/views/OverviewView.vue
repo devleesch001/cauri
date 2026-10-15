@@ -8,7 +8,8 @@ import type { CityCount, CountryCount, Origins, Summary } from '@/api/types'
 import BarList from '@/components/BarList.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
-import KpiCard from '@/components/KpiCard.vue'
+import FloatingPanel from '@/components/FloatingPanel.vue'
+import KpiPanel from '@/components/KpiPanel.vue'
 import LiveFeed from '@/components/LiveFeed.vue'
 import StatsFilters from '@/components/StatsFilters.vue'
 import WorldMap from '@/components/WorldMap.vue'
@@ -74,85 +75,34 @@ function open(country: string, city?: string) {
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-head">
-      <h1>{{ t('overview.title') }}</h1>
-      <span class="muted">{{ t('overview.summary', { n: located.toLocaleString(), c: countries.length }, located) }}</span>
-    </div>
+  <div class="scene">
+    <h1 class="sr-only">
+      {{ t('overview.title') }}
+    </h1>
 
-    <StatsFilters />
+    <WorldMap
+      class="map"
+      :countries="countries"
+      :cities="showCities ? cities : []"
+      :aria-busy="loading"
+      @select="open"
+      @select-city="open"
+    />
 
-    <ErrorNotice :error="error" />
-
-    <div
+    <KpiPanel
       v-if="summary"
-      class="kpis"
-    >
-      <KpiCard
-        :label="t('stats.sessions')"
-        :value="summary.sessions"
-        :previous="summary.previous?.sessions"
-      />
-      <KpiCard
-        :label="t('stats.shells')"
-        :value="summary.shells"
-        :previous="summary.previous?.shells"
-      />
-      <KpiCard
-        :label="t('stats.logins')"
-        :value="summary.logins"
-        :detail="t('stats.acceptedShare', { n: accepted })"
-        :previous="summary.previous?.logins"
-      />
-      <KpiCard
-        :label="t('stats.sourceIps')"
-        :value="summary.source_ips"
-        :previous="summary.previous?.source_ips"
-      />
-      <KpiCard
-        :label="t('stats.countries')"
-        :value="summary.countries"
-      />
-    </div>
+      class="corner"
+      :summary="summary"
+      :accepted="accepted"
+      :located="located"
+      :countries="countries.length"
+    />
 
-    <p
-      v-if="!geoip && !countries.length"
-      class="notice card"
-    >
-      {{ t('overview.noGeoip') }}
-    </p>
-
-    <div class="layout">
-      <section
-        class="card"
-        :aria-busy="loading"
-      >
-        <div class="map-head">
-          <h2>{{ t('overview.map.title') }}</h2>
-          <label class="toggle">
-            <ToggleSwitch v-model="showCities" />
-            {{ t('overview.map.cities') }}
-          </label>
-        </div>
-        <WorldMap
-          :countries="countries"
-          :cities="showCities ? cities : []"
-          @select="open"
-          @select-city="open"
-        />
-        <p
-          v-if="geoip && !loading && !countries.length"
-          class="muted"
-        >
-          {{ t('overview.empty') }}
-        </p>
-      </section>
-
-      <section
+    <div class="docks">
+      <FloatingPanel
         v-if="top.length"
-        class="card"
+        :title="t('overview.ranking.title')"
       >
-        <h2>{{ t('overview.ranking.title') }}</h2>
         <BarList
           :items="top"
           :value="(c) => c.sessions"
@@ -171,19 +121,17 @@ function open(country: string, city?: string) {
             > · {{ item.shells.toLocaleString() }}</span>
           </template>
         </BarList>
-      </section>
-    </div>
-
-    <div class="panels below">
-      <LiveFeed
-        :sensor="q('sensor')"
-        :verdict="q('verdict')"
-      />
-      <section
+      </FloatingPanel>
+      <FloatingPanel :title="t('overview.live.title')">
+        <LiveFeed
+          :sensor="q('sensor')"
+          :verdict="q('verdict')"
+        />
+      </FloatingPanel>
+      <FloatingPanel
         v-if="origins?.sources.length"
-        class="card"
+        :title="t('overview.sources')"
       >
-        <h2>{{ t('overview.sources') }}</h2>
         <BarList
           :items="origins.sources.slice(0, TOP)"
           :value="(s) => s.sessions"
@@ -199,12 +147,11 @@ function open(country: string, city?: string) {
             />
           </template>
         </BarList>
-      </section>
-      <section
+      </FloatingPanel>
+      <FloatingPanel
         v-if="origins?.networks.length"
-        class="card"
+        :title="t('overview.networks')"
       >
-        <h2>{{ t('overview.networks') }}</h2>
         <BarList
           :items="origins.networks.slice(0, TOP)"
           :value="(n) => n.sessions"
@@ -216,12 +163,11 @@ function open(country: string, city?: string) {
             <span class="muted org">{{ item.org }}</span>
           </template>
         </BarList>
-      </section>
-      <section
+      </FloatingPanel>
+      <FloatingPanel
         v-if="origins?.clients.length"
-        class="card"
+        :title="t('overview.clients')"
       >
-        <h2>{{ t('overview.clients') }}</h2>
         <BarList
           :items="origins.clients.slice(0, TOP)"
           :value="(c) => c.sessions"
@@ -232,51 +178,135 @@ function open(country: string, city?: string) {
             <span class="data">{{ item.client }}</span>
           </template>
         </BarList>
-      </section>
+      </FloatingPanel>
+    </div>
+
+    <div class="bottom card float">
+      <StatsFilters>
+        <label class="toggle">
+          <ToggleSwitch v-model="showCities" />
+          {{ t('overview.map.cities') }}
+        </label>
+      </StatsFilters>
+    </div>
+
+    <div class="notices">
+      <ErrorNotice :error="error" />
+      <p
+        v-if="!geoip && !countries.length"
+        class="notice card float"
+      >
+        {{ t('overview.noGeoip') }}
+      </p>
+      <p
+        v-else-if="geoip && !loading && !countries.length"
+        class="notice card float muted"
+      >
+        {{ t('overview.empty') }}
+      </p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 20rem;
-  gap: var(--space-4);
+/* The map fills the page; everything else floats over it. */
+.scene {
+  position: relative;
+  height: 100%;
+  min-height: 34rem;
+  overflow: hidden;
 }
 
-@media (width <= 900px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.corner {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
 }
 
-/* The map's own quick filters, beside its title. */
-.map-head {
+.docks {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2) var(--space-4);
-  margin-bottom: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 15.5rem;
 }
 
-.map-head > h2 {
-  font-size: 1rem;
+.bottom {
+  position: absolute;
+  bottom: var(--space-3);
+  left: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.notices {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(32rem, calc(100% - 32rem));
+  transform: translateX(-50%);
 }
 
 .notice {
-  margin: 0 0 var(--space-4);
+  margin: 0;
 }
 
-/* Cards of a row take the height of the tallest. */
-.below {
-  align-items: stretch;
-  margin-top: var(--space-4);
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .country,
 .org {
   margin-left: var(--space-2);
   font-size: 0.9em;
+}
+
+/* On a phone the page scrolls: the pieces follow one another, the map
+   keeping a height of its own. */
+@media (width <= 900px) {
+  .scene {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    height: auto;
+    padding: var(--space-3);
+    overflow: visible;
+  }
+
+  .map {
+    order: 2;
+    height: 55dvh;
+  }
+
+  .corner,
+  .docks,
+  .bottom,
+  .notices {
+    position: static;
+    width: auto;
+    transform: none;
+  }
+
+  .corner {
+    order: 1;
+  }
+
+  .bottom {
+    order: 1;
+  }
+
+  .docks {
+    order: 3;
+  }
+
+  .notices {
+    order: 0;
+  }
 }
 </style>

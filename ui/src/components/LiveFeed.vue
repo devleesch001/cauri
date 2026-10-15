@@ -41,9 +41,8 @@ const time = (s: string) => new Date(s).toLocaleTimeString()
 </script>
 
 <template>
-  <section class="card">
+  <div>
     <div class="head">
-      <h2>{{ t('overview.live.title') }}</h2>
       <Button
         :label="paused ? t('overview.live.resume') : t('overview.live.pause')"
         severity="secondary"
@@ -90,19 +89,13 @@ const time = (s: string) => new Date(s).toLocaleTimeString()
     >
       {{ t('overview.live.empty') }}
     </p>
-  </section>
+  </div>
 </template>
 
 <style scoped>
 .head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-h2 {
-  margin: 0 0 var(--space-3);
-  font-size: 1rem;
+  justify-content: flex-end;
 }
 
 .feed {

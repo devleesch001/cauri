@@ -112,6 +112,7 @@ onMounted(() => {
     <RouterView />
   </main>
   <Button
+    v-if="route.name !== 'overview'"
     class="width-toggle"
     severity="secondary"
     text

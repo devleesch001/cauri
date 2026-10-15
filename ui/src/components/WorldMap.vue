@@ -148,6 +148,8 @@ function select(a2?: string) {
 <style scoped>
 .map {
   position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 /* Its own layer: repaints elsewhere on the page (the live feed, hovered
@@ -155,7 +157,7 @@ function select(a2?: string) {
 svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   will-change: transform;
 }
 
@@ -209,6 +211,9 @@ circle.hovered {
 }
 
 .legend {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);
