@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from 'vue'
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from 'openvue/button'
+import Menu from 'openvue/menu'
 import WindowMaximizeIcon from '@openvue/icons/windowmaximize'
 import WindowMinimizeIcon from '@openvue/icons/windowminimize'
 import { api } from './api/client'
@@ -11,6 +12,20 @@ import SensorSelect from './components/SensorSelect.vue'
 import { useSensors } from './stores/sensors'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
+
+// Statistics pages share one menu, which stands for the page shown.
+const statsPages = ['activity', 'credentials', 'commands'] as const
+const statsItems = computed(() =>
+  statsPages.map((name) => ({
+    label: t(`nav.${name}`),
+    command: () => void router.push({ name }),
+  })),
+)
+const statsActive = computed(() => statsPages.some((name) => route.name === name))
+const statsMenu = ref<InstanceType<typeof Menu> | null>(null)
+const statsOpen = ref(false)
 const sensors = useSensors()
 // The GeoIP database, when there is one, requires an attribution.
 const about = ref<About | null>(null)
@@ -54,24 +69,35 @@ onMounted(() => {
       <RouterLink to="/">
         {{ t('nav.overview') }}
       </RouterLink>
-      <RouterLink to="/activity">
-        {{ t('nav.activity') }}
-      </RouterLink>
-      <RouterLink to="/credentials">
-        {{ t('nav.credentials') }}
-      </RouterLink>
-      <RouterLink to="/commands">
-        {{ t('nav.commands') }}
-      </RouterLink>
-      <RouterLink to="/payloads">
-        {{ t('nav.payloads') }}
-      </RouterLink>
       <RouterLink to="/sessions">
         {{ t('nav.sessions') }}
       </RouterLink>
       <RouterLink to="/login-attempts">
         {{ t('nav.failedLogins') }}
       </RouterLink>
+      <RouterLink to="/payloads">
+        {{ t('nav.payloads') }}
+      </RouterLink>
+      <button
+        type="button"
+        class="menu-trigger"
+        :class="{ active: statsActive }"
+        aria-haspopup="menu"
+        aria-controls="statistics-menu"
+        :aria-expanded="statsOpen"
+        @click="(e) => statsMenu?.toggle(e)"
+      >
+        {{ t('nav.statistics') }}
+        <span aria-hidden="true">▾</span>
+      </button>
+      <Menu
+        id="statistics-menu"
+        ref="statsMenu"
+        :model="statsItems"
+        popup
+        @show="statsOpen = true"
+        @hide="statsOpen = false"
+      />
       <RouterLink to="/admin">
         {{ t('nav.admin') }}
       </RouterLink>
@@ -174,10 +200,26 @@ nav a {
   text-decoration: none;
 }
 
-nav a:hover {
+.menu-trigger {
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--c-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+nav a:hover,
+.menu-trigger:hover {
   color: var(--c-ink);
 }
 
+.menu-trigger:focus-visible {
+  outline: 2px solid var(--p-primary-color);
+  outline-offset: 2px;
+}
+
+.menu-trigger.active,
 nav a.router-link-active {
   color: var(--c-ink);
   box-shadow: inset 0 -2px 0 var(--p-primary-color);

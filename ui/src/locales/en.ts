@@ -6,6 +6,7 @@ export default {
   nav: {
     sections: 'Sections',
     overview: 'Overview',
+    statistics: 'Statistics',
     activity: 'Activity',
     credentials: 'Credentials',
     commands: 'Commands',
