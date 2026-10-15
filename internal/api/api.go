@@ -35,6 +35,8 @@ type Config struct {
 	// GeoIP is the GeoIP database, nil without one: its provider sets the
 	// attribution the UI must show.
 	GeoIP interface{ Info() geoip.Info }
+	// ASN is the ASN database, nil without one; same attribution rules.
+	ASN interface{ Info() geoip.Info }
 	// ReadAuth protects the read endpoints. Nil lets every request through;
 	// UI authentication will plug in here.
 	ReadAuth func(http.Handler) http.Handler

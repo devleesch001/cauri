@@ -712,3 +712,40 @@ func TestPlaceSessions(t *testing.T) {
 		}
 	})
 }
+
+type fakeNetworker struct{}
+
+func (fakeNetworker) Network(ip string) (geoip.Network, bool) {
+	if strings.HasPrefix(ip, "203.0.113.") {
+		return geoip.Network{ASN: 64500, Org: "Example Net"}, true
+	}
+	return geoip.Network{}, false
+}
+
+// The network is recorded at ingestion, independently of the location,
+// and found later for sessions stored before.
+func TestNetworks(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, "old", 0, nil))); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := svc.NetworkSessions(ctx); n != 0 || err != nil {
+			t.Fatalf("without database: %d, %v", n, err)
+		}
+		svc.SetNetworker(fakeNetworker{})
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, "new", 0, nil))); err != nil {
+			t.Fatal(err)
+		}
+		if s := getSession(t, db, sensor, "new"); s.ASN == nil || *s.ASN != 64500 || *s.ASOrg != "Example Net" || s.GeoCountry != nil {
+			t.Errorf("new session = %v %v %v", s.ASN, s.ASOrg, s.GeoCountry)
+		}
+		if n, err := svc.NetworkSessions(ctx); n != 1 || err != nil {
+			t.Fatalf("found %d, %v", n, err)
+		}
+		if s := getSession(t, db, sensor, "old"); s.ASN == nil || *s.ASN != 64500 {
+			t.Errorf("old session = %v", s.ASN)
+		}
+	})
+}

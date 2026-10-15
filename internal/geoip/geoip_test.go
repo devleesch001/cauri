@@ -98,3 +98,26 @@ func TestOpenErrors(t *testing.T) {
 		t.Error("want error for an invalid file")
 	}
 }
+
+// ASN databases (DB-IP ASN Lite, GeoLite2-ASN) give networks, no location.
+func TestNetwork(t *testing.T) {
+	path := geoiptest.Write(t, t.TempDir(), "DBIP-ASN-Lite (compat=GeoLite2-ASN)", oct1,
+		geoiptest.Network{CIDR: "109.160.32.0/24", ASN: 197170, ASOrg: "TechTies Inc."})
+	d, err := Open(path, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = d.Close() }()
+	if i := d.Info(); i.Provider != "db-ip" {
+		t.Errorf("info = %+v", i)
+	}
+	if n, ok := d.Network("109.160.32.169"); !ok || n != (Network{197170, "TechTies Inc."}) {
+		t.Errorf("network = %+v %v", n, ok)
+	}
+	if _, ok := d.Network("203.0.113.7"); ok {
+		t.Error("unknown address has a network")
+	}
+	if _, _, ok := d.Locate("109.160.32.169"); ok {
+		t.Error("an ASN database locates no country")
+	}
+}

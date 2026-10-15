@@ -66,6 +66,7 @@ type SessionFilter struct {
 	HasCommands *bool
 	HasTTY      *bool
 	File        string // SHA-256 of a file the session transferred
+	ASN         int64  // autonomous system of the source address
 	Page
 }
 
@@ -146,6 +147,9 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 	if f.HasCommands != nil {
 		sub := db.NewSelect().TableExpr("commands AS fc").ColumnExpr("1").Where("fc.session_id = s.id")
 		q = q.Where(existsExpr(*f.HasCommands), sub)
+	}
+	if f.ASN != 0 {
+		q = q.Where("s.asn = ?", f.ASN)
 	}
 	if f.File != "" {
 		sub := db.NewSelect().TableExpr("transfers AS fx").ColumnExpr("fx.session_id").Where("fx.sha256 = ?", f.File)

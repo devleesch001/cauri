@@ -67,6 +67,8 @@ type Session struct {
 	GeoSource      *string  `bun:"geo_source" json:"geo_source"` // database used, set even if not found
 	GeoLat         *float64 `bun:"geo_lat" json:"geo_lat"`       // of the city, from the same database
 	GeoLon         *float64 `bun:"geo_lon" json:"geo_lon"`
+	ASN            *int64   `bun:"asn" json:"asn"`         // autonomous system, from the ASN database
+	ASOrg          *string  `bun:"as_org" json:"as_org"`   // its organisation
 	Verdict        *string  `bun:"verdict" json:"verdict"` // see package verdict; nil until judged
 	VerdictScore   *int     `bun:"verdict_score" json:"verdict_score"`
 	VerdictVersion *string  `bun:"verdict_version" json:"-"`

@@ -644,6 +644,47 @@ func TestGeoIP(t *testing.T) {
 	})
 }
 
+// An ASN database gives the network of sessions, independently of the
+// location, and its attribution in /api/about.
+func TestASN(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		path := geoiptest.Write(t, t.TempDir(), "GeoLite2-ASN", time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+			geoiptest.Network{CIDR: "203.0.113.0/24", ASN: 64500, ASOrg: "Example Net"})
+		asn, err := geoip.Open(path, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = asn.Close() }()
+		e := setup(t, db, func(c *api.Config) {
+			c.Ingest.SetNetworker(asn)
+			c.ASN = asn
+		})
+		if _, err := e.client.SendEvents(context.Background(), events("hp-01")); err != nil {
+			t.Fatal(err)
+		}
+		var list struct {
+			Items []store.SessionSummary `json:"items"`
+		}
+		get(t, e, "/api/sessions?asn=64500", http.StatusOK, &list)
+		if len(list.Items) != 1 || *list.Items[0].ASOrg != "Example Net" {
+			t.Errorf("sessions of AS64500 = %+v", list.Items)
+		}
+		get(t, e, "/api/sessions?asn=AS64500", http.StatusBadRequest, nil)
+		var o store.Origins
+		get(t, e, "/api/stats/origins", http.StatusOK, &o)
+		if len(o.Networks) != 1 || o.Networks[0].ASN != 64500 {
+			t.Errorf("networks = %+v", o.Networks)
+		}
+		var a struct {
+			ASN *struct{ Provider string } `json:"asn"`
+		}
+		get(t, e, "/api/about", http.StatusOK, &a)
+		if a.ASN == nil || a.ASN.Provider != "maxmind" {
+			t.Errorf("about = %+v", a)
+		}
+	})
+}
+
 func TestAboutWithoutGeoIP(t *testing.T) {
 	e := setup(t, storetest.SQLite(t), nil)
 	var a map[string]any

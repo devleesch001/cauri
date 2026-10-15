@@ -50,7 +50,8 @@ type Service struct {
 	tty        *ttystore.Store
 	maxTTYSize int64
 	now        func() time.Time
-	locator    Locator // optional
+	locator    Locator   // optional
+	networker  Networker // optional
 }
 
 // Locator locates IP addresses, see package geoip. source names the
@@ -62,6 +63,16 @@ type Locator interface {
 // SetLocator makes the service locate new sessions by their source
 // address. Without it, sessions are not located.
 func (s *Service) SetLocator(l Locator) { s.locator = l }
+
+// Networker finds the autonomous system of IP addresses, see package
+// geoip; ok is false for unknown addresses.
+type Networker interface {
+	Network(ip string) (n geoip.Network, ok bool)
+}
+
+// SetNetworker makes the service record the network of new sessions,
+// independently of their location: either database may be missing.
+func (s *Service) SetNetworker(n Networker) { s.networker = n }
 
 // New returns a service writing to db and tty, refusing TTY recordings
 // larger than maxTTYSize bytes (DefaultMaxTTYSize if not positive).
@@ -136,7 +147,7 @@ func (s *Service) IngestEvents(ctx context.Context, sensorID string, b protocol.
 			isKnown[string(h)] = true
 		}
 
-		w := newBatchWriter(sensorID, s.now(), s.locator)
+		w := newBatchWriter(sensorID, s.now(), s.locator, s.networker)
 		for i, e := range events {
 			if !isKnown[string(hashes[i])] {
 				w.add(hashes[i], e.raw, e.ev)
@@ -312,6 +323,45 @@ func (s *Service) PlaceSessions(ctx context.Context) (int, error) {
 		})
 		if err != nil {
 			return placed, err
+		}
+	}
+}
+
+// NetworkSessions records the network of the sessions stored without one,
+// such as before an ASN database was configured, and returns how many it
+// found. Addresses the database does not know are passed once per start.
+func (s *Service) NetworkSessions(ctx context.Context) (int, error) {
+	if s.networker == nil {
+		return 0, nil
+	}
+	found := 0
+	var after int64
+	for {
+		var rows []store.Session
+		err := s.db.NewSelect().Model(&rows).Column("id", "src_ip").
+			Where("asn IS NULL").Where("src_ip IS NOT NULL").Where("id > ?", after).
+			OrderExpr("s.id").Limit(locateBatch).Scan(ctx)
+		if err != nil || len(rows) == 0 {
+			return found, err
+		}
+		after = rows[len(rows)-1].ID
+		err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+			for _, r := range rows {
+				n, ok := s.networker.Network(*r.SrcIP)
+				if !ok {
+					continue
+				}
+				if _, err := tx.NewUpdate().Model((*store.Session)(nil)).
+					Set("asn = ?", int64(n.ASN)).Set("as_org = ?", nullable(n.Org)).
+					Where("id = ?", r.ID).Where("asn IS NULL").Exec(ctx); err != nil {
+					return err
+				}
+				found++
+			}
+			return nil
+		})
+		if err != nil {
+			return found, err
 		}
 	}
 }

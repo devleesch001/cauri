@@ -302,10 +302,20 @@ type ClientCount struct {
 	Sources  int    `bun:"sources" json:"sources"` // distinct source addresses
 }
 
-// Origins are who attacks: the busiest addresses and the clients used.
+// NetworkCount is an autonomous system and its sessions.
+type NetworkCount struct {
+	ASN      int64  `bun:"asn" json:"asn"`
+	Org      string `bun:"org" json:"org"`
+	Sessions int    `bun:"n" json:"sessions"`
+	Sources  int    `bun:"sources" json:"sources"` // distinct source addresses
+}
+
+// Origins are who attacks: the busiest addresses, their networks (with an
+// ASN database) and the clients used.
 type Origins struct {
-	Sources []SourceCount `json:"sources"`
-	Clients []ClientCount `json:"clients"`
+	Sources  []SourceCount  `json:"sources"`
+	Networks []NetworkCount `json:"networks"`
+	Clients  []ClientCount  `json:"clients"`
 }
 
 // TopOrigins bounds the addresses and clients listed.
@@ -313,12 +323,18 @@ const TopOrigins = 20
 
 // GetOrigins returns the busiest source addresses and SSH clients.
 func GetOrigins(ctx context.Context, db bun.IDB, f StatsFilter) (*Origins, error) {
-	o := &Origins{Sources: []SourceCount{}, Clients: []ClientCount{}}
+	o := &Origins{Sources: []SourceCount{}, Networks: []NetworkCount{}, Clients: []ClientCount{}}
 	q := db.NewSelect().Model((*Session)(nil)).Column("src_ip").
 		ColumnExpr("MIN(s.geo_country) AS country, COUNT(*) AS n, MAX(s.started_at) AS last_ts").
 		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
 		Where("s.src_ip IS NOT NULL").GroupExpr("s.src_ip").OrderExpr("n DESC, s.src_ip").Limit(TopOrigins)
 	if err := f.apply(q).Scan(ctx, &o.Sources); err != nil {
+		return nil, err
+	}
+	q = db.NewSelect().Model((*Session)(nil)).Column("asn").
+		ColumnExpr("MIN(s.as_org) AS org, COUNT(*) AS n, COUNT(DISTINCT s.src_ip) AS sources").
+		Where("s.asn IS NOT NULL").GroupExpr("s.asn").OrderExpr("n DESC, s.asn").Limit(TopOrigins)
+	if err := f.apply(q).Scan(ctx, &o.Networks); err != nil {
 		return nil, err
 	}
 	q = db.NewSelect().Model((*Session)(nil)).Column("client_version").

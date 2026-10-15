@@ -1,5 +1,7 @@
 // Package geoip locates IP addresses with an MMDB database, such as DB-IP
-// Lite or MaxMind GeoLite2, which share the same record structure. The
+// Lite or MaxMind GeoLite2, which share the same record structure, and
+// finds their network (autonomous system) with an ASN database of either
+// provider. The
 // database is not part of cauri: the operator provides the file, and
 // replaces it to update it; it is reloaded when it changes.
 //
@@ -58,6 +60,15 @@ type record struct {
 		Latitude  *float64 `maxminddb:"latitude"`
 		Longitude *float64 `maxminddb:"longitude"`
 	} `maxminddb:"location"`
+	// ASN databases.
+	ASN   uint32 `maxminddb:"autonomous_system_number"`
+	ASOrg string `maxminddb:"autonomous_system_organization"`
+}
+
+// Network is the autonomous system an address belongs to.
+type Network struct {
+	ASN uint32 // such as 4134
+	Org string // such as "Chinanet"
 }
 
 // DB is an MMDB database, reloaded when its file changes.
@@ -140,6 +151,23 @@ func (d *DB) Locate(ip string) (loc Location, source string, ok bool) {
 		loc.Lat, loc.Lon, loc.HasCoords = *lat, *lon, true
 	}
 	return loc, source, true
+}
+
+// Network returns the autonomous system of ip; ok is false when the
+// address is invalid, unknown, or the database has no networks.
+func (d *DB) Network(ip string) (n Network, ok bool) {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return n, false
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	var rec record
+	res := d.reader.Lookup(addr.Unmap())
+	if !res.Found() || res.Decode(&rec) != nil || rec.ASN == 0 {
+		return n, false
+	}
+	return Network{ASN: rec.ASN, Org: rec.ASOrg}, true
 }
 
 // Watch reloads the database when its file changes, checking every

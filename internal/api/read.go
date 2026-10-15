@@ -51,6 +51,7 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 		HasCommands: q.bool("has_commands"),
 		HasTTY:      q.bool("has_tty"),
 		File:        q.str("file"),
+		ASN:         int64(q.int("asn")),
 		Page:        q.page(),
 	}
 	if q.err != nil {
@@ -260,6 +261,7 @@ func serveStats[T any](s *server, w http.ResponseWriter, r *http.Request, get fu
 type about struct {
 	Version string      `json:"version"`
 	GeoIP   *geoip.Info `json:"geoip"` // null without a GeoIP database
+	ASN     *geoip.Info `json:"asn"`   // null without an ASN database
 }
 
 // getAbout describes this cauri: the UI shows the attribution the GeoIP
@@ -269,6 +271,10 @@ func (s *server) getAbout(w http.ResponseWriter, _ *http.Request) {
 	if s.GeoIP != nil {
 		info := s.GeoIP.Info()
 		out.GeoIP = &info
+	}
+	if s.ASN != nil {
+		info := s.ASN.Info()
+		out.ASN = &info
 	}
 	writeJSON(w, http.StatusOK, out)
 }

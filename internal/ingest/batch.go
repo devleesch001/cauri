@@ -22,12 +22,13 @@ import (
 // becomes true once any login succeeded. The recording file is only set by
 // StoreTTY, from the uploaded file.
 type batchWriter struct {
-	now      store.Time
-	locator  Locator // optional
-	sensor   store.Sensor
-	sessions map[string]*store.Session // by Cowrie session id
-	order    []string                  // Cowrie session ids, in order of appearance
-	events   []pendingEvent
+	now       store.Time
+	locator   Locator   // optional
+	networker Networker // optional
+	sensor    store.Sensor
+	sessions  map[string]*store.Session // by Cowrie session id
+	order     []string                  // Cowrie session ids, in order of appearance
+	events    []pendingEvent
 	// sessionIDs are the sessions written, once write returned.
 	sessionIDs []int64
 }
@@ -39,12 +40,13 @@ type pendingEvent struct {
 	ev   *cowrieEvent
 }
 
-func newBatchWriter(sensor string, now time.Time, locator Locator) *batchWriter {
+func newBatchWriter(sensor string, now time.Time, locator Locator, networker Networker) *batchWriter {
 	return &batchWriter{
-		now:      store.NewTime(now),
-		locator:  locator,
-		sensor:   store.Sensor{Name: sensor},
-		sessions: map[string]*store.Session{},
+		now:       store.NewTime(now),
+		locator:   locator,
+		networker: networker,
+		sensor:    store.Sensor{Name: sensor},
+		sessions:  map[string]*store.Session{},
 	}
 }
 
@@ -223,11 +225,12 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 		rows[i] = *w.sessions[cs]
 		rows[i].SensorID = w.sensor.ID
 		w.locate(&rows[i])
+		w.network(&rows[i])
 	}
 	q := tx.NewInsert().Model(&rows).On("CONFLICT (sensor_id, cowrie_session) DO UPDATE").
 		Set("started_at = CASE WHEN EXCLUDED.started_at < ?TableAlias.started_at THEN EXCLUDED.started_at ELSE ?TableAlias.started_at END").
 		Set("login_success = (?TableAlias.login_success OR EXCLUDED.login_success)")
-	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "hassh"} {
+	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "hassh", "asn", "as_org"} {
 		q = q.Set(col + " = COALESCE(?TableAlias." + col + ", EXCLUDED." + col + ")")
 	}
 	for _, col := range []string{"ended_at", "duration_ms", "tty_log", "tty_duration_ms"} {
@@ -250,6 +253,18 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 		w.sessionIDs = append(w.sessionIDs, o.ID)
 	}
 	return ids, nil
+}
+
+// network sets the autonomous system of a session row from its source
+// address.
+func (w *batchWriter) network(s *store.Session) {
+	if w.networker == nil || s.SrcIP == nil {
+		return
+	}
+	if n, ok := w.networker.Network(*s.SrcIP); ok {
+		asn := int64(n.ASN)
+		s.ASN, s.ASOrg = &asn, nullable(n.Org)
+	}
 }
 
 // locate sets the location of a session row from its source address.

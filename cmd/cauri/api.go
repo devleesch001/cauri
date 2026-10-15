@@ -33,6 +33,7 @@ func runAPI(ctx context.Context, args []string) error {
 	maxTTY := fs.Int64("max-tty-size", ingest.DefaultMaxTTYSize, "largest TTY recording accepted, in bytes")
 	withUI := fs.Bool("ui", false, "also serve the web UI, for a single container")
 	geoDB := fs.String("geoip-db", "", "MMDB GeoIP database (DB-IP Lite or MaxMind GeoLite2) to locate sessions; none by default")
+	asnDB := fs.String("geoip-asn-db", "", "MMDB ASN database (DB-IP ASN Lite or MaxMind GeoLite2-ASN) to find the network of sessions; none by default")
 	retention := fs.Int("raw-retention-days", 0, "delete the raw Cowrie lines of events older than this many days, keeping sessions and their details; 0 keeps them")
 	logLevel := fs.String("log-level", "info", "log level: debug, info, warn or error")
 	if err := envflag.Parse(fs, args); err != nil {
@@ -96,6 +97,26 @@ func runAPI(ctx context.Context, args []string) error {
 	}
 	if *retention > 0 {
 		go purgeRaw(ctx, conn, time.Duration(*retention)*24*time.Hour, log)
+	}
+	if *asnDB != "" {
+		asn, err := geoip.Open(*asnDB, log)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = asn.Close() }()
+		svc.SetNetworker(asn)
+		cfg.ASN = asn
+		go asn.Watch(ctx, time.Minute)
+		// Sessions stored before the database was configured.
+		go func() {
+			n, err := svc.NetworkSessions(ctx)
+			if err != nil && ctx.Err() == nil {
+				log.Error("finding the network of stored sessions", "err", err)
+			}
+			if n > 0 {
+				log.Info("found the network of stored sessions", "sessions", n)
+			}
+		}()
 	}
 	// Sessions judged by older criteria, or before verdicts were stored.
 	go func() {

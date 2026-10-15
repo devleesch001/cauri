@@ -138,6 +138,23 @@ func TestOrigins(t *testing.T) {
 		if len(o.Sources) != 3 || o.Sources[0].Sessions != 1 || o.Sources[0].IP != "203.0.113.1" || o.Sources[0].Shells != 1 {
 			t.Errorf("sources = %+v", o.Sources)
 		}
+		if len(o.Networks) != 0 {
+			t.Errorf("networks without an ASN database = %+v", o.Networks)
+		}
+		ctx := context.Background()
+		for sess, asn := range map[string]int64{"1": 4134, "2": 4134} {
+			if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("asn = ?", asn).Set("as_org = 'Chinanet'").
+				Where("id = ?", lookup(t, db, "hp-01", sess)).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		o, _ = store.GetOrigins(ctx, db, store.StatsFilter{})
+		if len(o.Networks) != 1 || o.Networks[0] != (store.NetworkCount{ASN: 4134, Org: "Chinanet", Sessions: 2, Sources: 2}) {
+			t.Errorf("networks = %+v", o.Networks)
+		}
+		if _, got := sessions(t, db, store.SessionFilter{ASN: 4134}); got != "21" {
+			t.Errorf("sessions of AS4134 = %q", got)
+		}
 		if len(o.Clients) != 2 || o.Clients[0].Client != "SSH-2.0-OpenSSH_9.6" || o.Clients[1].Client != "SSH-2.0-libssh_0.9.6" {
 			t.Errorf("clients = %+v", o.Clients)
 		}
