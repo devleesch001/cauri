@@ -11,6 +11,11 @@ import (
 // anyway: Cowrie may stop before writing it.
 const sessionWait = time.Hour
 
+// maxChannels bounds the recordings kept per session: the attacker chooses
+// how many channels it opens, and each is a file held open while merging.
+// Bots run a few dozen commands.
+const maxChannels = 256
+
 // ttyChannel is the recording of one SSH channel of a session, as its
 // cowrie.log.closed tells it.
 type ttyChannel struct {
@@ -91,7 +96,7 @@ func (q *ttyQueue) record(events []sessionEvent, now time.Time) error {
 		j := &q.jobs[i]
 		if !slices.ContainsFunc(j.Channels, func(c ttyChannel) bool {
 			return c.TTYLog == e.channel.TTYLog && c.ClosedAt.Equal(e.channel.ClosedAt)
-		}) {
+		}) && len(j.Channels) < maxChannels {
 			j.Channels = append(j.Channels, *e.channel)
 		}
 		if !j.Closed {

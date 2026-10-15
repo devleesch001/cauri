@@ -362,6 +362,10 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	return in.queue.retry(job.Session, time.Now().Add(delay))
 }
 
+// maxMerge bounds a merged recording, as the API does by default
+// (ingest.DefaultMaxTTYSize): the attacker controls what it prints.
+const maxMerge = 128 << 20
+
 // recording returns the file to upload for a session, at its start, its
 // metadata, and how to release it. A session has a recording per SSH
 // channel, one per command for many bots: they are merged into one, in
@@ -408,14 +412,21 @@ func (in *ingestor) recording(job ttyJob, log *slog.Logger) (*os.File, protocol.
 	if len(parts) == 0 {
 		return nil, protocol.TTYMeta{}, nil, errors.New("no channel recording readable")
 	}
+	if len(job.Channels) >= maxChannels {
+		log.Warn("too many channels in the session, the last ones are left out", "kept", maxChannels)
+	}
 	// Written to a file of the state directory, not kept in memory: a
-	// recording can be large.
+	// recording can be large. Beyond the API's default limit, the rest
+	// would be refused anyway.
 	tmp, err := os.CreateTemp(in.StateDir, "tty-*.merge")
 	if err != nil {
 		return nil, protocol.TTYMeta{}, nil, err
 	}
 	release := func() { _ = tmp.Close(); _ = os.Remove(tmp.Name()) }
-	n, err := io.Copy(tmp, ttylog.Join(parts...))
+	n, err := io.Copy(tmp, io.LimitReader(ttylog.Join(parts...), maxMerge))
+	if n == maxMerge {
+		log.Warn("merged recording too large, truncated", "bytes", maxMerge)
+	}
 	if err != nil {
 		if n == 0 {
 			release()

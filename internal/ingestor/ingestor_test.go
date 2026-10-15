@@ -506,3 +506,23 @@ func TestTTYQueueOfOlderVersion(t *testing.T) {
 	f.start(t, f.config(f.sink))
 	waitFor(t, "upload", func() bool { _, ttys := f.sink.snapshot(); return ttys["s1"] == "output" })
 }
+
+// The attacker chooses how many channels a session opens: the queue keeps
+// a bounded number, each one a file held open while merging.
+func TestTTYChannelsBounded(t *testing.T) {
+	q, err := loadTTYQueue(filepath.Join(t.TempDir(), "q.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	var events []sessionEvent
+	for i := range maxChannels + 10 {
+		events = append(events, sessionEvent{session: "s1", channel: &ttyChannel{TTYLog: fmt.Sprint(i), ClosedAt: now}})
+	}
+	if err := q.record(events, now); err != nil {
+		t.Fatal(err)
+	}
+	if j, ok, _ := q.next(now); !ok || len(j.Channels) != maxChannels {
+		t.Errorf("channels kept = %d", len(j.Channels))
+	}
+}
