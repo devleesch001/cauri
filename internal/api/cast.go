@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -49,10 +47,9 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Files never change: the ETag depends only on them, where they are
-	// placed, and how they are converted.
-	tag := recordingTag(rec)
-	etag := fmt.Sprintf(`"%s-%s-%d"`, tag, castVersion, idle.Milliseconds())
+	// The file never changes: the ETag depends only on it and on how it
+	// is converted.
+	etag := fmt.Sprintf(`"%s-%s-%d"`, rec.SHA256, castVersion, idle.Milliseconds())
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, no-cache")
 	if r.Header.Get("If-None-Match") == etag {
@@ -60,11 +57,12 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recording, closeAll, ok := s.openRecording(w, r, rec)
-	if !ok {
+	f, err := s.TTY.Open(rec.SHA256)
+	if err != nil {
+		s.internalError(w, r, fmt.Errorf("recording %s: %w", rec.SHA256, err))
 		return
 	}
-	defer closeAll()
+	defer func() { _ = f.Close() }()
 
 	sizes := make([]ttylog.TermSize, len(rec.Sizes))
 	for i, sz := range rec.Sizes {
@@ -73,23 +71,23 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", asciicast.ContentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s.cast"`, rec.Session))
 	out := &countingWriter{w: w}
-	err = ttylog.Convert(recording, asciicast.NewV3(out), ttylog.Options{
+	err = ttylog.Convert(f, asciicast.NewV3(out), ttylog.Options{
 		Sizes: sizes, IdleTimeLimit: idle, Commands: commands(rec),
 	})
 	switch {
 	case err != nil && out.n == 0:
 		w.Header().Del("Content-Disposition")
 		w.Header().Del("ETag")
-		s.Logger.Error("unreadable recording", "session", rec.Session, "err", err)
+		s.Logger.Error("unreadable recording", "sha256", rec.SHA256, "err", err)
 		render.Render(w, r, errorOf(http.StatusUnprocessableEntity, "the recording cannot be read"))
 	case err != nil:
 		// Already streaming: the replay ends at the damage.
-		s.Logger.Warn("damaged recording, replay truncated", "session", rec.Session, "err", err)
+		s.Logger.Warn("damaged recording, replay truncated", "sha256", rec.SHA256, "err", err)
 	}
 }
 
 // chaptersVersion changes when the extraction of chapters changes.
-const chaptersVersion = "c2"
+const chaptersVersion = "c1"
 
 // chapter is a command of a replay and what it printed, see ttylog.Chapter.
 type chapter struct {
@@ -120,7 +118,7 @@ func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	etag := fmt.Sprintf(`"%s-%s-%d"`, recordingTag(rec), chaptersVersion, len(rec.Commands))
+	etag := fmt.Sprintf(`"%s-%s-%d"`, rec.SHA256, chaptersVersion, len(rec.Commands))
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, no-cache")
 	if r.Header.Get("If-None-Match") == etag {
@@ -128,15 +126,16 @@ func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recording, closeAll, ok := s.openRecording(w, r, rec)
-	if !ok {
+	f, err := s.TTY.Open(rec.SHA256)
+	if err != nil {
+		s.internalError(w, r, fmt.Errorf("recording %s: %w", rec.SHA256, err))
 		return
 	}
-	defer closeAll()
-	sum, err := ttylog.Chapters(recording, commands(rec))
+	defer func() { _ = f.Close() }()
+	sum, err := ttylog.Chapters(f, commands(rec))
 	if err != nil {
 		w.Header().Del("ETag")
-		s.Logger.Error("unreadable recording", "session", rec.Session, "err", err)
+		s.Logger.Error("unreadable recording", "sha256", rec.SHA256, "err", err)
 		render.Render(w, r, errorOf(http.StatusUnprocessableEntity, "the recording cannot be read"))
 		return
 	}
@@ -148,36 +147,6 @@ func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render.JSON(w, r, out)
-}
-
-// openRecording opens the stored files of a session's recordings as one
-// recording. Files missing from the volume are logged and left out; with
-// none left, it answers 500 and returns false.
-func (s *server) openRecording(w http.ResponseWriter, r *http.Request, rec *store.Recording) (io.ReadSeeker, func(), bool) {
-	parts, missing, closeAll := s.Ingest.OpenRecording(rec.Files)
-	if len(missing) > 0 {
-		s.Logger.Error("recordings missing from the volume", "session", rec.Session, "sha256", missing)
-	}
-	if len(parts) == 0 {
-		closeAll()
-		w.Header().Del("ETag")
-		s.internalError(w, r, fmt.Errorf("session %s: no recording file in the volume", rec.Session))
-		return nil, nil, false
-	}
-	return ttylog.Join(parts...), closeAll, true
-}
-
-// recordingTag identifies the files of a replay and where they are placed.
-func recordingTag(rec *store.Recording) string {
-	h := sha256.New()
-	for _, f := range rec.Files {
-		_, _ = fmt.Fprintf(h, "%s@", f.SHA256)
-		if f.At != nil {
-			_, _ = fmt.Fprint(h, f.At.UnixMicro())
-		}
-		_, _ = fmt.Fprint(h, ";")
-	}
-	return hex.EncodeToString(h.Sum(nil))[:32]
 }
 
 // commands returns the commands of a recording as replay chapters.

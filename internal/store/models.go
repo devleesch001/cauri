@@ -57,6 +57,11 @@ type Session struct {
 	EndedAt        *Time    `bun:"ended_at" json:"ended_at"`
 	DurationMS     *int64   `bun:"duration_ms" json:"duration_ms"`
 	LoginSuccess   bool     `bun:"login_success" json:"login_success"`
+	TTYLog         *string  `bun:"tty_log" json:"tty_log"`
+	TTYDurationMS  *int64   `bun:"tty_duration_ms" json:"tty_duration_ms"`
+	TTYFileID      *int64   `bun:"tty_file_id" json:"-"`
+	TTYSHA256      *string  `bun:"tty_sha256,scanonly" json:"tty_sha256"`
+	TTYSize        *int64   `bun:"tty_size,scanonly" json:"tty_size"`
 	GeoCountry     *string  `bun:"geo_country" json:"geo_country"` // ISO 3166-1 alpha-2
 	GeoCity        *string  `bun:"geo_city" json:"geo_city"`
 	GeoSource      *string  `bun:"geo_source" json:"geo_source"` // database used, set even if not found
@@ -67,26 +72,6 @@ type Session struct {
 	Verdict        *string  `bun:"verdict" json:"verdict"` // see package verdict; nil until judged
 	VerdictScore   *int     `bun:"verdict_score" json:"verdict_score"`
 	VerdictVersion *string  `bun:"verdict_version" json:"-"`
-}
-
-// SessionRecording is a TTY recording of a session: Cowrie writes one per
-// SSH channel, and many bots run each command on its own exec channel.
-type SessionRecording struct {
-	bun.BaseModel `bun:"table:session_recordings,alias:r"`
-
-	ID        int64 `bun:"id,pk,autoincrement" json:"-"`
-	SessionID int64 `bun:"session_id" json:"-"`
-	// TTYLog is Cowrie's name for the recording: the SHA-256 of its input,
-	// the keys typed or the command of an exec channel.
-	TTYLog     string `bun:"ttylog" json:"ttylog"`
-	StartedAt  Time   `bun:"started_at" json:"started_at"` // the channel's, in this session
-	DurationMS *int64 `bun:"duration_ms" json:"duration_ms"`
-	// Duplicate: Cowrie already had a recording of this input and kept its
-	// file, with its output and times, maybe of another session.
-	Duplicate bool    `bun:"duplicate" json:"duplicate"`
-	TTYFileID *int64  `bun:"tty_file_id" json:"-"`          // nil until uploaded
-	SHA256    *string `bun:"sha256,scanonly" json:"sha256"` // of the stored file
-	Size      *int64  `bun:"size,scanonly" json:"size"`
 }
 
 type Event struct {

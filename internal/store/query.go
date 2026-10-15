@@ -91,18 +91,14 @@ type SessionSummary struct {
 	Credentials   []Credential `json:"credentials"`
 }
 
-// selectSessions selects sessions with the sensor name, joined for the API.
+// selectSessions selects sessions with the sensor name and the recording
+// file, joined for the API.
 func selectSessions(db bun.IDB, dst any) *bun.SelectQuery {
 	return db.NewSelect().Model(dst).
 		ColumnExpr("s.*").
-		ColumnExpr("sn.name AS sensor").
-		Join("JOIN sensors AS sn ON sn.id = s.sensor_id")
-}
-
-// storedRecordings selects the recordings of sessions whose file is stored.
-func storedRecordings(db bun.IDB) *bun.SelectQuery {
-	return db.NewSelect().TableExpr("session_recordings AS rx").ColumnExpr("rx.session_id").
-		Where("rx.tty_file_id IS NOT NULL")
+		ColumnExpr("sn.name AS sensor, t.sha256 AS tty_sha256, t.size AS tty_size").
+		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
+		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id")
 }
 
 // ListSessions returns a page of sessions, latest first, and the number
@@ -212,7 +208,11 @@ func (f SessionFilter) query(db bun.IDB, dst any) *bun.SelectQuery {
 		q = q.Where("s.id IN (?)", sub)
 	}
 	if f.HasTTY != nil {
-		q = q.Where(existsExpr(*f.HasTTY), storedRecordings(db).Where("rx.session_id = s.id"))
+		if *f.HasTTY {
+			q = q.Where("s.tty_file_id IS NOT NULL")
+		} else {
+			q = q.Where("s.tty_file_id IS NULL")
+		}
 	}
 	return q
 }
@@ -235,17 +235,8 @@ func summarize(ctx context.Context, db bun.IDB, rows []Session) ([]SessionSummar
 	index := map[int64]*SessionSummary{}
 	for i, r := range rows {
 		ids[i] = r.ID
-		sums[i] = SessionSummary{Session: r, Credentials: []Credential{}}
+		sums[i] = SessionSummary{Session: r, Credentials: []Credential{}, TTYAvailable: r.TTYFileID != nil}
 		index[r.ID] = &sums[i]
-	}
-
-	var stored []int64
-	if err := storedRecordings(db).Where("rx.session_id IN (?)", bun.List(ids)).Distinct().
-		Scan(ctx, &stored); err != nil {
-		return nil, err
-	}
-	for _, id := range stored {
-		index[id].TTYAvailable = true
 	}
 
 	var logins []LoginAttempt
@@ -288,13 +279,10 @@ type EventView struct {
 // chronological order.
 type SessionDetail struct {
 	SessionSummary
-	// Recordings are the session's TTY recordings, in the order of their
-	// channels, with their stored file if uploaded.
-	Recordings       []SessionRecording `json:"recordings"`
-	LoginAttemptList []LoginAttempt     `json:"login_attempt_list"`
-	CommandList      []Command          `json:"command_list"`
-	Transfers        []Transfer         `json:"transfers"`
-	Events           []EventView        `json:"events"`
+	LoginAttemptList []LoginAttempt `json:"login_attempt_list"`
+	CommandList      []Command      `json:"command_list"`
+	Transfers        []Transfer     `json:"transfers"`
+	Events           []EventView    `json:"events"`
 }
 
 // GetSession returns a session by its identifier.
@@ -314,13 +302,9 @@ func GetSession(ctx context.Context, db bun.IDB, id int64) (*SessionDetail, erro
 	d := &SessionDetail{
 		SessionSummary:   sums[0],
 		LoginAttemptList: []LoginAttempt{},
-		Recordings:       []SessionRecording{},
 		CommandList:      []Command{},
 		Transfers:        []Transfer{},
 		Events:           []EventView{},
-	}
-	if d.Recordings, err = listRecordings(ctx, db, id); err != nil {
-		return nil, err
 	}
 	for _, dst := range []any{&d.LoginAttemptList, &d.CommandList, &d.Transfers} {
 		if err := db.NewSelect().Model(dst).Where("session_id = ?", id).Order("ts", "id").Scan(ctx); err != nil {
@@ -461,68 +445,28 @@ type TermSize struct {
 // Recording is what replaying a session needs.
 type Recording struct {
 	Session string // Cowrie session identifier
-	// Files are the stored files of its recordings, in the order of their
-	// channels (see SessionRecording).
-	Files []RecordingFile
+	SHA256  string // digest of the stored file, see ttystore
 	// Sizes are the terminal sizes reported by the client, in time order.
 	Sizes []TermSize
 	// Commands are the commands typed, in time order: the replay chapters.
 	Commands []Command
 }
 
-// RecordingFile is the stored file of a recording.
-type RecordingFile struct {
-	SHA256 string // see ttystore
-	// At is when its channel started, set for a duplicate: its file has the
-	// times of the first recording of the same input (see ttylog.Part).
-	At *time.Time
-}
-
-// listRecordings returns the recordings of a session in the order of their
-// channels, with their stored file.
-func listRecordings(ctx context.Context, db bun.IDB, id int64) ([]SessionRecording, error) {
-	recs := []SessionRecording{}
-	err := db.NewSelect().Model(&recs).ColumnExpr("r.*, t.sha256, t.size").
-		Join("LEFT JOIN tty_files AS t ON t.id = r.tty_file_id").
-		Where("r.session_id = ?", id).OrderExpr("r.started_at, r.id").Scan(ctx)
-	return recs, err
-}
-
-// storedFiles returns the stored files of recordings, in their order.
-func storedFiles(recs []SessionRecording) []RecordingFile {
-	var files []RecordingFile
-	for _, r := range recs {
-		if r.SHA256 == nil {
-			continue
-		}
-		f := RecordingFile{SHA256: *r.SHA256}
-		if r.Duplicate {
-			at := r.StartedAt.Time
-			f.At = &at
-		}
-		files = append(files, f)
-	}
-	return files
-}
-
-// GetRecording returns the stored recordings of a session.
+// GetRecording returns the stored recording of a session.
 func GetRecording(ctx context.Context, db bun.IDB, id int64) (*Recording, error) {
 	var s Session
-	err := db.NewSelect().Model(&s).Column("id", "cowrie_session").Where("s.id = ?", id).Scan(ctx)
+	err := selectSessions(db, &s).Where("s.id = ?", id).Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	recs, err := listRecordings(ctx, db, id)
-	if err != nil {
-		return nil, err
-	}
-	rec := &Recording{Session: s.CowrieSession, Files: storedFiles(recs)}
-	if len(rec.Files) == 0 {
+	if s.TTYSHA256 == nil {
 		return nil, ErrNoRecording
 	}
+
+	rec := &Recording{Session: s.CowrieSession, SHA256: *s.TTYSHA256}
 	if err := db.NewSelect().Model(&rec.Commands).Where("session_id = ?", id).
 		Order("ts", "id").Scan(ctx); err != nil {
 		return nil, err
@@ -563,9 +507,8 @@ type SessionFacts struct {
 	// Terminal: the session had a pty, as told by a recording or a
 	// terminal size.
 	Terminal bool
-	// Typed are the stored files of the recordings made in this session,
-	// in order: not the duplicates, whose times are another recording's.
-	Typed []RecordingFile
+	// RecordingSHA256 is the stored recording, nil if there is none.
+	RecordingSHA256 *string
 }
 
 // GetSessionFacts returns the facts of a session.
@@ -578,16 +521,7 @@ func GetSessionFacts(ctx context.Context, db bun.IDB, id int64) (*SessionFacts, 
 	if err != nil {
 		return nil, err
 	}
-	recs, err := listRecordings(ctx, db, id)
-	if err != nil {
-		return nil, err
-	}
-	f := &SessionFacts{Terminal: len(recs) > 0}
-	for _, file := range storedFiles(recs) {
-		if file.At == nil {
-			f.Typed = append(f.Typed, file)
-		}
-	}
+	f := &SessionFacts{Terminal: s.TTYLog != nil || s.TTYFileID != nil, RecordingSHA256: s.TTYSHA256}
 	if s.ClientVersion != nil {
 		f.ClientVersion = *s.ClientVersion
 	}

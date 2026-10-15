@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -70,25 +69,13 @@ func sum(s string) string {
 func getSession(t *testing.T, db *bun.DB, sensorID, sess string) *store.Session {
 	t.Helper()
 	s := new(store.Session)
-	err := db.NewSelect().Model(s).Where("s.id = ?", sessionID(t, db, sensorID, sess)).Scan(context.Background())
+	err := db.NewSelect().Model(s).ColumnExpr("s.*, t.sha256 AS tty_sha256, t.size AS tty_size").
+		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
+		Where("s.id = ?", sessionID(t, db, sensorID, sess)).Scan(context.Background())
 	if err != nil {
 		t.Fatalf("session %s/%s: %v", sensorID, sess, err)
 	}
 	return s
-}
-
-// getRecordings returns the recordings of a session, in order, with their
-// stored file.
-func getRecordings(t *testing.T, db *bun.DB, sensorID, sess string) []store.SessionRecording {
-	t.Helper()
-	var recs []store.SessionRecording
-	err := db.NewSelect().Model(&recs).ColumnExpr("r.*, t.sha256, t.size").
-		Join("LEFT JOIN tty_files AS t ON t.id = r.tty_file_id").
-		Where("r.session_id = ?", sessionID(t, db, sensorID, sess)).OrderExpr("r.started_at, r.id").Scan(context.Background())
-	if err != nil {
-		t.Fatalf("recordings of %s/%s: %v", sensorID, sess, err)
-	}
-	return recs
 }
 
 func sessionID(t *testing.T, db *bun.DB, sensorID, sess string) int64 {
@@ -148,12 +135,8 @@ func TestIngestFullSession(t *testing.T) {
 			t.Error("login_success = false")
 		case !s.StartedAt.Equal(t0), !s.EndedAt.Equal(t0.Add(9500 * time.Millisecond)), *s.DurationMS != 9500:
 			t.Errorf("times: %v %v %v", s.StartedAt, s.EndedAt, *s.DurationMS)
-		}
-		// The channel closed at 9 s after 8.9 s: it started at 0.1 s.
-		recs := getRecordings(t, db, sensor, "a1b2c3d4e5f6")
-		if len(recs) != 1 || recs[0].TTYLog != sum("tty") || *recs[0].DurationMS != 8900 ||
-			!recs[0].StartedAt.Equal(t0.Add(100*time.Millisecond)) || recs[0].Duplicate || recs[0].SHA256 != nil {
-			t.Errorf("recordings: %+v", recs)
+		case *s.TTYLog != sum("tty"), *s.TTYDurationMS != 8900, s.TTYSHA256 != nil, s.TTYSize != nil:
+			t.Errorf("tty fields: %+v", s)
 		}
 		if n := count(t, db, (*store.LoginAttempt)(nil)); n != 2 {
 			t.Errorf("login attempts = %d", n)
@@ -293,8 +276,7 @@ func TestIngestOutOfOrderBatches(t *testing.T) {
 			}
 		}
 		s := getSession(t, db, sensor, "a1b2c3d4e5f6")
-		if !s.StartedAt.Equal(t0) || s.SrcPort == nil || s.EndedAt == nil || !s.LoginSuccess ||
-			len(getRecordings(t, db, sensor, "a1b2c3d4e5f6")) != 1 {
+		if !s.StartedAt.Equal(t0) || s.SrcPort == nil || s.EndedAt == nil || !s.LoginSuccess || s.TTYLog == nil {
 			t.Fatalf("merged session = %+v", s)
 		}
 	})
@@ -363,8 +345,8 @@ func TestStoreTTY(t *testing.T) {
 		if err != nil || res.Status != protocol.TTYStored {
 			t.Fatalf("store = %+v, %v", res, err)
 		}
-		if recs := getRecordings(t, db, sensor, "a1b2c3d4e5f6"); *recs[0].SHA256 != sum(content) || *recs[0].Size != int64(len(content)) {
-			t.Errorf("recording file = %v %v", *recs[0].SHA256, *recs[0].Size)
+		if s := getSession(t, db, sensor, "a1b2c3d4e5f6"); *s.TTYSHA256 != sum(content) || *s.TTYSize != int64(len(content)) {
+			t.Errorf("session tty = %v %v", *s.TTYSHA256, *s.TTYSize)
 		}
 		f, err := svc.tty.Open(sum(content))
 		if err != nil {
@@ -419,6 +401,7 @@ func TestStoreTTYErrors(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		svc := newService(t, db)
 		ctx := context.Background()
+		// A session whose log.closed was not seen: the upload links it.
 		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, "s1", 0, nil))); err != nil {
 			t.Fatal(err)
 		}
@@ -443,23 +426,12 @@ func TestStoreTTYErrors(t *testing.T) {
 			t.Errorf("tty files = %d after failed upload", n)
 		}
 
-		// Before its cowrie.log.closed, a recording is unknown: the ingestor
-		// retries (404), as for an unknown session.
-		if _, err := svc.StoreTTY(ctx, sensor, ttyMeta("s1", "x"), strings.NewReader("x")); !errors.Is(err, ErrUnknownSession) {
-			t.Errorf("no recording yet: %v", err)
+		res, err := svc.StoreTTY(ctx, sensor, ttyMeta("s1", "x"), strings.NewReader("x"))
+		if err != nil || res.Status != protocol.TTYStored {
+			t.Fatalf("store = %+v, %v", res, err)
 		}
-		if n := count(t, db, (*store.TTYFile)(nil)); n != 0 {
-			t.Errorf("tty files = %d without a recording", n)
-		}
-		closed := line(evLogClosed, "s1", 1, map[string]any{"ttylog": "var/lib/cowrie/tty/" + sum("x"), "duration_ms": 500})
-		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, closed)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := svc.StoreTTY(ctx, sensor, ttyMeta("s1", "x"), strings.NewReader("x")); err != nil {
-			t.Fatalf("store: %v", err)
-		}
-		if recs := getRecordings(t, db, sensor, "s1"); len(recs) != 1 || recs[0].SHA256 == nil || *recs[0].SHA256 != sum("x") || *recs[0].Size != 1 {
-			t.Errorf("recording not linked: %+v", recs)
+		if s := getSession(t, db, sensor, "s1"); s.TTYSHA256 == nil || *s.TTYSHA256 != sum("x") || *s.TTYSize != 1 {
+			t.Errorf("session not linked: %+v", s)
 		}
 	})
 }
@@ -486,13 +458,10 @@ func TestIngestRealCowrieLog(t *testing.T) {
 		switch {
 		case !s.LoginSuccess, *s.ClientVersion != "SSH-2.0-Go", *s.HASSH != "16443846184eafde36765c9bab2f4397":
 			t.Errorf("session = %+v", s)
-		case s.DurationMS == nil || *s.DurationMS != 991:
-			t.Errorf("duration from duration_ms: %v", s.DurationMS)
-		}
-		recs := getRecordings(t, db, sensor, "6f07bbfeafaa")
-		if len(recs) != 1 || *recs[0].DurationMS != 910 || recs[0].SHA256 != nil ||
-			recs[0].TTYLog != "5d07941f09498a4f65d7453a8d25cabda2a265b3da7eb2b80a7a4fa923c5e12a" {
-			t.Errorf("recordings = %+v", recs)
+		case s.DurationMS == nil || *s.DurationMS != 991, s.TTYDurationMS == nil || *s.TTYDurationMS != 910:
+			t.Errorf("durations from duration_ms: %v %v", s.DurationMS, s.TTYDurationMS)
+		case *s.TTYLog != "5d07941f09498a4f65d7453a8d25cabda2a265b3da7eb2b80a7a4fa923c5e12a", s.TTYSHA256 != nil:
+			t.Errorf("tty = %v %v", *s.TTYLog, s.TTYSHA256)
 		}
 		if n := count(t, db, (*store.Command)(nil)); n != 5 {
 			t.Errorf("commands = %d", n)
@@ -779,70 +748,4 @@ func TestNetworks(t *testing.T) {
 			t.Errorf("old session = %v", s.ASN)
 		}
 	})
-}
-
-// testdata/cowrie-v3.1.2-exec.json was written by the official
-// cowrie/cowrie image (v3.1.2): two connections running one command per
-// exec channel, as bots do. Session 7dfe84911c9f runs uname -a twice (the
-// second recording is a duplicate), 246b6f85171f runs whoami, a duplicate
-// of the first session's.
-func TestIngestExecChannels(t *testing.T) {
-	storetest.Run(t, func(t *testing.T, db *bun.DB) {
-		svc := newService(t, db)
-		ctx := context.Background()
-		data, err := os.ReadFile("testdata/cowrie-v3.1.2-exec.json")
-		if err != nil {
-			t.Fatal(err)
-		}
-		lines := bytes.Split(bytes.TrimSpace(data), []byte("\n"))
-		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, lines...)); err != nil {
-			t.Fatal(err)
-		}
-
-		// The ingestor uploads the file named by each cowrie.log.closed.
-		for _, l := range lines {
-			var ev struct{ EventID, Session, TTYLog string }
-			if err := json.Unmarshal(l, &ev); err != nil || ev.EventID != "cowrie.log.closed" {
-				continue
-			}
-			content, err := os.ReadFile("testdata/cowrie-v3.1.2-exec-tty/" + path.Base(ev.TTYLog))
-			if err != nil {
-				t.Fatal(err)
-			}
-			m := protocol.TTYMeta{SensorID: sensor, Session: ev.Session, SHA256: sumBytes(content), Size: int64(len(content))}
-			if _, err := svc.StoreTTY(ctx, sensor, m, bytes.NewReader(content)); err != nil {
-				t.Fatalf("upload of %s for %s: %v", path.Base(ev.TTYLog), ev.Session, err)
-			}
-		}
-
-		const uname, whoami, cpus = "28ba533b0f3c4df63d6b4a5ead73860697bdf735bb353e4ca928474889eb8a15",
-			"f25297859cf0a70af5c053a5464a5fa647a35ceee1d91397331903846d79ffc1",
-			"3f1f9a5db692d999bb3d576b5e9956a242136e961ff3f52ba6202b1254ccdb99"
-		for sess, want := range map[string][]struct {
-			name string
-			dup  bool
-		}{
-			"7dfe84911c9f": {{uname, false}, {whoami, false}, {uname, true}},
-			"246b6f85171f": {{whoami, true}, {cpus, false}},
-		} {
-			recs := getRecordings(t, db, sensor, sess)
-			if len(recs) != len(want) {
-				t.Fatalf("%s: %d recordings, want %d", sess, len(recs), len(want))
-			}
-			for i, r := range recs {
-				content, _ := os.ReadFile("testdata/cowrie-v3.1.2-exec-tty/" + want[i].name)
-				if r.TTYLog != want[i].name || r.Duplicate != want[i].dup || r.SHA256 == nil || *r.SHA256 != sumBytes(content) {
-					t.Errorf("%s #%d = %+v, want %s duplicate %v, linked", sess, i, r, want[i].name[:8], want[i].dup)
-				}
-			}
-		}
-		if n := count(t, db, (*store.TTYFile)(nil)); n != 3 {
-			t.Errorf("tty files = %d, want one per input", n)
-		}
-	})
-}
-
-func sumBytes(b []byte) string {
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
 }

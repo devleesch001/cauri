@@ -19,7 +19,6 @@ import (
 
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/store"
-	"github.com/devleesch001/cauri/internal/ttylog"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
@@ -183,15 +182,23 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 		return res, fmt.Errorf("%w: %d bytes, limit %d", ErrTooLarge, m.Size, s.maxTTYSize)
 	}
 
-	var sessionID int64
-	err := s.db.NewSelect().Model((*store.Session)(nil)).Column("s.id").
+	var sess struct {
+		ID        int64   `bun:"id"`
+		TTYSHA256 *string `bun:"tty_sha256"`
+	}
+	err := s.db.NewSelect().Model((*store.Session)(nil)).
+		ColumnExpr("s.id, t.sha256 AS tty_sha256").
 		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
-		Where("sn.name = ?", sensorID).Where("s.cowrie_session = ?", m.Session).Scan(ctx, &sessionID)
+		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
+		Where("sn.name = ?", sensorID).Where("s.cowrie_session = ?", m.Session).Scan(ctx, &sess)
 	if errors.Is(err, sql.ErrNoRows) {
 		return res, ErrUnknownSession
 	}
 	if err != nil {
 		return res, err
+	}
+	if sess.TTYSHA256 != nil && *sess.TTYSHA256 != m.SHA256 {
+		return res, fmt.Errorf("%w: stored %s", ErrTTYConflict, *sess.TTYSHA256)
 	}
 
 	exists, err := s.db.NewSelect().Model((*store.TTYFile)(nil)).Where("sha256 = ?", m.SHA256).Exists(ctx)
@@ -208,9 +215,6 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 		}
 		res.Status = protocol.TTYStored
 	}
-	// The file names the recording it is (see ttylog.Name): the upload
-	// does not say which of the session's recordings it belongs to.
-	name := s.recordingName(m.SHA256)
 
 	err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if !exists {
@@ -219,96 +223,24 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 				return err
 			}
 		}
-		var fileID int64
-		if err := tx.NewSelect().Model((*store.TTYFile)(nil)).Column("id").
-			Where("sha256 = ?", m.SHA256).Scan(ctx, &fileID); err != nil {
-			return err
+		if sess.TTYSHA256 == nil {
+			var fileID int64
+			if err := tx.NewSelect().Model((*store.TTYFile)(nil)).Column("id").
+				Where("sha256 = ?", m.SHA256).Scan(ctx, &fileID); err != nil {
+				return err
+			}
+			_, err := tx.NewUpdate().Model((*store.Session)(nil)).
+				Set("tty_file_id = ?", fileID).
+				Where("id = ?", sess.ID).Exec(ctx)
+			if err != nil {
+				return err
+			}
+			// The recording tells how the keys were typed.
+			return s.storeVerdict(ctx, tx, sess.ID)
 		}
-		ids, err := linkRecordings(ctx, tx, sessionID, name, fileID)
-		if err != nil || len(ids) == 0 {
-			return err
-		}
-		if _, err := tx.NewUpdate().Model((*store.SessionRecording)(nil)).
-			Set("tty_file_id = ?", fileID).Where("id IN (?)", bun.List(ids)).Exec(ctx); err != nil {
-			return err
-		}
-		// The recording tells how the keys were typed.
-		return s.storeVerdict(ctx, tx, sessionID)
+		return nil
 	})
 	return res, err
-}
-
-// recordingName returns Cowrie's name of a stored file, "" if unreadable.
-func (s *Service) recordingName(sha string) string {
-	f, err := s.tty.Open(sha)
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = f.Close() }()
-	name, err := ttylog.Name(f)
-	if err != nil {
-		return ""
-	}
-	return name
-}
-
-// linkRecordings returns the recordings of a session to link to a file:
-// those of its name, every channel that ran the same input (Cowrie keeps
-// one file per input). A file whose name matches none, such as from a
-// Cowrie naming files otherwise, goes to the first recording without a
-// file, as when a session had a single one. Linking twice is a no-op;
-// a recording already linked to another file is a conflict.
-func linkRecordings(ctx context.Context, tx bun.Tx, sessionID int64, name string, fileID int64) ([]int64, error) {
-	var recs []store.SessionRecording
-	if err := tx.NewSelect().Model(&recs).Column("id", "ttylog", "tty_file_id").
-		Where("session_id = ?", sessionID).OrderExpr("started_at, id").Scan(ctx); err != nil {
-		return nil, err
-	}
-	var targets []store.SessionRecording
-	for _, r := range recs {
-		if name != "" && r.TTYLog == name {
-			targets = append(targets, r)
-		}
-	}
-	if len(targets) == 0 {
-		for _, r := range recs {
-			if r.TTYFileID != nil && *r.TTYFileID == fileID {
-				return nil, nil // already linked
-			}
-		}
-		for _, r := range recs {
-			if r.TTYFileID == nil {
-				targets = append(targets, r)
-				break
-			}
-		}
-	}
-	if len(targets) == 0 {
-		if len(recs) == 0 {
-			// Its cowrie.log.closed has not been ingested yet.
-			return nil, fmt.Errorf("%w: no recording of it yet", ErrUnknownSession)
-		}
-		return nil, conflict(ctx, tx, recs[0])
-	}
-	var ids []int64
-	for _, r := range targets {
-		switch {
-		case r.TTYFileID == nil:
-			ids = append(ids, r.ID)
-		case *r.TTYFileID != fileID:
-			return nil, conflict(ctx, tx, r)
-		}
-	}
-	return ids, nil
-}
-
-// conflict describes a recording already linked to another file.
-func conflict(ctx context.Context, tx bun.Tx, r store.SessionRecording) error {
-	var stored string
-	if r.TTYFileID != nil {
-		_ = tx.NewSelect().Model((*store.TTYFile)(nil)).Column("sha256").Where("id = ?", *r.TTYFileID).Scan(ctx, &stored)
-	}
-	return fmt.Errorf("%w: recording %s, stored %s", ErrTTYConflict, r.TTYLog, stored)
 }
 
 // locateBatch is the number of sessions located per transaction.

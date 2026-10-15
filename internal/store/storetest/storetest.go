@@ -32,20 +32,8 @@ func Run(t *testing.T, f func(t *testing.T, db *bun.DB)) {
 	}
 }
 
-// RunEmpty runs f once per available database, empty: for tests of a
-// migration.
-func RunEmpty(t *testing.T, f func(t *testing.T, db *bun.DB)) {
-	t.Helper()
-	t.Run(store.SQLite, func(t *testing.T) { f(t, sqlite(t, false)) })
-	if os.Getenv(EnvPostgres) != "" {
-		t.Run(store.Postgres, func(t *testing.T) { f(t, postgres(t, false)) })
-	}
-}
-
 // SQLite returns a migrated database in a temporary file.
-func SQLite(t *testing.T) *bun.DB { return sqlite(t, true) }
-
-func sqlite(t *testing.T, migrated bool) *bun.DB {
+func SQLite(t *testing.T) *bun.DB {
 	t.Helper()
 	ctx := context.Background()
 	db, err := store.Open(ctx, store.SQLite, filepath.Join(t.TempDir(), "test.db"))
@@ -53,19 +41,15 @@ func sqlite(t *testing.T, migrated bool) *bun.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if migrated {
-		if err := store.Migrate(ctx, db); err != nil {
-			t.Fatal(err)
-		}
+	if err := store.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
 	}
 	return db
 }
 
 // Postgres returns a migrated database in a fresh schema, dropped at the end
 // of the test. It skips the test if EnvPostgres is unset.
-func Postgres(t *testing.T) *bun.DB { return postgres(t, true) }
-
-func postgres(t *testing.T, migrated bool) *bun.DB {
+func Postgres(t *testing.T) *bun.DB {
 	t.Helper()
 	dsn := os.Getenv(EnvPostgres)
 	if dsn == "" {
@@ -94,10 +78,8 @@ func postgres(t *testing.T, migrated bool) *bun.DB {
 	))
 	db := bun.NewDB(sqldb, pgdialect.New())
 	t.Cleanup(func() { _ = db.Close() })
-	if migrated {
-		if err := store.Migrate(ctx, db); err != nil {
-			t.Fatal(err)
-		}
+	if err := store.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
 	}
 	return db
 }

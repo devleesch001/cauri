@@ -74,12 +74,7 @@ func Open(ctx context.Context, driver, dsn string) (*bun.DB, error) {
 var ErrOldSchema = errors.New("database created by cauri v0.0.x: its schema is not supported, start from an empty database and re-ingest (see README)")
 
 // Migrate applies the pending migrations of the engine of db.
-func Migrate(ctx context.Context, db *bun.DB) error { return migrateTo(ctx, db, "") }
-
-// migrateTo applies the pending migrations up to the one named last (such
-// as "00004"), all of them if last is empty: tests of a migration fill the
-// schema before it.
-func migrateTo(ctx context.Context, db *bun.DB, last string) error {
+func Migrate(ctx context.Context, db *bun.DB) error {
 	engine := SQLite
 	if db.Dialect().Name().String() == "pg" {
 		engine = Postgres
@@ -96,15 +91,6 @@ func migrateTo(ctx context.Context, db *bun.DB, last string) error {
 	ms := migrate.NewMigrations()
 	if err := ms.Discover(fsys); err != nil {
 		return err
-	}
-	if last != "" {
-		upTo := migrate.NewMigrations()
-		for _, m := range ms.Sorted() {
-			if m.Name <= last {
-				upTo.Add(m)
-			}
-		}
-		ms = upTo
 	}
 	// Marked applied only once run: by default bun marks a migration first,
 	// so a failed one would count as done. No Lock: bun's lock is a row
