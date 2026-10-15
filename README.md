@@ -326,6 +326,7 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_RAW_RETENTION_DAYS` | `0` (keep)                          | Delete the raw Cowrie lines older than this many days, see [Raw data retention](#raw-data-retention) |
 | `CAURI_ADMIN_PASSWORD` | (generated) | Password of the administration page, see [Administration](#administration) |
 | `CAURI_ADMIN_PASSWORD_FILE` | (none) | File holding that password, such as a container secret; set only one of the two |
+| `CAURI_TRUSTED_PROXIES` | (none) | Comma-separated addresses or CIDR ranges of the reverse proxies whose `X-Forwarded-For` names the client, see [Administration](#administration) |
 | `CAURI_UI`           | `false`                                   | `true`: same as `api --ui`                                                   |
 | `CAURI_LOG_LEVEL`    | `info`                                    | `debug`, `info`, `warn`, `error` (also `cauri ui`)                           |
 
@@ -375,9 +376,17 @@ generated`): set one to keep it across restarts.
 
 Signing in opens a session for 12 hours, in a cookie restricted to
 `/api/admin` and to HTTPS (browsers accept it on `http://localhost` too);
-changing the password ends every session. Sign-in attempts are checked
-one at a time and a wrong one holds the turn for a second: at most one
-guess per second, others are refused (429) until then.
+changing the password ends every session.
+
+Password guesses are limited per client: its attempts are checked one at
+a time, and a wrong one blocks it for a second (429 until then); other
+clients can still sign in. Behind a reverse proxy every request comes
+from the proxy's address, so they would all count as one client: set
+`CAURI_TRUSTED_PROXIES` to the proxy's address or network (with the
+compose files, the range of the Docker network Traefik reaches the API
+on). The client is then the address the proxy adds to
+`X-Forwarded-For`; addresses written by the client itself are ignored.
+Without it, the header is ignored. IPv6 clients are counted by /64.
 
 ## Deployment
 

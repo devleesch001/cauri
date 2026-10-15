@@ -21,6 +21,7 @@ services:
       CAURI_GEOIP_ASN_DB: ${CAURI_GEOIP_ASN_DB:-}
       # Administration page password; empty: generated, see the API's log.
       CAURI_ADMIN_PASSWORD: ${CAURI_ADMIN_PASSWORD:-}
+      CAURI_TRUSTED_PROXIES: ${CAURI_TRUSTED_PROXIES:-}
     volumes:
       - cauri-data:/data
     networks: [default, traefik]

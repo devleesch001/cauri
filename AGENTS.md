@@ -96,7 +96,9 @@ header, only its hash stored, bound to its sensor id. Administration
 (`/api/admin`, UI page `/admin`, token management): one password
 (`CAURI_ADMIN_PASSWORD`, else generated and logged at start), sessions in
 a signed `HttpOnly`/`Secure`/`SameSite=Strict` cookie (`internal/auth`
-`Admin`), changes require the `X-Cauri-Admin` header. UI and read API:
+`Admin`), changes require the `X-Cauri-Admin` header, wrong guesses block
+their client (`X-Forwarded-For` only from `CAURI_TRUSTED_PROXIES`) for a
+second. UI and read API:
 none yet; it plugs in as the `ReadAuth` middleware of `internal/api`,
 without restructuring.
 
