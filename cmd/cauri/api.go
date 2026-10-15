@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/uptrace/bun"
 
 	"github.com/devleesch001/cauri/internal/api"
 	"github.com/devleesch001/cauri/internal/auth"
 	"github.com/devleesch001/cauri/internal/envflag"
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/internal/verdict"
 	"github.com/devleesch001/cauri/internal/webui"
@@ -28,6 +33,7 @@ func runAPI(ctx context.Context, args []string) error {
 	maxTTY := fs.Int64("max-tty-size", ingest.DefaultMaxTTYSize, "largest TTY recording accepted, in bytes")
 	withUI := fs.Bool("ui", false, "also serve the web UI, for a single container")
 	geoDB := fs.String("geoip-db", "", "MMDB GeoIP database (DB-IP Lite or MaxMind GeoLite2) to locate sessions; none by default")
+	retention := fs.Int("raw-retention-days", 0, "delete the raw Cowrie lines of events older than this many days, keeping sessions and their details; 0 keeps them")
 	logLevel := fs.String("log-level", "info", "log level: debug, info, warn or error")
 	if err := envflag.Parse(fs, args); err != nil {
 		return err
@@ -85,6 +91,12 @@ func runAPI(ctx context.Context, args []string) error {
 			}
 		}()
 	}
+	if *retention < 0 {
+		return fmt.Errorf("--raw-retention-days: want 0 or more days")
+	}
+	if *retention > 0 {
+		go purgeRaw(ctx, conn, time.Duration(*retention)*24*time.Hour, log)
+	}
 	// Sessions judged by older criteria, or before verdicts were stored.
 	go func() {
 		n, err := svc.JudgeSessions(ctx)
@@ -109,4 +121,25 @@ func runAPI(ctx context.Context, args []string) error {
 	}
 	log.Info("starting api", "version", buildVersion(), "db", db.driver, "ui", *withUI)
 	return serve(ctx, srv, log)
+}
+
+// purgeRaw deletes, at start then every hour until ctx is done, the raw
+// Cowrie lines older than keep.
+func purgeRaw(ctx context.Context, db *bun.DB, keep time.Duration, log *slog.Logger) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		n, err := store.PurgeRawEvents(ctx, db, time.Now().Add(-keep))
+		if err != nil && ctx.Err() == nil {
+			log.Error("purging raw events", "err", err)
+		}
+		if n > 0 {
+			log.Info("purged raw events", "events", n, "older_than", keep.String())
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
