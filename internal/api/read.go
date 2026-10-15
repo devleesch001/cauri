@@ -52,6 +52,8 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 		HasTTY:      q.bool("has_tty"),
 		File:        q.str("file"),
 		ASN:         int64(q.int("asn")),
+		Command:     q.str("command"),
+		HASSH:       q.str("hassh"),
 		Page:        q.page(),
 	}
 	if q.err != nil {
@@ -230,6 +232,10 @@ func (s *server) getCredentials(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) getPayloads(w http.ResponseWriter, r *http.Request) {
 	serveStats(s, w, r, store.GetPayloads)
+}
+
+func (s *server) getCommands(w http.ResponseWriter, r *http.Request) {
+	serveStats(s, w, r, store.GetCommands)
 }
 
 func (s *server) getOrigins(w http.ResponseWriter, r *http.Request) {

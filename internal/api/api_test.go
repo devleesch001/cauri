@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -732,6 +733,25 @@ func TestStats(t *testing.T) {
 		get(t, e, "/api/stats/origins?verdict=bot", http.StatusOK, &orig)
 		if len(orig.Clients) != 1 || orig.Clients[0] != (store.ClientCount{Client: "SSH-2.0-Go", Sessions: 4, Sources: 1}) {
 			t.Errorf("origins = %+v", orig)
+		}
+
+		// The scripted session ran 4 commands, the first one only exit.
+		var cmds store.Commands
+		get(t, e, "/api/stats/commands", http.StatusOK, &cmds)
+		if cmds.Total != 5 || cmds.Distinct != 4 || cmds.Sessions != 2 || cmds.Top[0].Input != "exit" || cmds.Top[0].Sessions != 2 ||
+			len(cmds.HASSH) != 1 || cmds.HASSH[0].Sessions != 2 {
+			t.Errorf("commands = %+v", cmds)
+		}
+		var list struct {
+			Total int `json:"total"`
+		}
+		get(t, e, "/api/sessions?command="+url.QueryEscape("uname -a"), http.StatusOK, &list)
+		if list.Total != 1 {
+			t.Errorf("sessions that ran uname -a = %d", list.Total)
+		}
+		get(t, e, "/api/sessions?hassh="+cmds.HASSH[0].HASSH, http.StatusOK, &list)
+		if list.Total != 4 {
+			t.Errorf("sessions with the HASSH = %d", list.Total)
 		}
 
 		get(t, e, "/api/stats/credentials?from=yesterday", http.StatusBadRequest, nil)

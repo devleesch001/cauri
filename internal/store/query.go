@@ -67,6 +67,8 @@ type SessionFilter struct {
 	HasTTY      *bool
 	File        string // SHA-256 of a file the session transferred
 	ASN         int64  // autonomous system of the source address
+	Command     string // a command line run in the session, exactly
+	HASSH       string // client fingerprint
 	Page
 }
 
@@ -147,6 +149,13 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 	if f.HasCommands != nil {
 		sub := db.NewSelect().TableExpr("commands AS fc").ColumnExpr("1").Where("fc.session_id = s.id")
 		q = q.Where(existsExpr(*f.HasCommands), sub)
+	}
+	if f.Command != "" {
+		sub := db.NewSelect().TableExpr("commands AS fcm").ColumnExpr("fcm.session_id").Where("fcm.input = ?", f.Command)
+		q = q.Where("s.id IN (?)", sub)
+	}
+	if f.HASSH != "" {
+		q = q.Where("s.hassh = ?", f.HASSH)
 	}
 	if f.ASN != 0 {
 		q = q.Where("s.asn = ?", f.ASN)

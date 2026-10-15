@@ -346,3 +346,65 @@ func GetOrigins(ctx context.Context, db bun.IDB, f StatsFilter) (*Origins, error
 	}
 	return o, nil
 }
+
+// CommandCount is a command line and how widely it was run.
+type CommandCount struct {
+	Input    string `bun:"input" json:"input"`
+	Count    int    `bun:"n" json:"count"`
+	Sessions int    `bun:"sessions" json:"sessions"`
+	Sources  int    `bun:"sources" json:"sources"` // distinct source addresses
+	Last     Time   `bun:"last_ts" json:"last"`
+}
+
+// HASSHCount is a client fingerprint (HASSH) and its sessions: the same
+// SSH library gives the same HASSH whatever version it announces.
+type HASSHCount struct {
+	HASSH    string `bun:"hassh" json:"hassh"`
+	Client   string `bun:"client" json:"client"` // one of the versions announced with it
+	Clients  int    `bun:"clients" json:"clients"`
+	Sessions int    `bun:"n" json:"sessions"`
+	Sources  int    `bun:"sources" json:"sources"`
+}
+
+// Commands are what attackers ran in the sessions a filter selects.
+type Commands struct {
+	Total    int            `bun:"total" json:"total"`         // commands run
+	Distinct int            `bun:"distinct_n" json:"distinct"` // distinct command lines
+	Sessions int            `bun:"sessions" json:"sessions"`   // sessions that ran one
+	Top      []CommandCount `bun:"-" json:"top"`
+	HASSH    []HASSHCount   `bun:"-" json:"hassh"` // of the sessions that ran commands
+}
+
+// TopCommands bounds the commands and fingerprints listed.
+const TopCommands = 30
+
+// GetCommands returns the most run commands, and the client fingerprints
+// of the sessions that ran commands.
+func GetCommands(ctx context.Context, db bun.IDB, f StatsFilter) (*Commands, error) {
+	commands := func() *bun.SelectQuery {
+		q := db.NewSelect().Model((*Command)(nil)).Join("JOIN sessions AS s ON s.id = c.session_id")
+		return f.apply(q)
+	}
+	c := &Commands{Top: []CommandCount{}, HASSH: []HASSHCount{}}
+	err := commands().ColumnExpr("COUNT(*) AS total, COUNT(DISTINCT c.input) AS distinct_n, COUNT(DISTINCT c.session_id) AS sessions").
+		Scan(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	err = commands().ColumnExpr("c.input, COUNT(*) AS n, COUNT(DISTINCT c.session_id) AS sessions").
+		ColumnExpr("COUNT(DISTINCT s.src_ip) AS sources, MAX(c.ts) AS last_ts").
+		GroupExpr("c.input").OrderExpr("sessions DESC, n DESC, c.input").Limit(TopCommands).Scan(ctx, &c.Top)
+	if err != nil {
+		return nil, err
+	}
+	ran := db.NewSelect().TableExpr("commands AS hc").ColumnExpr("hc.session_id")
+	q := db.NewSelect().Model((*Session)(nil)).Column("hassh").
+		ColumnExpr("MIN(s.client_version) AS client, COUNT(DISTINCT s.client_version) AS clients").
+		ColumnExpr("COUNT(*) AS n, COUNT(DISTINCT s.src_ip) AS sources").
+		Where("s.hassh IS NOT NULL").Where("s.id IN (?)", ran).
+		GroupExpr("s.hassh").OrderExpr("n DESC, s.hassh").Limit(TopCommands)
+	if err := f.apply(q).Scan(ctx, &c.HASSH); err != nil {
+		return nil, err
+	}
+	return c, nil
+}

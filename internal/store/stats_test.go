@@ -160,3 +160,35 @@ func TestOrigins(t *testing.T) {
 		}
 	})
 }
+
+func TestCommands(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		seed(t, db)
+		ctx := context.Background()
+		c, err := store.GetCommands(ctx, db, store.StatsFilter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Session 1 ran uname -a and cat /proc/cpuinfo; it has no HASSH.
+		if c.Total != 2 || c.Distinct != 2 || c.Sessions != 1 || len(c.Top) != 2 || c.Top[0].Sessions != 1 || len(c.HASSH) != 0 {
+			t.Errorf("commands = %+v", c)
+		}
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("hassh = 'abc'").
+			Where("id = ?", lookup(t, db, "hp-01", "1")).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		c, _ = store.GetCommands(ctx, db, store.StatsFilter{})
+		if len(c.HASSH) != 1 || c.HASSH[0] != (store.HASSHCount{HASSH: "abc", Client: "SSH-2.0-OpenSSH_9.6", Clients: 1, Sessions: 1, Sources: 1}) {
+			t.Errorf("hassh = %+v", c.HASSH)
+		}
+		if _, got := sessions(t, db, store.SessionFilter{Command: "uname -a"}); got != "1" {
+			t.Errorf("sessions that ran uname -a = %q", got)
+		}
+		if _, got := sessions(t, db, store.SessionFilter{Command: "uname"}); got != "" {
+			t.Errorf("a command filter matches exactly: %q", got)
+		}
+		if _, got := sessions(t, db, store.SessionFilter{HASSH: "abc"}); got != "1" {
+			t.Errorf("sessions with HASSH abc = %q", got)
+		}
+	})
+}
