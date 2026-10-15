@@ -258,7 +258,7 @@ Besides the lists, the UI has pages that count:
 
 | Page | Shows |
 |---|---|
-| Overview | Headline numbers (sessions, shells, login attempts and the share accepted, source addresses, countries) with their change from the previous period of the same length; the world map; the latest sessions, refreshed every 10 s; the busiest addresses, networks (with an ASN database) and SSH clients |
+| Overview | A full-page world map (wheel or buttons to zoom, drag to move, keys `+` `-` `0` and arrows) with, floating over it, a bubble per headline number (sessions, shells, login attempts, source addresses, countries; the previous period and more on hover) and an accordion of the first ten latest sessions, countries, busiest addresses, networks (with an ASN database) and SSH clients |
 | Activity | Sessions by hour and weekday, the busiest hours, sessions and shells by day (UTC) |
 | Credentials | Usernames, passwords and pairs tried, those that let attackers in, password lengths |
 | Commands | Command lines run, by how many sessions and addresses ran each; client fingerprints (HASSH) of those sessions |

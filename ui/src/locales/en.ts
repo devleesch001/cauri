@@ -135,6 +135,11 @@ export default {
       label: 'World map of the sessions of {n} country | World map of the sessions of {n} countries',
       legend: 'sessions, logarithmic scale',
       cities: 'Cities',
+      keys: 'World map. Plus and minus zoom, arrows move, 0 resets.',
+      zoom: 'Map zoom',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out',
+      resetZoom: 'Reset the view',
     },
     ranking: {
       title: 'Top countries',
