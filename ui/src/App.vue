@@ -131,14 +131,14 @@ onMounted(() => {
   z-index: 2;
 }
 
-/* Useful only where the page cap (2400 px, style.css) leaves margins. */
-@media (width <= 2400px) {
+/* Useful only where the page cap (1600 px, style.css) leaves margins. */
+@media (width <= 1600px) {
   .width-toggle {
     display: none;
   }
 }
 
-@media (width > 2400px) {
+@media (width > 1600px) {
   .attribution {
     padding-left: calc(var(--space-4) + 2.5rem);
   }
