@@ -65,6 +65,10 @@ onMounted(() => {
   void api.about().then((a) => (geoip.value = a.geoip !== null)).catch(() => undefined)
 })
 
+// The rankings are an accordion: one open at a time, none at first.
+const opened = ref<string | null>(null)
+const toggle = (key: string) => (opened.value = opened.value === key ? null : key)
+
 // A country or a city leads to its sessions, with the same filters.
 function sessionsOf(country: string, city?: string) {
   return link('sessions', city ? { country, city } : { country })
@@ -98,10 +102,15 @@ function open(country: string, city?: string) {
       :countries="countries.length"
     />
 
-    <div class="docks">
+    <div
+      class="docks"
+      :class="{ wide: opened }"
+    >
       <FloatingPanel
         v-if="top.length"
         :title="t('overview.ranking.title')"
+        :open="opened === 'countries'"
+        @toggle="toggle('countries')"
       >
         <BarList
           :items="top"
@@ -122,7 +131,11 @@ function open(country: string, city?: string) {
           </template>
         </BarList>
       </FloatingPanel>
-      <FloatingPanel :title="t('overview.live.title')">
+      <FloatingPanel
+        :title="t('overview.live.title')"
+        :open="opened === 'live'"
+        @toggle="toggle('live')"
+      >
         <LiveFeed
           :sensor="q('sensor')"
           :verdict="q('verdict')"
@@ -131,6 +144,8 @@ function open(country: string, city?: string) {
       <FloatingPanel
         v-if="origins?.sources.length"
         :title="t('overview.sources')"
+        :open="opened === 'sources'"
+        @toggle="toggle('sources')"
       >
         <BarList
           :items="origins.sources.slice(0, TOP)"
@@ -151,6 +166,8 @@ function open(country: string, city?: string) {
       <FloatingPanel
         v-if="origins?.networks.length"
         :title="t('overview.networks')"
+        :open="opened === 'networks'"
+        @toggle="toggle('networks')"
       >
         <BarList
           :items="origins.networks.slice(0, TOP)"
@@ -167,6 +184,8 @@ function open(country: string, city?: string) {
       <FloatingPanel
         v-if="origins?.clients.length"
         :title="t('overview.clients')"
+        :open="opened === 'clients'"
+        @toggle="toggle('clients')"
       >
         <BarList
           :items="origins.clients.slice(0, TOP)"
@@ -231,6 +250,19 @@ function open(country: string, city?: string) {
   flex-direction: column;
   gap: var(--space-2);
   width: 15.5rem;
+  max-height: calc(100% - 2 * var(--space-3) - 3.5rem);
+  overflow-y: auto;
+  transition: width 0.18s ease;
+}
+
+.docks.wide {
+  width: 24rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docks {
+    transition: none;
+  }
 }
 
 /* Each control sits in a small card of its own over the map. */
@@ -321,6 +353,7 @@ function open(country: string, city?: string) {
 
   .corner,
   .docks,
+  .docks.wide,
   .bottom,
   .notices {
     position: static;
@@ -338,6 +371,8 @@ function open(country: string, city?: string) {
 
   .docks {
     order: 3;
+    max-height: none;
+    overflow: visible;
   }
 
   .notices {
