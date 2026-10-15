@@ -1,6 +1,7 @@
 import type {
   About,
   Activity,
+  AdminToken,
   Chapters,
   CityCount,
   Commands,
@@ -54,6 +55,40 @@ async function get<T>(path: string, params: Params = {}): Promise<T> {
     throw new ApiError(res.status, message)
   }
   return (await res.json()) as T
+}
+
+/**
+ * Sends a change to the administration routes: JSON in, JSON or nothing
+ * out. The header proves the request comes from this UI (see the API).
+ */
+async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(base + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Cauri-Admin': '1' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let message = res.statusText
+    try {
+      message = ((await res.json()) as { error?: string }).error ?? message
+    } catch {
+      // not JSON: keep the status text
+    }
+    throw new ApiError(res.status, message)
+  }
+  return (res.status === 204 ? undefined : await res.json()) as T
+}
+
+/** The administration routes; a 401 means signed out. */
+export const admin = {
+  login: (password: string) => send<void>('POST', '/admin/login', { password }),
+  logout: () => send<void>('POST', '/admin/logout'),
+  /** Resolves if signed in, rejects with a 401 otherwise. */
+  session: () => fetch(base + '/admin/session').then((r) => (r.ok ? undefined : Promise.reject(new ApiError(r.status, r.statusText)))),
+  tokens: () => get<AdminToken[]>('/admin/tokens'),
+  createToken: (sensor: string, name: string) =>
+    send<{ token: AdminToken; secret: string }>('POST', '/admin/tokens', { sensor, name }),
+  revokeToken: (id: number) => send<void>('POST', `/admin/tokens/${id}/revoke`),
 }
 
 export const api = {

@@ -72,6 +72,9 @@ onMounted(() => {
       <RouterLink to="/login-attempts">
         {{ t('nav.failedLogins') }}
       </RouterLink>
+      <RouterLink to="/admin">
+        {{ t('nav.admin') }}
+      </RouterLink>
     </nav>
     <SensorSelect class="sensor" />
   </header>

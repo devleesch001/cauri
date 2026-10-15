@@ -242,3 +242,13 @@ export interface Origins {
   networks: { asn: number; org: string; sessions: number; sources: number }[] // with an ASN database
   clients: { client: string; sessions: number; sources: number }[]
 }
+
+/** An ingestor token, as the administration pages show it. */
+export interface AdminToken {
+  id: number
+  sensor: string
+  name: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}

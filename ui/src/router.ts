@@ -12,6 +12,7 @@ export const router: Router = createRouter({
     { path: '/sessions', name: 'sessions', component: () => import('./views/SessionsView.vue') },
     { path: '/sessions/:id', name: 'session', component: () => import('./views/SessionDetailView.vue'), props: true },
     { path: '/login-attempts', name: 'login-attempts', component: () => import('./views/LoginAttemptsView.vue') },
+    { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue') },
     { path: '/:rest(.*)*', name: 'not-found', component: () => import('./views/NotFoundView.vue') },
   ],
 })
