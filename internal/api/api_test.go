@@ -816,3 +816,24 @@ func TestExport(t *testing.T) {
 		get(t, e, "/api/sessions.csv?from=yesterday", http.StatusBadRequest, nil)
 	})
 }
+
+// The API answers JSON only, whatever the client accepts.
+func TestJSONOnly(t *testing.T) {
+	e := setup(t, storetest.SQLite(t), nil)
+	for path, code := range map[string]int{"/api/sensors": http.StatusOK, "/api/nowhere": http.StatusNotFound} {
+		req, err := http.NewRequest("GET", e.srv.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Accept", "application/xml")
+		resp, err := e.srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != code || resp.Header.Get("Content-Type") != "application/json" || !json.Valid(body) {
+			t.Errorf("%s = %d %s %s", path, resp.StatusCode, resp.Header.Get("Content-Type"), body)
+		}
+	}
+}

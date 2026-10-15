@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/netip"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/render"
 
 	"github.com/devleesch001/cauri/internal/auth"
 	"github.com/devleesch001/cauri/internal/store"
@@ -88,7 +88,7 @@ func (s *server) adminSession(next http.Handler) http.Handler {
 		}
 		c, err := r.Cookie(adminCookie)
 		if err != nil || !s.Admin.ValidSession(c.Value) {
-			writeError(w, http.StatusUnauthorized, "not signed in")
+			render.Render(w, r, errorOf(http.StatusUnauthorized, "not signed in"))
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -99,7 +99,7 @@ func (s *server) adminSession(next http.Handler) http.Handler {
 // something, answering 403 without it.
 func (s *server) adminChange(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get(AdminHeader) == "" {
-		writeError(w, http.StatusForbidden, "missing "+AdminHeader+" header")
+		render.Render(w, r, errorOf(http.StatusForbidden, "missing "+AdminHeader+" header"))
 		return false
 	}
 	return true
@@ -112,8 +112,8 @@ func (s *server) adminLogin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeError(w, http.StatusBadRequest, "want a JSON body with a password")
+	if err := render.DecodeJSON(http.MaxBytesReader(w, r.Body, 4096), &in); err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, "want a JSON body with a password"))
 		return
 	}
 	// The turn is taken before checking: checked first, a burst of guesses
@@ -121,14 +121,14 @@ func (s *server) adminLogin(w http.ResponseWriter, r *http.Request) {
 	client := s.clientOf(r)
 	if !s.admin.take(client, time.Now()) {
 		w.Header().Set("Retry-After", "1")
-		writeError(w, http.StatusTooManyRequests, "too many sign-in attempts, retry in a second")
+		render.Render(w, r, errorOf(http.StatusTooManyRequests, "too many sign-in attempts, retry in a second"))
 		return
 	}
 	ok := s.Admin.Check(in.Password)
 	s.admin.done(client, !ok, time.Now())
 	if !ok {
 		s.Logger.Warn("failed administration login", "client", client.String(), "remote", r.RemoteAddr)
-		writeError(w, http.StatusUnauthorized, "wrong password")
+		render.Render(w, r, errorOf(http.StatusUnauthorized, "wrong password"))
 		return
 	}
 	value, exp := s.Admin.NewSession()
@@ -181,7 +181,7 @@ func (s *server) listTokens(w http.ResponseWriter, r *http.Request) {
 	for _, t := range recs {
 		out = append(out, newAdminToken(t))
 	}
-	writeJSON(w, http.StatusOK, out)
+	render.JSON(w, r, out)
 }
 
 func (s *server) createToken(w http.ResponseWriter, r *http.Request) {
@@ -189,17 +189,17 @@ func (s *server) createToken(w http.ResponseWriter, r *http.Request) {
 		Sensor string `json:"sensor"`
 		Name   string `json:"name"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
-		writeError(w, http.StatusBadRequest, "want a JSON body with a sensor and a name")
+	if err := render.DecodeJSON(http.MaxBytesReader(w, r.Body, 4096), &in); err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, "want a JSON body with a sensor and a name"))
 		return
 	}
 	in.Name = strings.TrimSpace(in.Name)
 	if !protocol.ValidSensorID(in.Sensor) {
-		writeError(w, http.StatusBadRequest, "invalid sensor id: use 1 to 64 letters, digits, '.', '_' or '-'")
+		render.Render(w, r, errorOf(http.StatusBadRequest, "invalid sensor id: use 1 to 64 letters, digits, '.', '_' or '-'"))
 		return
 	}
 	if len(in.Name) > 200 {
-		writeError(w, http.StatusBadRequest, "name: 200 characters at most")
+		render.Render(w, r, errorOf(http.StatusBadRequest, "name: 200 characters at most"))
 		return
 	}
 	rec, secret, err := s.Tokens.Create(r.Context(), in.Sensor, in.Name)
@@ -208,7 +208,8 @@ func (s *server) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Logger.Info("ingestor token created", "id", rec.ID, "sensor", rec.Sensor)
-	writeJSON(w, http.StatusCreated, struct {
+	render.Status(r, http.StatusCreated)
+	render.JSON(w, r, struct {
 		Token  adminToken `json:"token"`
 		Secret string     `json:"secret"` // shown once, never stored
 	}{newAdminToken(rec), secret})
@@ -217,12 +218,12 @@ func (s *server) createToken(w http.ResponseWriter, r *http.Request) {
 func (s *server) revokeToken(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "token not found")
+		render.Render(w, r, errorOf(http.StatusNotFound, "token not found"))
 		return
 	}
 	err = s.Tokens.Revoke(r.Context(), id)
 	if errors.Is(err, auth.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "token not found")
+		render.Render(w, r, errorOf(http.StatusNotFound, "token not found"))
 		return
 	}
 	if err != nil {

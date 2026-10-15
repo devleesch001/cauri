@@ -4,6 +4,7 @@ go 1.27.2
 
 require (
 	github.com/go-chi/chi/v5 v5.4.0
+	github.com/go-chi/render v1.0.3
 	github.com/maxmind/mmdbwriter v1.2.0
 	github.com/oschwald/maxminddb-golang/v2 v2.8.0
 	github.com/uptrace/bun v1.3.0
@@ -14,6 +15,7 @@ require (
 )
 
 require (
+	github.com/ajg/form v1.5.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

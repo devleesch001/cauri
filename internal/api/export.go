@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/render"
+
 	"github.com/devleesch001/cauri/internal/store"
 )
 
@@ -19,7 +21,7 @@ func (s *server) exportSessions(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
 	f := sessionFilter(&q)
 	if q.err != nil {
-		writeError(w, http.StatusBadRequest, q.err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
 		return
 	}
 	cw := startCSV(w, "sessions")
@@ -46,7 +48,7 @@ func (s *server) exportLoginAttempts(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
 	f := loginAttemptFilter(&q)
 	if q.err != nil {
-		writeError(w, http.StatusBadRequest, q.err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
 		return
 	}
 	cw := startCSV(w, "login-attempts")

@@ -1,11 +1,11 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/render"
 
 	"github.com/devleesch001/cauri/internal/ingest"
 	"github.com/devleesch001/cauri/pkg/protocol"
@@ -13,13 +13,13 @@ import (
 
 func (s *server) postEvents(w http.ResponseWriter, r *http.Request) {
 	var b protocol.EventBatch
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, protocol.MaxBatchBytes)).Decode(&b); err != nil {
+	if err := render.DecodeJSON(http.MaxBytesReader(w, r.Body, protocol.MaxBatchBytes), &b); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			writeError(w, http.StatusRequestEntityTooLarge, "batch too large")
+			render.Render(w, r, errorOf(http.StatusRequestEntityTooLarge, "batch too large"))
 			return
 		}
-		writeError(w, http.StatusBadRequest, "invalid batch: "+err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, "invalid batch: "+err.Error()))
 		return
 	}
 	res, err := s.Ingest.IngestEvents(r.Context(), sensorFrom(r.Context()), b)
@@ -27,17 +27,17 @@ func (s *server) postEvents(w http.ResponseWriter, r *http.Request) {
 		s.ingestError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	render.JSON(w, r, res)
 }
 
 func (s *server) putTTY(w http.ResponseWriter, r *http.Request) {
 	sha, err := protocol.ParseDigest(r.Header.Get(protocol.HeaderDigest))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, protocol.HeaderDigest+": "+err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, protocol.HeaderDigest+": "+err.Error()))
 		return
 	}
 	if r.ContentLength < 0 {
-		writeError(w, http.StatusLengthRequired, "Content-Length required")
+		render.Render(w, r, errorOf(http.StatusLengthRequired, "Content-Length required"))
 		return
 	}
 	m := protocol.TTYMeta{
@@ -58,24 +58,25 @@ func (s *server) putTTY(w http.ResponseWriter, r *http.Request) {
 	if res.Status == protocol.TTYStored {
 		code = http.StatusCreated
 	}
-	writeJSON(w, code, res)
+	render.Status(r, code)
+	render.JSON(w, r, res)
 }
 
 func (s *server) ingestError(w http.ResponseWriter, r *http.Request, err error) {
 	var tooBig *http.MaxBytesError
 	switch {
 	case errors.Is(err, ingest.ErrSensorMismatch):
-		writeError(w, http.StatusForbidden, err.Error())
+		render.Render(w, r, errorOf(http.StatusForbidden, err.Error()))
 	case errors.Is(err, ingest.ErrInvalid):
-		writeError(w, http.StatusBadRequest, err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, err.Error()))
 	case errors.Is(err, ingest.ErrTooLarge), errors.As(err, &tooBig):
-		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
+		render.Render(w, r, errorOf(http.StatusRequestEntityTooLarge, err.Error()))
 	case errors.Is(err, ingest.ErrUnknownSession):
-		writeError(w, http.StatusNotFound, err.Error())
+		render.Render(w, r, errorOf(http.StatusNotFound, err.Error()))
 	case errors.Is(err, ingest.ErrTTYConflict):
-		writeError(w, http.StatusConflict, err.Error())
+		render.Render(w, r, errorOf(http.StatusConflict, err.Error()))
 	case errors.Is(err, ingest.ErrDigestMismatch):
-		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		render.Render(w, r, errorOf(http.StatusUnprocessableEntity, err.Error()))
 	default:
 		s.internalError(w, r, err)
 	}

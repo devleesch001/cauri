@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/render"
 	"github.com/uptrace/bun"
 
 	"github.com/devleesch001/cauri/internal/geoip"
@@ -32,14 +33,14 @@ func (s *server) listSensors(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, sensors)
+	render.JSON(w, r, sensors)
 }
 
 func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
 	f := sessionFilter(&q)
 	if q.err != nil {
-		writeError(w, http.StatusBadRequest, q.err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
 		return
 	}
 	rows, total, err := store.ListSessions(r.Context(), s.DB, f)
@@ -47,7 +48,7 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, newList(rows, total, f.Page))
+	render.JSON(w, r, newList(rows, total, f.Page))
 }
 
 // sessionFilter reads the filters of the session list.
@@ -87,21 +88,21 @@ func sessionID(r *http.Request) int64 {
 func (s *server) getSession(w http.ResponseWriter, r *http.Request) {
 	d, err := store.GetSession(r.Context(), s.DB, sessionID(r))
 	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "session not found")
+		render.Render(w, r, errorOf(http.StatusNotFound, "session not found"))
 		return
 	}
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, d)
+	render.JSON(w, r, d)
 }
 
 func (s *server) listLoginAttempts(w http.ResponseWriter, r *http.Request) {
 	q := query{v: r.URL.Query()}
 	f := loginAttemptFilter(&q)
 	if q.err != nil {
-		writeError(w, http.StatusBadRequest, q.err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
 		return
 	}
 	rows, total, err := store.ListLoginAttempts(r.Context(), s.DB, f)
@@ -109,7 +110,7 @@ func (s *server) listLoginAttempts(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, newList(rows, total, f.Page))
+	render.JSON(w, r, newList(rows, total, f.Page))
 }
 
 // loginAttemptFilter reads the filters of the login attempt list.
@@ -264,7 +265,7 @@ func serveStats[T any](s *server, w http.ResponseWriter, r *http.Request, get fu
 		Verdict: q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
 	}
 	if q.err != nil {
-		writeError(w, http.StatusBadRequest, q.err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
 		return
 	}
 	out, err := get(r.Context(), s.DB, f)
@@ -272,7 +273,7 @@ func serveStats[T any](s *server, w http.ResponseWriter, r *http.Request, get fu
 		s.internalError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	render.JSON(w, r, out)
 }
 
 type about struct {
@@ -313,5 +314,5 @@ func (s *server) getAbout(w http.ResponseWriter, r *http.Request) {
 		add(geoip.Provider(src))
 	}
 	slices.Sort(out.Providers)
-	writeJSON(w, http.StatusOK, out)
+	render.JSON(w, r, out)
 }

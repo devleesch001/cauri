@@ -164,6 +164,10 @@ result in a browser.
 the CI) and the `golang:1.27.2-alpine` build image; change both together.
 Standard library first; `log/slog` (JSON); errors wrapped with
 `%w`, sentinel errors for the cases callers map (see `internal/ingest`).
+HTTP handlers answer with `go-chi/render`: `render.JSON` (after
+`render.Status` if not 200), errors with `render.Render(w, r,
+errorOf(status, msg))`, request bodies with `render.DecodeJSON`; the API
+answers JSON only.
 Match the surrounding comment density: comments say why, not what.
 Tests that touch the database use `storetest.Run` so they cover both
 engines. API tests go through `pkg/client`, which also checks the public

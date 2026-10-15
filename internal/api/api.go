@@ -4,13 +4,13 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/netip"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/render"
 	"github.com/uptrace/bun"
 
 	"github.com/devleesch001/cauri/internal/auth"
@@ -77,6 +77,9 @@ func New(c Config) http.Handler {
 	r.Use(middleware.Recoverer, s.logRequests)
 
 	r.Route("/api", func(r chi.Router) {
+		// JSON whatever the Accept header: render would answer XML to
+		// clients asking for it.
+		r.Use(render.SetContentType(render.ContentTypeJSON))
 		r.Get("/healthz", s.healthz)
 
 		r.Group(func(r chi.Router) {
@@ -121,11 +124,11 @@ func New(c Config) http.Handler {
 			})
 		}
 
-		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-			writeError(w, http.StatusNotFound, "not found")
+		r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+			render.Render(w, r, errorOf(http.StatusNotFound, "not found"))
 		})
-		r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+			render.Render(w, r, errorOf(http.StatusMethodNotAllowed, "method not allowed"))
 		})
 	})
 	if c.UI != nil {
@@ -142,24 +145,31 @@ type server struct {
 func (s *server) healthz(w http.ResponseWriter, r *http.Request) {
 	if err := s.DB.PingContext(r.Context()); err != nil {
 		s.Logger.Error("health check", "err", err)
-		writeError(w, http.StatusServiceUnavailable, "database unavailable")
+		render.Render(w, r, errorOf(http.StatusServiceUnavailable, "database unavailable"))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	render.JSON(w, r, map[string]string{"status": "ok"})
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+// errResponse is an error answer: protocol.ErrorBody with its status.
+type errResponse struct {
+	protocol.ErrorBody
+	status int
 }
 
-func writeError(w http.ResponseWriter, code int, msg string) {
-	writeJSON(w, code, protocol.ErrorBody{Error: msg})
+// Render sets the status of the answer (render.Renderer).
+func (e *errResponse) Render(_ http.ResponseWriter, r *http.Request) error {
+	render.Status(r, e.status)
+	return nil
+}
+
+// errorOf returns the error answer of status, for render.Render.
+func errorOf(status int, msg string) *errResponse {
+	return &errResponse{ErrorBody: protocol.ErrorBody{Error: msg}, status: status}
 }
 
 // internalError logs err and answers 500 without leaking details.
 func (s *server) internalError(w http.ResponseWriter, r *http.Request, err error) {
 	s.Logger.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
-	writeError(w, http.StatusInternalServerError, "internal error")
+	render.Render(w, r, errorOf(http.StatusInternalServerError, "internal error"))
 }

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/render"
+
 	"github.com/devleesch001/cauri/internal/asciicast"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttylog"
@@ -29,16 +31,16 @@ const castVersion = "v3.3"
 func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 	idle, err := idleTimeLimit(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		render.Render(w, r, errorOf(http.StatusBadRequest, err.Error()))
 		return
 	}
 	rec, err := store.GetRecording(r.Context(), s.DB, sessionID(r))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "session not found")
+		render.Render(w, r, errorOf(http.StatusNotFound, "session not found"))
 		return
 	case errors.Is(err, store.ErrNoRecording):
-		writeError(w, http.StatusNotFound, "this session has no stored recording")
+		render.Render(w, r, errorOf(http.StatusNotFound, "this session has no stored recording"))
 		return
 	case err != nil:
 		s.internalError(w, r, err)
@@ -77,7 +79,7 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 		w.Header().Del("Content-Disposition")
 		w.Header().Del("ETag")
 		s.Logger.Error("unreadable recording", "sha256", rec.SHA256, "err", err)
-		writeError(w, http.StatusUnprocessableEntity, "the recording cannot be read")
+		render.Render(w, r, errorOf(http.StatusUnprocessableEntity, "the recording cannot be read"))
 	case err != nil:
 		// Already streaming: the replay ends at the damage.
 		s.Logger.Warn("damaged recording, replay truncated", "sha256", rec.SHA256, "err", err)
@@ -107,10 +109,10 @@ func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
 	rec, err := store.GetRecording(r.Context(), s.DB, sessionID(r))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "session not found")
+		render.Render(w, r, errorOf(http.StatusNotFound, "session not found"))
 		return
 	case errors.Is(err, store.ErrNoRecording):
-		writeError(w, http.StatusNotFound, "this session has no stored recording")
+		render.Render(w, r, errorOf(http.StatusNotFound, "this session has no stored recording"))
 		return
 	case err != nil:
 		s.internalError(w, r, err)
@@ -134,7 +136,7 @@ func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Del("ETag")
 		s.Logger.Error("unreadable recording", "sha256", rec.SHA256, "err", err)
-		writeError(w, http.StatusUnprocessableEntity, "the recording cannot be read")
+		render.Render(w, r, errorOf(http.StatusUnprocessableEntity, "the recording cannot be read"))
 		return
 	}
 	out := chapters{Records: sum.Records, Chapters: make([]chapter, len(sum.Chapters))}
@@ -144,7 +146,7 @@ func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
 			Truncated: c.Truncated, FullScreen: c.FullScreen,
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	render.JSON(w, r, out)
 }
 
 // commands returns the commands of a recording as replay chapters.

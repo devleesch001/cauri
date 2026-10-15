@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/render"
+
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/verdict"
 )
@@ -25,7 +27,7 @@ type verdictResponse struct {
 func (s *server) getVerdict(w http.ResponseWriter, r *http.Request) {
 	res, err := s.Ingest.JudgeSession(r.Context(), sessionID(r))
 	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "session not found")
+		render.Render(w, r, errorOf(http.StatusNotFound, "session not found"))
 		return
 	}
 	if err != nil {
@@ -36,5 +38,5 @@ func (s *server) getVerdict(w http.ResponseWriter, r *http.Request) {
 	for _, reason := range res.Reasons {
 		out.Reasons = append(out.Reasons, verdictReason{reason.Code, reason.Points})
 	}
-	writeJSON(w, http.StatusOK, out)
+	render.JSON(w, r, out)
 }

@@ -9,11 +9,17 @@ linters:
     - sqlclosecheck
     - unconvert
   settings:
+    gosec:
+      excludes:
+        # Unchecked errors: errcheck's job, with its exclusions below.
+        - G104
     errcheck:
       exclude-functions:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+        # Its error comes from the Renderer: the API's (errResponse) never fails.
+        - github.com/go-chi/render.Render
   exclusions:
     rules:
       - path: _test\.go
