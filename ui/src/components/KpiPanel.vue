@@ -2,110 +2,96 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Summary } from '@/api/types'
+import StatBubble, { type Detail } from '@/components/StatBubble.vue'
 
-// The headline numbers in one small panel, each with its change from the
-// previous period when known (see KpiCard).
-const props = defineProps<{ summary: Summary; accepted: number; located: number; countries: number }>()
+// The headline numbers, one bubble each, with details on hover: the
+// previous period of the same length, and what the numbers say together.
+const props = defineProps<{ summary: Summary; accepted: number; located: number }>()
 const { t } = useI18n()
 
-interface Figure {
-  label: string
-  value: number
-  previous?: number | null
-  detail?: string
+const n = (v: number) => v.toLocaleString()
+const percent = (part: number, whole: number) => (whole ? Math.round((1000 * part) / whole) / 10 : 0)
+
+/** The change from the previous period, null when there is none to compare. */
+function change(value: number, previous?: number | null): string | null {
+  if (!previous) return null
+  const c = Math.round((100 * (value - previous)) / previous)
+  return t('stats.change', { n: (c > 0 ? '+' : '') + c })
 }
 
-const figures = computed<Figure[]>(() => {
+/** The previous period's value and the change, as details. */
+function history(value: number, previous?: number | null): Detail[] {
+  if (previous === null || previous === undefined) return []
+  const c = change(value, previous)
+  return [{ label: t('overview.details.previous'), value: c ? `${n(previous)} · ${c}` : n(previous) }]
+}
+
+interface Bubble {
+  key: string
+  label: string
+  value: string
+  note?: string
+  details: Detail[]
+}
+
+const bubbles = computed<Bubble[]>(() => {
   const s = props.summary
   const p = s.previous
   return [
-    { label: t('stats.sessions'), value: s.sessions, previous: p?.sessions },
-    { label: t('stats.shells'), value: s.shells, previous: p?.shells },
-    { label: t('stats.logins'), value: s.logins, previous: p?.logins, detail: t('stats.acceptedShare', { n: props.accepted }) },
-    { label: t('stats.sourceIps'), value: s.source_ips, previous: p?.source_ips },
-    { label: t('stats.countries'), value: s.countries },
+    {
+      key: 'sessions', label: t('stats.sessions'), value: n(s.sessions), note: change(s.sessions, p?.sessions) ?? undefined,
+      details: [
+        ...history(s.sessions, p?.sessions),
+        { label: t('overview.details.located'), value: n(props.located) },
+      ],
+    },
+    {
+      key: 'shells', label: t('stats.shells'), value: n(s.shells), note: change(s.shells, p?.shells) ?? undefined,
+      details: [
+        { label: t('overview.details.ofSessions'), value: `${percent(s.shells, s.sessions)} %` },
+        ...history(s.shells, p?.shells),
+      ],
+    },
+    {
+      key: 'logins', label: t('stats.logins'), value: n(s.logins), note: change(s.logins, p?.logins) ?? undefined,
+      details: [
+        { label: t('overview.details.accepted'), value: `${n(s.accepted)} · ${props.accepted} %` },
+        { label: t('overview.details.perSession'), value: String(Math.round((10 * s.logins) / Math.max(s.sessions, 1)) / 10) },
+        ...history(s.logins, p?.logins),
+      ],
+    },
+    {
+      key: 'sources', label: t('stats.sourceIps'), value: n(s.source_ips), note: change(s.source_ips, p?.source_ips) ?? undefined,
+      details: [
+        { label: t('overview.details.perAddress'), value: String(Math.round((10 * s.sessions) / Math.max(s.source_ips, 1)) / 10) },
+        ...history(s.source_ips, p?.source_ips),
+      ],
+    },
+    {
+      key: 'countries', label: t('stats.countries'), value: n(s.countries),
+      details: [{ label: t('overview.details.perCountry'), value: String(Math.round((10 * props.located) / Math.max(s.countries, 1)) / 10) }],
+    },
   ]
 })
-
-function note(f: Figure): string | undefined {
-  if (f.detail) return f.detail
-  if (!f.previous) return undefined
-  const n = Math.round((100 * (f.value - f.previous)) / f.previous)
-  return t('stats.change', { n: (n > 0 ? '+' : '') + n })
-}
-const title = (f: Figure) =>
-  f.previous === null || f.previous === undefined ? undefined : t('stats.previousPeriod', { n: f.previous.toLocaleString() })
 </script>
 
 <template>
-  <section
-    class="card float kpi-panel"
-    :aria-label="t('overview.title')"
-  >
-    <dl>
-      <template
-        v-for="f in figures"
-        :key="f.label"
-      >
-        <dt class="muted">
-          {{ f.label }}
-        </dt>
-        <dd>
-          <span class="value">{{ f.value.toLocaleString() }}</span>
-          <span
-            v-if="note(f)"
-            class="muted detail"
-            :title="title(f)"
-          >{{ note(f) }}</span>
-        </dd>
-      </template>
-    </dl>
-    <p class="muted located">
-      {{ t('overview.summary', { n: located.toLocaleString(), c: countries }, located) }}
-    </p>
-  </section>
+  <div class="bubbles">
+    <StatBubble
+      v-for="b in bubbles"
+      :key="b.key"
+      :label="b.label"
+      :value="b.value"
+      :note="b.note"
+      :details="b.details"
+    />
+  </div>
 </template>
 
 <style scoped>
-.kpi-panel {
-  width: 14rem;
-  padding: var(--space-2) var(--space-3);
-}
-
-dl {
-  display: grid;
-  grid-template-columns: 1fr;
-  margin: 0;
-}
-
-dt {
-  margin-top: var(--space-1);
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-dd {
+.bubbles {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  flex-direction: column;
   gap: var(--space-2);
-  margin: 0;
-}
-
-.value {
-  font-size: 1.25rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-}
-
-.detail {
-  font-size: 0.75rem;
-}
-
-.located {
-  margin: var(--space-2) 0 0;
-  font-size: 0.75rem;
 }
 </style>

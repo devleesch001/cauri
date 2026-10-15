@@ -99,7 +99,6 @@ function open(country: string, city?: string) {
       :summary="summary"
       :accepted="accepted"
       :located="located"
-      :countries="countries.length"
     />
 
     <div

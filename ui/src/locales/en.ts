@@ -109,6 +109,15 @@ export default {
     summary: '{n} located session from {c} countries | {n} located sessions from {c} countries',
     sessions: '{n} session | {n} sessions',
     shells: '{n} got a shell | {n} got a shell',
+    details: {
+      previous: 'Previous period',
+      located: 'Located sessions',
+      ofSessions: 'Share of sessions',
+      accepted: 'Accepted',
+      perSession: 'Attempts per session',
+      perAddress: 'Sessions per address',
+      perCountry: 'Sessions per country',
+    },
     noGeoip:
       'Sessions are not located: give the API a GeoIP database (CAURI_GEOIP_DB, see the README) to see where attacks come from.',
     empty: 'No located session matches these filters.',
