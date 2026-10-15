@@ -1,16 +1,22 @@
+/* Colours come from the OpenVue theme (theme.ts), so that changing or
+   adding a theme recolours everything at once: the semantic tokens follow
+   the dark mode by themselves, the palette ones get a dark shade below.
+   Dark mode has one source, the app-dark class on <html> (colorScheme.ts),
+   which the theme's darkModeSelector uses too. */
 :root {
-  --c-ink: #1d2730;
-  --c-muted: #5b6a77;
-  --c-paper: #f5f7f9;
-  --c-surface: #ffffff;
-  --c-rule: #d8dee4;
-  --c-shell: #b42318; /* an attacker obtained a shell: the one alarm colour */
-  --c-shell-bg: #fdecea;
-  --c-term-bg: #0f1b24;
-  --c-term-ink: #d6e2ea;
-  --c-term-prompt: #7fd1c7;
-  --c-term-dim: #7d8f9c;
-  --c-map-land: #e2e7eb; /* countries without attacks */
+  --c-ink: var(--p-text-color);
+  --c-muted: var(--p-text-muted-color);
+  --c-paper: var(--p-surface-50);
+  --c-surface: var(--p-content-background);
+  --c-rule: var(--p-content-border-color);
+  --c-shell: var(--p-red-700); /* an attacker obtained a shell: the one alarm colour */
+  --c-map-land: var(--p-surface-200); /* countries without attacks */
+  /* The terminal stays dark in both modes, as dark as the cards in dark
+     mode: it stands out from the page. */
+  --c-term-bg: var(--p-surface-900);
+  --c-term-ink: var(--p-surface-200);
+  --c-term-prompt: var(--p-primary-300);
+  --c-term-dim: var(--p-surface-400);
 
   --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-data: 'IBM Plex Mono', ui-monospace, monospace;
@@ -22,18 +28,10 @@
   --space-5: 2.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --c-ink: #e3e9ee;
-    --c-muted: #93a3b0;
-    --c-paper: #12181d;
-    --c-surface: #1a2229;
-    --c-rule: #2c3741;
-    --c-shell: #f97066;
-    --c-shell-bg: #3a1714;
-    --c-term-bg: #0a1117;
-    --c-map-land: #2a353e;
-  }
+:root.app-dark {
+  --c-paper: var(--p-surface-950);
+  --c-shell: var(--p-red-400);
+  --c-map-land: var(--p-surface-700);
 }
 
 *,
@@ -262,20 +260,20 @@ a {
 .ap-player.asciinema-player-theme-cauri {
   --term-color-foreground: var(--c-term-ink);
   --term-color-background: var(--c-term-bg);
-  --term-color-0: #0f1b24;
-  --term-color-1: #e5534b;
-  --term-color-2: #57ab5a;
-  --term-color-3: #c69026;
-  --term-color-4: #539bf5;
-  --term-color-5: #b083f0;
-  --term-color-6: #7fd1c7;
-  --term-color-7: #d6e2ea;
-  --term-color-8: #7d8f9c;
-  --term-color-9: #f47067;
-  --term-color-10: #6bc46d;
-  --term-color-11: #daaa3f;
-  --term-color-12: #6cb6ff;
-  --term-color-13: #dcbdfb;
-  --term-color-14: #a5e8df;
-  --term-color-15: #ffffff;
+  --term-color-0: var(--p-surface-900);
+  --term-color-1: var(--p-red-400);
+  --term-color-2: var(--p-green-500);
+  --term-color-3: var(--p-yellow-500);
+  --term-color-4: var(--p-blue-400);
+  --term-color-5: var(--p-purple-400);
+  --term-color-6: var(--p-cyan-400);
+  --term-color-7: var(--p-surface-200);
+  --term-color-8: var(--p-surface-500);
+  --term-color-9: var(--p-red-300);
+  --term-color-10: var(--p-green-400);
+  --term-color-11: var(--p-yellow-400);
+  --term-color-12: var(--p-blue-300);
+  --term-color-13: var(--p-purple-300);
+  --term-color-14: var(--p-cyan-300);
+  --term-color-15: var(--p-surface-0);
 }

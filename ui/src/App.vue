@@ -9,6 +9,7 @@ import WindowMinimizeIcon from '@openvue/icons/windowminimize'
 import { api } from './api/client'
 import type { About } from './api/types'
 import NavSearch from './components/NavSearch.vue'
+import ColorSchemeSelect from './components/ColorSchemeSelect.vue'
 import SensorSelect from './components/SensorSelect.vue'
 import { primaryPages, statsPages, trailingPages } from './nav'
 import { useSensors } from './stores/sensors'
@@ -107,6 +108,7 @@ onMounted(() => {
     </nav>
     <NavSearch class="search" />
     <SensorSelect class="sensor" />
+    <ColorSchemeSelect class="scheme" />
   </header>
   <main>
     <RouterView />
@@ -262,7 +264,8 @@ nav a.router-link-active {
   }
 
   .search,
-  .sensor {
+  .sensor,
+  .scheme {
     margin-left: 0;
     width: 100%;
   }

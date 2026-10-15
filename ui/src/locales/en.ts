@@ -34,6 +34,12 @@ export default {
     label: 'Sensor',
     all: 'All sensors',
   },
+  colorScheme: {
+    label: 'Colour scheme',
+    light: 'Light',
+    dark: 'Dark',
+    system: 'System',
+  },
   filters: {
     sourceIp: 'Source IP',
     anyDate: 'Any date',

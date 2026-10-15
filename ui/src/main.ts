@@ -8,6 +8,7 @@ import '@fontsource/ibm-plex-sans/600.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource/ibm-plex-mono/500.css'
 import './style.css'
+import './colorScheme'
 
 import App from './App.vue'
 import { i18n } from './i18n'
@@ -18,6 +19,6 @@ createApp(App)
   .use(createPinia())
   .use(router)
   .use(i18n)
-  .use(OpenVue, { theme: { preset: Cauri, options: { darkModeSelector: 'system' } } })
+  .use(OpenVue, { theme: { preset: Cauri, options: { darkModeSelector: '.app-dark' } } })
   .directive('tooltip', Tooltip)
   .mount('#app')
