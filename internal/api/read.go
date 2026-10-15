@@ -50,6 +50,7 @@ func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
 		Verdict:     q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
 		HasCommands: q.bool("has_commands"),
 		HasTTY:      q.bool("has_tty"),
+		File:        q.str("file"),
 		Page:        q.page(),
 	}
 	if q.err != nil {

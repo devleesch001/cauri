@@ -121,6 +121,10 @@ func TestPayloads(t *testing.T) {
 		if p, _ := store.GetPayloads(ctx, db, store.StatsFilter{Sensor: "hp-01"}); p.Items[0].Sessions != 1 {
 			t.Errorf("payloads of hp-01 = %+v", p.Items)
 		}
+		// From a file to the sessions that transferred it.
+		if _, got := sessions(t, db, store.SessionFilter{File: sha}); got != "31" {
+			t.Errorf("sessions with the file = %q", got)
+		}
 	})
 }
 

@@ -65,6 +65,7 @@ type SessionFilter struct {
 	Verdict     string     // VerdictHuman or VerdictBot
 	HasCommands *bool
 	HasTTY      *bool
+	File        string // SHA-256 of a file the session transferred
 	Page
 }
 
@@ -145,6 +146,10 @@ func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSu
 	if f.HasCommands != nil {
 		sub := db.NewSelect().TableExpr("commands AS fc").ColumnExpr("1").Where("fc.session_id = s.id")
 		q = q.Where(existsExpr(*f.HasCommands), sub)
+	}
+	if f.File != "" {
+		sub := db.NewSelect().TableExpr("transfers AS fx").ColumnExpr("fx.session_id").Where("fx.sha256 = ?", f.File)
+		q = q.Where("s.id IN (?)", sub)
 	}
 	if f.HasTTY != nil {
 		if *f.HasTTY {
