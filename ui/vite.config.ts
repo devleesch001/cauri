@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import vueDevTools from 'vite-plugin-vue-devtools'
 
 // The build goes where the Go package embedding it lives. Its .gitkeep is
 // committed so that the embed compiles before any UI build; emptying the
@@ -16,8 +17,10 @@ const keepDist: Plugin = {
 }
 
 // In development, /api goes to a local "cauri api" (CAURI_API_URL to change it).
+// Vue DevTools only run with the dev server (the plugin applies to serve):
+// the build embedded in the API has none.
 export default defineConfig({
-  plugins: [vue(), keepDist],
+  plugins: [vue(), vueDevTools(), keepDist],
   // vue-i18n build flags: Composition API only, no devtools in production.
   define: {
     __VUE_I18N_FULL_INSTALL__: true,
