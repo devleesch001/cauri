@@ -233,6 +233,18 @@ a {
   width: 11rem;
 }
 
+/* Lists filter on two rows: fields to type or pick in, then the choices
+   and switches. */
+.filter-rows {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.filter-rows > .filters {
+  margin-bottom: 0;
+}
+
 /* Clickable table rows open the detail. */
 .p-datatable .p-datatable-tbody > tr {
   cursor: pointer;

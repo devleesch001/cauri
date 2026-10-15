@@ -97,45 +97,49 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
     </div>
 
     <div
-      class="filters"
+      class="filter-rows"
       role="search"
     >
-      <InputText
-        v-model="text.ip"
-        :placeholder="t('filters.sourceIp')"
-        :aria-label="t('filters.sourceIp')"
-        @keyup.enter="applyText"
-        @blur="applyText"
-      />
-      <InputText
-        v-model="text.username"
-        :placeholder="t('logins.username')"
-        :aria-label="t('logins.username')"
-        @keyup.enter="applyText"
-        @blur="applyText"
-      />
-      <InputText
-        v-model="text.password"
-        :placeholder="t('logins.password')"
-        :aria-label="t('logins.password')"
-        @keyup.enter="applyText"
-        @blur="applyText"
-      />
-      <DayRange
-        v-model:from="from"
-        v-model:to="to"
-      />
-      <label class="toggle">
-        <ToggleSwitch v-model="withShells" />
-        {{ t('logins.includeShells') }}
-      </label>
-      <Button
-        v-if="filtered"
-        :label="t('filters.clear')"
-        severity="secondary"
-        text
-        @click="router.replace({ query: {} })"
-      />
+      <div class="filters">
+        <InputText
+          v-model="text.ip"
+          :placeholder="t('filters.sourceIp')"
+          :aria-label="t('filters.sourceIp')"
+          @keyup.enter="applyText"
+          @blur="applyText"
+        />
+        <InputText
+          v-model="text.username"
+          :placeholder="t('logins.username')"
+          :aria-label="t('logins.username')"
+          @keyup.enter="applyText"
+          @blur="applyText"
+        />
+        <InputText
+          v-model="text.password"
+          :placeholder="t('logins.password')"
+          :aria-label="t('logins.password')"
+          @keyup.enter="applyText"
+          @blur="applyText"
+        />
+        <DayRange
+          v-model:from="from"
+          v-model:to="to"
+        />
+      </div>
+      <div class="filters">
+        <label class="toggle">
+          <ToggleSwitch v-model="withShells" />
+          {{ t('logins.includeShells') }}
+        </label>
+        <Button
+          v-if="filtered"
+          :label="t('filters.clear')"
+          severity="secondary"
+          text
+          @click="router.replace({ query: {} })"
+        />
+      </div>
     </div>
 
     <ErrorNotice :error="error" />

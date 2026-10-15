@@ -25,6 +25,10 @@ const router = useRouter()
 const rows = 50
 
 // Text filters are edited locally and applied on Enter or when leaving the field.
+// Characters of the SSH client shown in the table ("SSH-2.0-libssh"); a
+// longer one is cut, whole in a tooltip. Matches the column's CSS width.
+const clientShown = 14
+
 const text = ref({ ip: '', username: '', password: '', client: '' })
 const q = (k: string) => queryValue(route.query, k)
 watch(
@@ -149,126 +153,130 @@ function clearFilters() {
     </div>
 
     <div
-      class="filters"
+      class="filter-rows"
       role="search"
     >
-      <InputText
-        v-model="text.ip"
-        :placeholder="t('filters.sourceIp')"
-        :aria-label="t('filters.sourceIp')"
-        @keyup.enter="applyText"
-        @blur="applyText"
-      />
-      <InputText
-        v-model="text.username"
-        :placeholder="t('sessions.filters.username')"
-        :aria-label="t('sessions.filters.username')"
-        @keyup.enter="applyText"
-        @blur="applyText"
-      />
-      <InputText
-        v-model="text.password"
-        :placeholder="t('sessions.filters.password')"
-        :aria-label="t('sessions.filters.password')"
-        @keyup.enter="applyText"
-        @blur="applyText"
-      />
-      <InputText
-        v-model="text.client"
-        :placeholder="t('sessions.filters.client')"
-        :aria-label="t('sessions.filters.clientLabel')"
-        @keyup.enter="applyText"
-        @blur="applyText"
-      />
-      <Select
-        v-model="country"
-        :options="countryOptions"
-        option-label="label"
-        option-value="value"
-        :placeholder="t('sessions.filters.country')"
-        :aria-label="t('sessions.columns.country')"
-        show-clear
-        filter
-      >
-        <template #value="{ value, placeholder }">
-          <CountryFlag
-            v-if="value"
-            :code="value"
-          />
-          <span v-else>{{ placeholder }}</span>
-        </template>
-        <template #option="{ option }">
-          <CountryFlag :code="option.value" />
-          <span class="muted count">{{ option.count }}</span>
-        </template>
-      </Select>
-      <Chip
-        v-if="q('city')"
-        removable
-        :label="q('city')"
-        :aria-label="t('sessions.filters.city', { city: q('city') })"
-        @remove="patchQuery({ city: undefined })"
-      />
-      <Chip
-        v-if="q('command')"
-        removable
-        class="data"
-        :label="q('command')"
-        :aria-label="t('sessions.filters.command', { command: q('command') })"
-        @remove="patchQuery({ command: undefined })"
-      />
-      <Chip
-        v-if="q('hassh')"
-        removable
-        :label="t('sessions.filters.hasshChip', { hassh: q('hassh').slice(0, 12) })"
-        :aria-label="t('sessions.filters.hassh', { hassh: q('hassh') })"
-        @remove="patchQuery({ hassh: undefined })"
-      />
-      <Chip
-        v-if="q('asn')"
-        removable
-        :label="`AS${q('asn')}`"
-        :aria-label="t('sessions.filters.asn', { asn: q('asn') })"
-        @remove="patchQuery({ asn: undefined })"
-      />
-      <Chip
-        v-if="q('file')"
-        removable
-        :label="t('sessions.filters.fileChip', { sha: q('file').slice(0, 12) })"
-        :aria-label="t('sessions.filters.file', { sha: q('file') })"
-        @remove="patchQuery({ file: undefined })"
-      />
-      <DayRange
-        v-model:from="from"
-        v-model:to="to"
-      />
-      <SelectButton
-        v-model="login"
-        :options="loginOptions"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        :aria-label="t('sessions.filters.outcome')"
-      />
-      <SelectButton
-        v-model="verdict"
-        :options="verdictOptions"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        :aria-label="t('sessions.filters.verdict')"
-      />
-      <label class="toggle">
-        <ToggleSwitch v-model="withCommands" />
-        {{ t('sessions.filters.typedCommands') }}
-      </label>
-      <Button
-        v-if="filtered"
-        :label="t('filters.clear')"
-        severity="secondary"
-        text
-        @click="clearFilters"
-      />
+      <div class="filters">
+        <InputText
+          v-model="text.ip"
+          :placeholder="t('filters.sourceIp')"
+          :aria-label="t('filters.sourceIp')"
+          @keyup.enter="applyText"
+          @blur="applyText"
+        />
+        <InputText
+          v-model="text.username"
+          :placeholder="t('sessions.filters.username')"
+          :aria-label="t('sessions.filters.username')"
+          @keyup.enter="applyText"
+          @blur="applyText"
+        />
+        <InputText
+          v-model="text.password"
+          :placeholder="t('sessions.filters.password')"
+          :aria-label="t('sessions.filters.password')"
+          @keyup.enter="applyText"
+          @blur="applyText"
+        />
+        <InputText
+          v-model="text.client"
+          :placeholder="t('sessions.filters.client')"
+          :aria-label="t('sessions.filters.clientLabel')"
+          @keyup.enter="applyText"
+          @blur="applyText"
+        />
+        <Select
+          v-model="country"
+          :options="countryOptions"
+          option-label="label"
+          option-value="value"
+          :placeholder="t('sessions.filters.country')"
+          :aria-label="t('sessions.columns.country')"
+          show-clear
+          filter
+        >
+          <template #value="{ value, placeholder }">
+            <CountryFlag
+              v-if="value"
+              :code="value"
+            />
+            <span v-else>{{ placeholder }}</span>
+          </template>
+          <template #option="{ option }">
+            <CountryFlag :code="option.value" />
+            <span class="muted count">{{ option.count }}</span>
+          </template>
+        </Select>
+        <Chip
+          v-if="q('city')"
+          removable
+          :label="q('city')"
+          :aria-label="t('sessions.filters.city', { city: q('city') })"
+          @remove="patchQuery({ city: undefined })"
+        />
+        <Chip
+          v-if="q('command')"
+          removable
+          class="data"
+          :label="q('command')"
+          :aria-label="t('sessions.filters.command', { command: q('command') })"
+          @remove="patchQuery({ command: undefined })"
+        />
+        <Chip
+          v-if="q('hassh')"
+          removable
+          :label="t('sessions.filters.hasshChip', { hassh: q('hassh').slice(0, 12) })"
+          :aria-label="t('sessions.filters.hassh', { hassh: q('hassh') })"
+          @remove="patchQuery({ hassh: undefined })"
+        />
+        <Chip
+          v-if="q('asn')"
+          removable
+          :label="`AS${q('asn')}`"
+          :aria-label="t('sessions.filters.asn', { asn: q('asn') })"
+          @remove="patchQuery({ asn: undefined })"
+        />
+        <Chip
+          v-if="q('file')"
+          removable
+          :label="t('sessions.filters.fileChip', { sha: q('file').slice(0, 12) })"
+          :aria-label="t('sessions.filters.file', { sha: q('file') })"
+          @remove="patchQuery({ file: undefined })"
+        />
+        <DayRange
+          v-model:from="from"
+          v-model:to="to"
+        />
+      </div>
+      <div class="filters">
+        <SelectButton
+          v-model="login"
+          :options="loginOptions"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          :aria-label="t('sessions.filters.outcome')"
+        />
+        <SelectButton
+          v-model="verdict"
+          :options="verdictOptions"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          :aria-label="t('sessions.filters.verdict')"
+        />
+        <label class="toggle">
+          <ToggleSwitch v-model="withCommands" />
+          {{ t('sessions.filters.typedCommands') }}
+        </label>
+        <Button
+          v-if="filtered"
+          :label="t('filters.clear')"
+          severity="secondary"
+          text
+          @click="clearFilters"
+        />
+      </div>
     </div>
 
     <ErrorNotice :error="error" />
@@ -349,11 +357,6 @@ function clearFilters() {
           >—</span>
         </template>
       </Column>
-      <Column :header="t('sessions.columns.client')">
-        <template #body="{ data }">
-          <span class="data client">{{ data.client_version ?? '—' }}</span>
-        </template>
-      </Column>
       <Column :header="t('sessions.columns.duration')">
         <template #body="{ data }">
           {{ formatMillis(data.duration_ms) }}
@@ -396,6 +399,15 @@ function clearFilters() {
           >{{ t('sessions.outcome.noLogin') }}</span>
         </template>
       </Column>
+      <!-- Last: a detail, cut after "SSH-2.0-libssh", whole on hover. -->
+      <Column :header="t('sessions.columns.client')">
+        <template #body="{ data }">
+          <span
+            v-tooltip.top="(data.client_version?.length ?? 0) > clientShown ? data.client_version : null"
+            class="data client"
+          >{{ data.client_version ?? '—' }}</span>
+        </template>
+      </Column>
     </DataTable>
   </div>
 </template>
@@ -421,9 +433,10 @@ function clearFilters() {
   padding-left: var(--space-3);
 }
 
+/* Room for "SSH-2.0-libssh" (clientShown characters), then cut. */
 .client {
   display: inline-block;
-  max-width: 16rem;
+  max-width: 15ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
