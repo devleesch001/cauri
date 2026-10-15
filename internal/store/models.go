@@ -42,32 +42,34 @@ type TTYFile struct {
 type Session struct {
 	bun.BaseModel `bun:"table:sessions,alias:s"`
 
-	ID             int64   `bun:"id,pk,autoincrement" json:"id"`
-	SensorID       int64   `bun:"sensor_id" json:"-"`
-	Sensor         string  `bun:"sensor,scanonly" json:"sensor"`
-	CowrieSession  string  `bun:"cowrie_session" json:"session"`
-	SrcIP          *string `bun:"src_ip" json:"src_ip"`
-	SrcPort        *int    `bun:"src_port" json:"src_port"`
-	DstIP          *string `bun:"dst_ip" json:"dst_ip"`
-	DstPort        *int    `bun:"dst_port" json:"dst_port"`
-	Protocol       *string `bun:"protocol" json:"protocol"`
-	ClientVersion  *string `bun:"client_version" json:"client_version"`
-	HASSH          *string `bun:"hassh" json:"hassh"`
-	StartedAt      Time    `bun:"started_at" json:"started_at"`
-	EndedAt        *Time   `bun:"ended_at" json:"ended_at"`
-	DurationMS     *int64  `bun:"duration_ms" json:"duration_ms"`
-	LoginSuccess   bool    `bun:"login_success" json:"login_success"`
-	TTYLog         *string `bun:"tty_log" json:"tty_log"`
-	TTYDurationMS  *int64  `bun:"tty_duration_ms" json:"tty_duration_ms"`
-	TTYFileID      *int64  `bun:"tty_file_id" json:"-"`
-	TTYSHA256      *string `bun:"tty_sha256,scanonly" json:"tty_sha256"`
-	TTYSize        *int64  `bun:"tty_size,scanonly" json:"tty_size"`
-	GeoCountry     *string `bun:"geo_country" json:"geo_country"` // ISO 3166-1 alpha-2
-	GeoCity        *string `bun:"geo_city" json:"geo_city"`
-	GeoSource      *string `bun:"geo_source" json:"geo_source"` // database used, set even if not found
-	Verdict        *string `bun:"verdict" json:"verdict"`       // see package verdict; nil until judged
-	VerdictScore   *int    `bun:"verdict_score" json:"verdict_score"`
-	VerdictVersion *string `bun:"verdict_version" json:"-"`
+	ID             int64    `bun:"id,pk,autoincrement" json:"id"`
+	SensorID       int64    `bun:"sensor_id" json:"-"`
+	Sensor         string   `bun:"sensor,scanonly" json:"sensor"`
+	CowrieSession  string   `bun:"cowrie_session" json:"session"`
+	SrcIP          *string  `bun:"src_ip" json:"src_ip"`
+	SrcPort        *int     `bun:"src_port" json:"src_port"`
+	DstIP          *string  `bun:"dst_ip" json:"dst_ip"`
+	DstPort        *int     `bun:"dst_port" json:"dst_port"`
+	Protocol       *string  `bun:"protocol" json:"protocol"`
+	ClientVersion  *string  `bun:"client_version" json:"client_version"`
+	HASSH          *string  `bun:"hassh" json:"hassh"`
+	StartedAt      Time     `bun:"started_at" json:"started_at"`
+	EndedAt        *Time    `bun:"ended_at" json:"ended_at"`
+	DurationMS     *int64   `bun:"duration_ms" json:"duration_ms"`
+	LoginSuccess   bool     `bun:"login_success" json:"login_success"`
+	TTYLog         *string  `bun:"tty_log" json:"tty_log"`
+	TTYDurationMS  *int64   `bun:"tty_duration_ms" json:"tty_duration_ms"`
+	TTYFileID      *int64   `bun:"tty_file_id" json:"-"`
+	TTYSHA256      *string  `bun:"tty_sha256,scanonly" json:"tty_sha256"`
+	TTYSize        *int64   `bun:"tty_size,scanonly" json:"tty_size"`
+	GeoCountry     *string  `bun:"geo_country" json:"geo_country"` // ISO 3166-1 alpha-2
+	GeoCity        *string  `bun:"geo_city" json:"geo_city"`
+	GeoSource      *string  `bun:"geo_source" json:"geo_source"` // database used, set even if not found
+	GeoLat         *float64 `bun:"geo_lat" json:"geo_lat"`       // of the city, from the same database
+	GeoLon         *float64 `bun:"geo_lon" json:"geo_lon"`
+	Verdict        *string  `bun:"verdict" json:"verdict"` // see package verdict; nil until judged
+	VerdictScore   *int     `bun:"verdict_score" json:"verdict_score"`
+	VerdictVersion *string  `bun:"verdict_version" json:"-"`
 }
 
 type Event struct {
