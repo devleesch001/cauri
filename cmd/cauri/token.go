@@ -45,7 +45,12 @@ func runToken(ctx context.Context, args []string) error {
 		return err
 	}
 
-	conn, err := db.open(ctx)
+	// On stderr, so that the token printed on stdout stays alone.
+	log, err := newLogger("info")
+	if err != nil {
+		return err
+	}
+	conn, err := db.open(ctx, log)
 	if err != nil {
 		return err
 	}

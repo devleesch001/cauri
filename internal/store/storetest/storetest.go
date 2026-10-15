@@ -41,7 +41,7 @@ func SQLite(t *testing.T) *bun.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if err := store.Migrate(ctx, db); err != nil {
+	if err := store.Migrate(ctx, db, nil); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -50,6 +50,17 @@ func SQLite(t *testing.T) *bun.DB {
 // Postgres returns a migrated database in a fresh schema, dropped at the end
 // of the test. It skips the test if EnvPostgres is unset.
 func Postgres(t *testing.T) *bun.DB {
+	t.Helper()
+	db := PostgresUnmigrated(t)
+	if err := store.Migrate(context.Background(), db, nil); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+// PostgresUnmigrated returns an empty database in a fresh schema, dropped at
+// the end of the test. It skips the test if EnvPostgres is unset.
+func PostgresUnmigrated(t *testing.T) *bun.DB {
 	t.Helper()
 	dsn := os.Getenv(EnvPostgres)
 	if dsn == "" {
@@ -78,8 +89,5 @@ func Postgres(t *testing.T) *bun.DB {
 	))
 	db := bun.NewDB(sqldb, pgdialect.New())
 	t.Cleanup(func() { _ = db.Close() })
-	if err := store.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
 	return db
 }

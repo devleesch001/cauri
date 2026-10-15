@@ -59,7 +59,7 @@ func runAPI(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("--trusted-proxies: %w", err)
 	}
-	conn, err := db.open(ctx)
+	conn, err := db.open(ctx, log)
 	if err != nil {
 		return err
 	}

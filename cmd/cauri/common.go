@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,19 +30,37 @@ func (f *dbFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.dsn, "db-dsn", "data/cauri.db", "SQLite file path, or PostgreSQL URL (postgres://user:pass@host/db)")
 }
 
-// open connects to the database and applies pending migrations. The parent
-// directory of a SQLite file is created if needed.
-func (f *dbFlags) open(ctx context.Context) (*bun.DB, error) {
+// location says where the database is, for the log: the file of a SQLite
+// database, the host and name of a PostgreSQL one, never its credentials.
+func (f *dbFlags) location() string {
+	if f.driver == store.SQLite {
+		if abs, err := filepath.Abs(strings.TrimPrefix(f.dsn, "file:")); err == nil && !strings.Contains(f.dsn, "?") {
+			return abs
+		}
+		return f.dsn
+	}
+	u, err := url.Parse(f.dsn)
+	if err != nil || u.Host == "" {
+		return "(unreadable url)"
+	}
+	return u.Host + u.Path
+}
+
+// open connects to the database, says in log what it is and what state its
+// schema is in, and applies the pending migrations before returning. The
+// parent directory of a SQLite file is created if needed.
+func (f *dbFlags) open(ctx context.Context, log *slog.Logger) (*bun.DB, error) {
 	if f.driver == store.SQLite && !strings.HasPrefix(f.dsn, "file:") {
 		if err := os.MkdirAll(filepath.Dir(f.dsn), 0o750); err != nil {
 			return nil, err
 		}
 	}
+	log.Info("opening the database", "driver", f.driver, "location", f.location())
 	db, err := store.Open(ctx, f.driver, f.dsn)
 	if err != nil {
 		return nil, err
 	}
-	if err := store.Migrate(ctx, db); err != nil {
+	if err := store.Migrate(ctx, db, log); err != nil {
 		_ = db.Close()
 		return nil, err
 	}

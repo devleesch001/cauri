@@ -70,7 +70,7 @@ func testDB(t *testing.T) *bun.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if err := Migrate(ctx, db); err != nil {
+	if err := Migrate(ctx, db, nil); err != nil {
 		t.Fatal(err)
 	}
 	return db

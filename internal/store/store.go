@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -73,8 +75,18 @@ func Open(ctx context.Context, driver, dsn string) (*bun.DB, error) {
 // schema the current one replaces without conversion.
 var ErrOldSchema = errors.New("database created by cauri v0.0.x: its schema is not supported, start from an empty database and re-ingest (see README)")
 
-// Migrate applies the pending migrations of the engine of db.
-func Migrate(ctx context.Context, db *bun.DB) error {
+// ErrNewerSchema means the database was migrated by a newer cauri than this
+// one: running on it could misread or damage its data.
+var ErrNewerSchema = errors.New("database schema is newer than this version of cauri")
+
+// Migrate reports the state of the database in log, then applies the pending
+// migrations of the engine of db, logging each: its name, then how long it
+// took. It returns once the schema is current, or on the first error. A nil
+// log says nothing.
+func Migrate(ctx context.Context, db *bun.DB, log *slog.Logger) error {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	engine := SQLite
 	if db.Dialect().Name().String() == "pg" {
 		engine = Postgres
@@ -84,13 +96,31 @@ func Migrate(ctx context.Context, db *bun.DB) error {
 	} else if old {
 		return ErrOldSchema
 	}
+	log.Info("database", engineAttrs(ctx, db, engine)...)
+
 	fsys, err := fs.Sub(migrations, "migrations/"+engine)
 	if err != nil {
 		return err
 	}
-	ms := migrate.NewMigrations()
-	if err := ms.Discover(fsys); err != nil {
+	found := migrate.NewMigrations()
+	if err := found.Discover(fsys); err != nil {
 		return err
+	}
+	// Each migration says when it starts and ends.
+	ms := migrate.NewMigrations()
+	for _, mig := range found.Sorted() {
+		up := mig.Up
+		name := mig.Name + "_" + mig.Comment
+		mig.Up = func(ctx context.Context, m *migrate.Migrator, mg *migrate.Migration) error {
+			start := time.Now()
+			log.Info("applying migration", "migration", name)
+			if err := up(ctx, m, mg); err != nil {
+				return err
+			}
+			log.Info("migration applied", "migration", name, "duration_ms", time.Since(start).Milliseconds())
+			return nil
+		}
+		ms.Add(mig)
 	}
 	// Marked applied only once run: by default bun marks a migration first,
 	// so a failed one would count as done. No Lock: bun's lock is a row
@@ -100,10 +130,76 @@ func Migrate(ctx context.Context, db *bun.DB) error {
 	if err := m.Init(ctx); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	if _, err := m.Migrate(ctx); err != nil {
+	all, err := m.MigrationsWithStatus(ctx)
+	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+	if missing, err := m.MissingMigrations(ctx); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	} else if len(missing) > 0 {
+		log.Error("database schema is newer than this version", "unknown_migrations", names(missing))
+		return fmt.Errorf("%w: it has migration %s", ErrNewerSchema, missing[0].Name)
+	}
+	pending := all.Unapplied()
+	// Names are numbered, so the greatest is the newest.
+	var from, to string
+	for _, mig := range all {
+		if mig.IsApplied() {
+			from = max(from, label(mig))
+		}
+		to = max(to, label(mig))
+	}
+	if from == "" {
+		from = "none (empty database)"
+	}
+	log.Info("database schema", "version", from, "latest", to, "pending", len(pending))
+	if len(pending) == 0 {
+		log.Info("database schema is up to date")
+		return nil
+	}
+
+	log.Info("database upgrade needed", "from", from, "to", to, "migrations", names(pending))
+	start := time.Now()
+	if _, err := m.Migrate(ctx); err != nil {
+		log.Error("database upgrade failed", "from", from, "err", err)
+		return fmt.Errorf("migrate: %w", err)
+	}
+	log.Info("database upgraded", "from", from, "to", to, "migrations", len(pending), "duration_ms", time.Since(start).Milliseconds())
 	return nil
+}
+
+func label(m migrate.Migration) string { return m.Name + "_" + m.Comment }
+
+func names(ms migrate.MigrationSlice) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = label(m)
+	}
+	return out
+}
+
+// engineAttrs describes the engine of db for the log: its version and the
+// settings cauri relies on.
+func engineAttrs(ctx context.Context, db *bun.DB, engine string) []any {
+	attrs := []any{"engine", engine}
+	var version string
+	if engine == SQLite {
+		if db.NewRaw("SELECT sqlite_version()").Scan(ctx, &version) == nil {
+			attrs = append(attrs, "version", version)
+		}
+		var fk, journal string
+		if db.NewRaw("PRAGMA foreign_keys").Scan(ctx, &fk) == nil {
+			attrs = append(attrs, "foreign_keys", fk == "1")
+		}
+		if db.NewRaw("PRAGMA journal_mode").Scan(ctx, &journal) == nil {
+			attrs = append(attrs, "journal_mode", journal)
+		}
+		return attrs
+	}
+	if db.NewRaw("SHOW server_version").Scan(ctx, &version) == nil {
+		attrs = append(attrs, "version", version)
+	}
+	return attrs
 }
 
 // hasTable reports whether a table exists, in the current schema for

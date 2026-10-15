@@ -92,6 +92,18 @@ who prefer it: the queries are the same on both, and each engine has its
 own migrations (run by bun's `migrate` package), embedded and applied when
 the API starts. Design, sizes and indexes: [docs/db.md](docs/db.md).
 
+At start, `cauri api` (and `cauri token`) log on stderr what the database is
+and what state it is in, before going on: the location (never the
+credentials), the engine and its version (for SQLite also `foreign_keys` and
+`journal_mode`), the schema version, the latest known and how many
+migrations are pending (`database schema`). If some are, it says so
+(`database upgrade needed`, with their names), logs each (`applying
+migration`, then `migration applied` with its duration), then `database
+upgraded`, and only then starts. A schema ahead of the binary (a migration it
+does not know) stops the start with an error: run the version that migrated
+it. Back up the database before upgrading; the migration of a large SQLite
+file locks it while it copies.
+
 ### Upgrading from v0.0.x
 
 The database schema of v0.0.1–v0.0.6 was replaced without conversion

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,9 +19,68 @@ import (
 	"github.com/devleesch001/cauri/internal/store/storetest"
 )
 
+// Migrate says what the database is, what is pending, and each migration it
+// runs; a current schema is said to be current; a schema ahead of this
+// version is refused.
+func TestMigrateLogs(t *testing.T) {
+	ctx := context.Background()
+	for _, engine := range []string{store.SQLite, store.Postgres} {
+		t.Run(engine, func(t *testing.T) {
+			var db *bun.DB
+			if engine == store.SQLite {
+				var err error
+				db, err = store.Open(ctx, store.SQLite, filepath.Join(t.TempDir(), "fresh.db"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = db.Close() })
+			} else {
+				db = storetest.PostgresUnmigrated(t)
+			}
+			var out strings.Builder
+			log := slog.New(slog.NewJSONHandler(&out, nil))
+			if err := store.Migrate(ctx, db, log); err != nil {
+				t.Fatal(err)
+			}
+			first := out.String()
+			for _, want := range []string{
+				`"msg":"database"`, `"engine":"` + engine + `"`, `"version":"`,
+				`"msg":"database schema"`, `"version":"none (empty database)"`,
+				`"msg":"database upgrade needed"`, `"msg":"applying migration","migration":"00001_init"`,
+				`"msg":"migration applied","migration":"00005_named_foreign_keys"`, `"msg":"database upgraded"`,
+			} {
+				if !strings.Contains(first, want) {
+					t.Errorf("first run: no %s in\n%s", want, first)
+				}
+			}
+			if engine == store.SQLite && !strings.Contains(first, `"foreign_keys":true`) {
+				t.Errorf("SQLite foreign keys not reported:\n%s", first)
+			}
+
+			out.Reset()
+			if err := store.Migrate(ctx, db, log); err != nil {
+				t.Fatal(err)
+			}
+			if second := out.String(); !strings.Contains(second, `"msg":"database schema is up to date"`) ||
+				!strings.Contains(second, `"version":"00005_named_foreign_keys","latest":"00005_named_foreign_keys","pending":0`) ||
+				strings.Contains(second, "applying migration") {
+				t.Errorf("second run:\n%s", second)
+			}
+
+			// A migration this version does not know: the database is ahead.
+			if _, err := db.ExecContext(ctx, "INSERT INTO bun_migrations (name, group_id, migrated_at) VALUES ('99999', 9, ?)", time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Migrate(ctx, db, log); !errors.Is(err, store.ErrNewerSchema) {
+				t.Errorf("newer schema: err = %v", err)
+			}
+		})
+	}
+}
+
 func TestMigrateIdempotent(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
-		if err := store.Migrate(context.Background(), db); err != nil {
+		if err := store.Migrate(context.Background(), db, nil); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -37,7 +97,7 @@ func TestMigrateRefusesOldSchema(t *testing.T) {
 	if _, err := db.ExecContext(ctx, "CREATE TABLE goose_db_version (id INTEGER)"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Migrate(ctx, db); !errors.Is(err, store.ErrOldSchema) {
+	if err := store.Migrate(ctx, db, nil); !errors.Is(err, store.ErrOldSchema) {
 		t.Fatalf("err = %v, want ErrOldSchema", err)
 	}
 }

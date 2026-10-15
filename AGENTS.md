@@ -76,7 +76,8 @@ and `TestForeignKeyNamesAndActions` in step.
 
 **Migrations.** bun's `migrate` package, one set per engine
 (`internal/store/migrations/sqlite/` and `postgres/`, same names, `.tx.up.sql`
-and `.tx.down.sql`), embedded and applied when the API starts;
+and `.tx.down.sql`), embedded and applied when the API starts, logging the
+state of the database, the pending migrations and each one run (`store.Migrate`);
 `TestSchemasMatch` checks both describe the same schema. Released
 migrations are immutable: add a new file. Design in `docs/db.md`.
 
