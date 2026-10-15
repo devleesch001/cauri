@@ -22,6 +22,7 @@ export default {
     pages: 'Pages',
     sessions: 'Sessions',
     none: 'No match.',
+    attacker: 'Profile of {value}',
     ip: 'Sessions from {value}',
     hassh: 'Sessions with HASSH {value}',
     asn: 'Sessions from AS{value}',

@@ -150,7 +150,7 @@ function open(country: string, city?: string) {
           :items="origins.sources.slice(0, TOP)"
           :value="(s) => s.sessions"
           :item-key="(s) => s.ip"
-          :to="(s) => link('sessions', { ip: s.ip })"
+          :to="(s) => ({ ...link('attacker'), params: { ip: s.ip } })"
         >
           <template #label="{ item }">
             <span class="data">{{ item.ip }}</span>

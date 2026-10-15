@@ -64,7 +64,12 @@ const groups = computed<Group[]>(() => {
 
   const links: Option[] = []
   if (found.value) links.push(found.value)
-  if (isIP(q)) links.push({ id: 'ip', label: t('search.ip', { value: q }), to: sessionsWith({ ip: q }) })
+  if (isIP(q)) {
+    links.push(
+      { id: 'attacker', label: t('search.attacker', { value: q }), to: { name: 'attacker', params: { ip: q } } },
+      { id: 'ip', label: t('search.ip', { value: q }), to: sessionsWith({ ip: q }) },
+    )
+  }
   if (/^[0-9a-f]{32}$/i.test(q)) links.push({ id: 'hassh', label: t('search.hassh', { value: q }), to: sessionsWith({ hassh: q.toLowerCase() }) })
   const asn = /^(?:as)?(\d{1,10})$/i.exec(q)
   if (asn?.[1]) links.push({ id: 'asn', label: t('search.asn', { value: asn[1] }), to: sessionsWith({ asn: asn[1] }) })

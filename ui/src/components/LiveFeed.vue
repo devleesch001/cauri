@@ -72,7 +72,17 @@ const time = (s: string) => new Date(s).toLocaleTimeString()
           v-else
           class="where muted"
         >—</span>
-        <span class="data ip">{{ endpoint(s.src_ip, null) }}</span>
+        <RouterLink
+          v-if="s.src_ip"
+          :to="{ name: 'attacker', params: { ip: s.src_ip } }"
+          class="data ip"
+        >
+          {{ s.src_ip }}
+        </RouterLink>
+        <span
+          v-else
+          class="data ip"
+        >{{ endpoint(s.src_ip, null) }}</span>
         <span
           v-if="s.login_success"
           class="shell"

@@ -181,7 +181,18 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       />
       <Column :header="t('logins.columns.sourceIp')">
         <template #body="{ data }">
-          <span class="data">{{ data.src_ip ?? '—' }}</span>
+          <RouterLink
+            v-if="data.src_ip"
+            :to="{ name: 'attacker', params: { ip: data.src_ip } }"
+            class="data"
+            @click.stop
+          >
+            {{ data.src_ip }}
+          </RouterLink>
+          <span
+            v-else
+            class="data"
+          >—</span>
         </template>
       </Column>
       <Column :header="t('logins.columns.username')">

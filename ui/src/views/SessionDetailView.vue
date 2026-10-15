@@ -162,7 +162,17 @@ const logins = computed(() => {
     <template v-else-if="session">
       <div class="page-head">
         <h1>
-          <span class="data">{{ session.src_ip ?? t('session.unknownSource') }}</span>
+          <RouterLink
+            v-if="session.src_ip"
+            :to="{ name: 'attacker', params: { ip: session.src_ip } }"
+            class="data"
+          >
+            {{ session.src_ip }}
+          </RouterLink>
+          <span
+            v-else
+            class="data"
+          >{{ t('session.unknownSource') }}</span>
           <span
             v-if="session.login_success"
             class="shell verdict"
@@ -214,7 +224,15 @@ const logins = computed(() => {
             <dl class="facts">
               <dt>{{ t('session.facts.source') }}</dt>
               <dd class="data">
-                {{ endpoint(session.src_ip, session.src_port) }}
+                <RouterLink
+                  v-if="session.src_ip"
+                  :to="{ name: 'attacker', params: { ip: session.src_ip } }"
+                >
+                  {{ endpoint(session.src_ip, session.src_port) }}
+                </RouterLink>
+                <template v-else>
+                  {{ endpoint(session.src_ip, session.src_port) }}
+                </template>
               </dd>
               <template v-if="session.geo_source">
                 <dt>{{ t('session.facts.location') }}</dt>

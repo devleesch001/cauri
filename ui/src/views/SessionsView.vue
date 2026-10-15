@@ -327,7 +327,18 @@ function clearFilters() {
       />
       <Column :header="t('sessions.columns.source')">
         <template #body="{ data }">
-          <span class="data">{{ endpoint(data.src_ip, data.src_port) }}</span>
+          <RouterLink
+            v-if="data.src_ip"
+            :to="{ name: 'attacker', params: { ip: data.src_ip } }"
+            class="data"
+            @click.stop
+          >
+            {{ endpoint(data.src_ip, data.src_port) }}
+          </RouterLink>
+          <span
+            v-else
+            class="data"
+          >{{ endpoint(data.src_ip, data.src_port) }}</span>
         </template>
       </Column>
       <Column :header="t('sessions.columns.credentials')">
