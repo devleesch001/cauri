@@ -37,8 +37,10 @@ Cowrie ──► cowrie.json ──┐
 **The ingestor does not interpret events.** It sends each line of
 `cowrie.json` as is, with the sensor id and an event id: the SHA-256 of
 the sensor id and the line, so that the API can drop events it already
-has. When it sees `cowrie.log.closed`, it uploads the matching TTY
-recording with its SHA-256.
+has. It sends one TTY recording per session, with its SHA-256, once the
+session ends (`cowrie.session.closed`). Cowrie writes a recording per SSH
+channel, and many bots run each command on its own exec channel: the
+ingestor merges them, in order, into one recording.
 
 **The API owns all the logic**, in a single ingestion service (`internal/ingest`): validation, deduplication, projection
 of the events
@@ -72,11 +74,14 @@ and symbolic links are ignored.
 | `tty_files`                | Stored recordings, by SHA-256 of the file                                                     |
 | `sensors`, `ingest_tokens` | Sensors seen, ingestor tokens (hashed)                                                        |
 
-Recordings are stored raw, unconverted, in the TTY directory, named by the
-SHA-256 of their content; the database only references them. Note that
-the name Cowrie gives a recording is a hash of the terminal output, not of
-the file: cauri keeps it in `sessions.tty_log` and checks uploads against
-the real digest.
+Recordings are stored as the ingestor sends them, unconverted, in the TTY
+directory, named by the SHA-256 of their content; the database only
+references them. Note that the name Cowrie gives a recording is a hash of
+its input (the keys typed, or the command of an exec channel), not of the
+file: cauri keeps it in `sessions.tty_log` and checks uploads against the
+real digest. Cowrie keeps one file per input: when a command already ran,
+even in another session, it keeps the output of its first run, which the
+replay shows at the time of the new one.
 
 cauri is built for SQLite first (pure Go driver, no CGO): it is the
 default, the configuration tested by the CI, and enough for most

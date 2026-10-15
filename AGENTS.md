@@ -27,11 +27,16 @@ Do not break these without the user's explicit agreement.
 `api --ui`, `ui`, `ingestor`, `token`, `version`. A future all-in-one
 binary is a build tag (`allinone`), not a fork.
 
-**The ingestor computes nothing.** It sends each `cowrie.json` line
-unparsed, plus the sensor id and an event id (`protocol.EventID`: SHA-256
-of sensor id and line). It may only read what it needs to act:
-`cowrie.log.closed` to upload the TTY recording. All interpretation of
-Cowrie events happens in the API.
+**The ingestor only assembles recordings.** It sends each `cowrie.json`
+line unparsed, plus the sensor id and an event id (`protocol.EventID`:
+SHA-256 of sensor id and line). It reads only what it needs to send a
+session's recording: `cowrie.log.closed` (one per SSH channel, one per
+command for many bots) and `cowrie.session.closed`. It then sends one
+recording per session: Cowrie's file for a single channel of its own,
+else the channels merged in the order they opened (`ttylog.Join`), a
+duplicate moved to its own channel's start; it waits for
+`cowrie.session.closed`, an hour at most. All interpretation of Cowrie
+events happens in the API.
 
 **One ingestion service.** Validation, deduplication, projection into
 tables and recording storage live in `internal/ingest.Service`. HTTP
@@ -73,7 +78,8 @@ may reference it except its event. Projections point to sessions. What
 still needs the raw line (terminal sizes for replays) is listed in
 `docs/db.md`, for the retention to keep.
 
-**TTY recordings** are stored raw in a volume, named by the SHA-256 of
+**TTY recordings** are stored as the ingestor sends them (one per
+session, see above), never modified, in a volume, named by the SHA-256 of
 the file (`internal/ttystore`); the database keeps the reference. They
 are converted to asciicast at read time (`/api/sessions/{id}/cast`,
 `internal/ttylog` → `internal/asciicast`), never at ingestion. Replays
@@ -186,9 +192,16 @@ log directory, size limits (`MaxBatchBytes`, `max-tty-size`), no
 **Real Cowrie behaviour** (verified on the official image v3.1.2, sample
 in `internal/ingest/testdata/cowrie-v3.1.2.json`):
 - durations are `duration_ms`; older versions wrote `duration` in seconds;
-- a recording's file name and `shasum` hash the terminal output, not the
-  file: `sessions.tty_log` keeps Cowrie's name, `tty_sha256`/`tty_size`
-  come only from the uploaded file;
+- a recording's file name and `shasum` hash its input, all but the
+  terminal output (Cowrie's `ttylog_inputhash`: the keys typed, or the
+  command of an exec channel), not the file: `sessions.tty_log` keeps
+  Cowrie's name, `tty_sha256`/`tty_size` come only from the uploaded file;
+- Cowrie writes a recording per SSH channel; bots open one exec channel
+  per command in a connection (sample in
+  `internal/ingest/testdata/cowrie-v3.1.2-exec.json`);
+- Cowrie keeps one file per input: a later recording of the same input is
+  `"duplicate": true` and its file is the first one's, with that one's
+  output and times, maybe of another session;
 - files are written by uid 999 with umask 0022 (readable by the ingestor's
   own non-root user).
 When adding support for an event, check it against real Cowrie output.

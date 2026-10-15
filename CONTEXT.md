@@ -73,10 +73,19 @@ module path is `github.com/devleesch001/cauri`.
 Checked against the official image v3.1.2:
 
 - **TTY recording names are not file digests.** The name and `shasum` of
-  `cowrie.log.closed` hash the terminal output; the file adds binary
+  `cowrie.log.closed` hash the input (keys typed, or an exec command; not
+  the terminal output, as first written here); the file adds binary
   ttylog headers. The first design used them as the file digest and the
   API refused every upload with 409. Sessions now keep Cowrie's name in
   `tty_log`; `tty_sha256` and `tty_size` come only from the uploaded file.
+- **A recording per SSH channel.** Bots open one exec channel per command
+  in a connection: a session had dozens of recordings, the API kept the
+  first and refused the others (409), and replays showed one command.
+  Cowrie also keeps one file per input (`"duplicate": true`), whose times
+  are the first run's, maybe hours earlier in another session. The user
+  chose to keep one recording per session and make the ingestor merge the
+  channels, a duplicate moved to its own channel's start, rather than
+  store each channel; existing sessions are re-ingested.
 - **Durations are `duration_ms`** (integer milliseconds); older versions
   wrote `duration` in seconds, as number or string. Both are read.
 - **Field types can surprise.** A field of an unexpected type used to make
