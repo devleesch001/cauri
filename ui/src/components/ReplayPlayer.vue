@@ -8,7 +8,7 @@ import * as AsciinemaPlayer from 'asciinema-player'
 import type { Player } from 'asciinema-player'
 import 'asciinema-player/dist/bundle/asciinema-player.css'
 import { api } from '@/api/client'
-import { markerTimes } from '@/replay'
+import { markerTimes, terminalSize } from '@/replay'
 
 // Replays a session from GET /api/sessions/{id}/cast, with chapters: the
 // cast holds a marker per command. The cast keeps the real timing; by
@@ -33,6 +33,10 @@ const realTime = ref(false)
 const speed = ref(1)
 const speeds = [0.5, 1, 2, 4, 8].map((s) => ({ label: `${s}×`, value: s }))
 const failed = ref(false)
+// The frame has the terminal's proportions (a cell is about 0.6 × 1.33
+// em in the player), so that the player, which fits it in both
+// directions, fills it unless the frame's height cap applies.
+const aspectRatio = ref<string | undefined>()
 
 const player = shallowRef<Player | null>(null)
 let cast = ''
@@ -48,6 +52,8 @@ async function fetchCast() {
     failed.value = true
     cast = ''
   }
+  const size = cast ? terminalSize(cast) : null
+  aspectRatio.value = size ? `${size.cols * 0.6} / ${size.rows * 1.3333}` : undefined
   emit('markers', cast ? markerTimes(cast) : [])
 }
 
@@ -59,7 +65,7 @@ async function mount(at = 0, play = false) {
   if (!container.value || !cast) return
   const p = AsciinemaPlayer.create({ data: cast }, container.value, {
     theme: 'cauri',
-    fit: 'width',
+    fit: 'both',
     preload: true,
     speed: speed.value,
     terminalFontFamily: "'IBM Plex Mono', ui-monospace, monospace",
@@ -111,6 +117,7 @@ defineExpose({ seekChapter })
     <div
       ref="container"
       class="player"
+      :style="{ aspectRatio }"
       :aria-label="t('session.replay.player')"
     />
     <p
@@ -175,9 +182,23 @@ defineExpose({ seekChapter })
   margin: var(--space-2) 0 var(--space-4);
 }
 
+/* At most 60 % of the screen's height, so that the controls below stay in
+   view; the terminal's background fills the margins this leaves. */
 .player {
+  /* Explicit, or the height cap would narrow the frame through its ratio
+     and leave a gap beside the replay's column. */
+  width: 100%;
+  max-height: 60vh;
+  background: var(--c-term-bg);
   border-radius: 6px;
   overflow: hidden;
+}
+
+/* The player sizes itself to the scaled terminal and centres it, which
+   leaves bands and a shorter control bar: stretched, it reads as one
+   terminal, text from the left edge, controls along the whole bottom. */
+.player :deep(.ap-player) {
+  width: 100% !important;
 }
 
 .controls {

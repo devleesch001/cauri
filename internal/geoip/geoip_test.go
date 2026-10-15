@@ -16,6 +16,22 @@ var (
 	oct1  = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 )
 
+func TestProvider(t *testing.T) {
+	for in, want := range map[string]string{
+		"DBIP-City-Lite":                      "db-ip",
+		"DBIP-ASN-Lite (compat=GeoLite2-ASN)": "db-ip",
+		"DBIP-City-Lite 2026-10-01":           "db-ip", // a Source
+		"GeoLite2-City":                       "maxmind",
+		"GeoIP2-Country":                      "maxmind",
+		"ipinfo":                              "",
+		"":                                    "",
+	} {
+		if got := Provider(in); got != want {
+			t.Errorf("Provider(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestLocate(t *testing.T) {
 	path := geoiptest.Write(t, t.TempDir(), "DBIP-City-Lite", oct1,
 		geoiptest.Network{CIDR: "5.160.0.0/16", Country: "IR", City: "Tehran", Lat: 35.6944, Lon: 51.4215},

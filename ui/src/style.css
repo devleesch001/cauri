@@ -50,22 +50,31 @@ body {
   margin: 0;
   background: var(--c-paper);
   color: var(--c-ink);
-  font-family: var(--font-ui);
+  font-family: var(--font-ui), serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Header, page, footer: the page takes the free height, so the footer
-   stays at the bottom of the screen when the page is short. */
+/* Header, page, footer: the app is exactly the screen's height and only
+   the page scrolls. A scrollbar on the whole document would narrow the
+   header when it appears and shift everything sideways. */
 #app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
 }
 
 #app > main {
-  flex: 1 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Absolutely positioned content (.sr-only labels) must be placed in
+     the page, not the document: otherwise it escapes the scrolling and
+     lengthens the document, which then scrolls as well. */
+  position: relative;
+  /* Reserved even on short pages, so the page does not shift either. */
+  scrollbar-gutter: stable;
 }
 
 h1,
@@ -95,7 +104,7 @@ a {
 
 /* Technical values: IPs, hashes, credentials, commands. */
 .data {
-  font-family: var(--font-data);
+  font-family: var(--font-data), monospace;
   font-size: 0.93em;
 }
 
@@ -136,7 +145,7 @@ a {
 /* Wide enough for the session table on a 2K screen without scrolling;
    capped so that rows stay readable on larger ones. */
 .page {
-  max-width: 1600px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: var(--space-4) var(--space-4) var(--space-5);
 }

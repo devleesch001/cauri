@@ -14,11 +14,9 @@ const { t } = useI18n()
 const sensors = useSensors()
 // The GeoIP database, when there is one, requires an attribution.
 const about = ref<About | null>(null)
-// The GeoIP and ASN databases may come from different providers: each
-// one's attribution is shown once.
-const providers = computed(
-  () => new Set([about.value?.geoip?.provider, about.value?.asn?.provider].filter((p) => !!p)),
-)
+// Each provider whose data is shown, by the loaded databases or the stored
+// locations, has its attribution shown once.
+const providers = computed(() => new Set<string>(about.value?.providers ?? []))
 
 // Pages are capped in width (style.css); this lifts the cap, remembered
 // per browser. Storage can be unavailable: then it lasts for the visit.
@@ -132,7 +130,7 @@ onMounted(() => {
 }
 
 /* Useful only where the page cap (1600 px, style.css) leaves margins. */
-@media (width <= 1600px) {
+@media (width <= 1440px) {
   .width-toggle {
     display: none;
   }

@@ -77,12 +77,7 @@ function open(country: string, city?: string) {
       <span class="muted">{{ t('overview.summary', { n: located.toLocaleString(), c: countries.length }, located) }}</span>
     </div>
 
-    <StatsFilters>
-      <label class="toggle">
-        <ToggleSwitch v-model="showCities" />
-        {{ t('overview.map.cities') }}
-      </label>
-    </StatsFilters>
+    <StatsFilters />
 
     <ErrorNotice :error="error" />
 
@@ -129,7 +124,13 @@ function open(country: string, city?: string) {
         class="card"
         :aria-busy="loading"
       >
-        <h2>{{ t('overview.map.title') }}</h2>
+        <div class="map-head">
+          <h2>{{ t('overview.map.title') }}</h2>
+          <label class="toggle">
+            <ToggleSwitch v-model="showCities" />
+            {{ t('overview.map.cities') }}
+          </label>
+        </div>
         <WorldMap
           :countries="countries"
           :cities="showCities ? cities : []"
@@ -146,10 +147,11 @@ function open(country: string, city?: string) {
 
       <section
         v-if="top.length"
-        class="card"
+        class="card ranking"
       >
         <h2>{{ t('overview.ranking.title') }}</h2>
         <BarList
+          class="ranking-list"
           :items="top"
           :value="(c) => c.sessions"
           :item-key="(c) => c.country"
@@ -241,10 +243,43 @@ function open(country: string, city?: string) {
   align-items: start;
 }
 
+/* Beside the map, the ranking takes the map's height and scrolls: its
+   zero height keeps it out of the row's sizing, its min-height then
+   stretches it to the row. */
+@media (width > 900px) {
+  .ranking {
+    display: flex;
+    flex-direction: column;
+    height: 0;
+    min-height: 100%;
+  }
+
+  .ranking-list {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: var(--space-2);
+  }
+}
+
 @media (width <= 900px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The map's own quick filters, beside its title. */
+.map-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.map-head > h2 {
+  font-size: 1rem;
 }
 
 .notice {

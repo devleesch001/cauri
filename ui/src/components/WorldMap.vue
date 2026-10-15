@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { geoEqualEarth, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
@@ -55,17 +55,24 @@ const dots = computed(() => {
     .sort((a, b) => b.r - a.r)
 })
 
-// What the pointer is on: a country, or a city of it.
-const hover = ref<{ c: CountryCount | CityCount; x: number; y: number } | null>(null)
+// What the pointer is on: a country, or a city of it. It changes only when
+// the pointer enters another one, so moving over the map does not render
+// its few hundred shapes again.
+const hover = shallowRef<CountryCount | CityCount | null>(null)
 const box = ref<HTMLElement | null>(null)
+const tip = ref<HTMLElement | null>(null)
 function at(e: PointerEvent, c?: CountryCount | CityCount) {
+  const next = c ?? null
+  if (hover.value !== next) hover.value = next
+  // The tooltip follows the pointer outside Vue, by a transform on its own
+  // layer: neither a render nor a repaint of the map beneath it.
   const r = box.value?.getBoundingClientRect()
-  hover.value = c && r ? { c, x: e.clientX - r.left, y: e.clientY - r.top } : null
+  if (r && tip.value) tip.value.style.transform = `translate(${e.clientX - r.left + 12}px, ${e.clientY - r.top + 12}px)`
 }
 function move(e: PointerEvent, a2?: string) {
   at(e, a2 ? byCode.value.get(a2) : undefined)
 }
-const hoveredCity = computed(() => (hover.value && 'city' in hover.value.c ? hover.value.c : null))
+const hoveredCity = computed(() => (hover.value && 'city' in hover.value ? hover.value : null))
 function select(a2?: string) {
   if (a2 && byCode.value.has(a2)) emit('select', a2)
 }
@@ -88,7 +95,7 @@ function select(a2?: string) {
           :key="s.key"
           :d="s.d"
           :style="{ fill: fill(s.a2) }"
-          :class="{ active: s.a2 && byCode.has(s.a2), hovered: hover && !hoveredCity && hover.c.country === s.a2 }"
+          :class="{ active: s.a2 && byCode.has(s.a2), hovered: hover && !hoveredCity && hover.country === s.a2 }"
           @pointermove="move($event, s.a2)"
           @click="select(s.a2)"
         />
@@ -113,19 +120,21 @@ function select(a2?: string) {
       </g>
     </svg>
     <div
-      v-if="hover"
+      v-show="hover"
+      ref="tip"
       class="tip"
-      :style="{ left: `${hover.x}px`, top: `${hover.y}px` }"
       aria-hidden="true"
     >
-      <CountryFlag :code="hover.c.country">
-        {{ hoveredCity ? `, ${hoveredCity.city}` : '' }}
-      </CountryFlag>
-      <span>{{ t('overview.sessions', { n: hover.c.sessions.toLocaleString() }, hover.c.sessions) }}</span>
-      <span
-        v-if="hover.c.shells"
-        class="shell"
-      >{{ t('overview.shells', { n: hover.c.shells.toLocaleString() }, hover.c.shells) }}</span>
+      <template v-if="hover">
+        <CountryFlag :code="hover.country">
+          {{ hoveredCity ? `, ${hoveredCity.city}` : '' }}
+        </CountryFlag>
+        <span>{{ t('overview.sessions', { n: hover.sessions.toLocaleString() }, hover.sessions) }}</span>
+        <span
+          v-if="hover.shells"
+          class="shell"
+        >{{ t('overview.shells', { n: hover.shells.toLocaleString() }, hover.shells) }}</span>
+      </template>
     </div>
     <div class="legend muted">
       <span>1</span>
@@ -141,10 +150,13 @@ function select(a2?: string) {
   position: relative;
 }
 
+/* Its own layer: repaints elsewhere on the page (the live feed, hovered
+   cards) do not draw its detailed borders again. */
 svg {
   display: block;
   width: 100%;
   height: auto;
+  will-change: transform;
 }
 
 path {
@@ -180,6 +192,8 @@ circle.hovered {
 
 .tip {
   position: absolute;
+  top: 0;
+  left: 0;
   z-index: 1;
   display: flex;
   flex-direction: column;
@@ -190,7 +204,7 @@ circle.hovered {
   border-radius: 6px;
   box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
   pointer-events: none;
-  transform: translate(12px, 12px);
+  will-change: transform;
   white-space: nowrap;
 }
 

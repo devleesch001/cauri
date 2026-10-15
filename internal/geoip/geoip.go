@@ -48,6 +48,20 @@ func (i Info) Source() string {
 	return i.Type + " " + i.Built.UTC().Format(time.DateOnly)
 }
 
+// Provider returns who publishes databases of a type ("DBIP-City-Lite",
+// "GeoLite2-ASN") or of a Source: "db-ip", "maxmind" or "" if unknown.
+// It sets the attribution their data requires.
+func Provider(typeOrSource string) string {
+	t, _, _ := strings.Cut(strings.ToLower(typeOrSource), " ")
+	switch {
+	case strings.HasPrefix(t, "dbip"):
+		return "db-ip"
+	case strings.HasPrefix(t, "geolite"), strings.HasPrefix(t, "geoip"):
+		return "maxmind"
+	}
+	return ""
+}
+
 // record is the part of an MMDB city or country record cauri uses.
 type record struct {
 	Country struct {
@@ -105,12 +119,7 @@ func (d *DB) load() error {
 		return fmt.Errorf("geoip database %s: %w", d.path, err)
 	}
 	info := Info{Type: r.Metadata.DatabaseType, Built: time.Unix(int64(r.Metadata.BuildEpoch), 0).UTC()} //nolint:gosec // G115: an epoch fits int64
-	switch t := strings.ToLower(info.Type); {
-	case strings.HasPrefix(t, "dbip"):
-		info.Provider = "db-ip"
-	case strings.HasPrefix(t, "geolite"), strings.HasPrefix(t, "geoip"):
-		info.Provider = "maxmind"
-	}
+	info.Provider = Provider(info.Type)
 
 	d.mu.Lock()
 	old := d.reader

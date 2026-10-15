@@ -620,6 +620,16 @@ func whereVerdict(q *bun.SelectQuery, v string) *bun.SelectQuery {
 	return q
 }
 
+// ListGeoSources returns the GeoIP databases the stored locations came
+// from (see Session.GeoSource): their attributions are due while their
+// data is shown, whether or not the database is still loaded.
+func ListGeoSources(ctx context.Context, db bun.IDB) ([]string, error) {
+	out := []string{}
+	err := db.NewSelect().Model((*Session)(nil)).Distinct().Column("geo_source").
+		Where("s.geo_source IS NOT NULL").Order("geo_source").Scan(ctx, &out)
+	return out, err
+}
+
 // LookupSession returns the id of a session from its sensor name and
 // Cowrie session id.
 func LookupSession(ctx context.Context, db bun.IDB, sensor, cowrieSession string) (int64, error) {

@@ -153,6 +153,8 @@ export interface About {
   version: string
   geoip: GeoDatabase | null
   asn: GeoDatabase | null
+  /** Providers whose data is shown, loaded or stored: each requires its attribution. */
+  providers: ('db-ip' | 'maxmind')[]
 }
 
 /** A GeoIP or ASN database: its provider requires an attribution. */

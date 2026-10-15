@@ -4,6 +4,18 @@
 // markers included), so the real times of the commands do not match its
 // clock unless the same shortening is applied here.
 
+/** The terminal size of an asciicast v3 recording, null if unreadable. */
+export function terminalSize(cast: string): { cols: number; rows: number } | null {
+  try {
+    const header = JSON.parse(cast.slice(0, cast.indexOf('\n'))) as { term?: { cols?: unknown; rows?: unknown } }
+    const { cols, rows } = header.term ?? {}
+    if (typeof cols === 'number' && typeof rows === 'number' && cols > 0 && rows > 0) return { cols, rows }
+  } catch {
+    // not a cast
+  }
+  return null
+}
+
 export function markerTimes(cast: string): number[] {
   const lines = cast.split('\n')
   let limit = Infinity

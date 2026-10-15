@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -278,19 +279,39 @@ type about struct {
 	Version string      `json:"version"`
 	GeoIP   *geoip.Info `json:"geoip"` // null without a GeoIP database
 	ASN     *geoip.Info `json:"asn"`   // null without an ASN database
+	// Providers are those whose data is shown, by loaded databases or
+	// stored locations: each requires its attribution.
+	Providers []string `json:"providers"`
 }
 
-// getAbout describes this cauri: the UI shows the attribution the GeoIP
-// database requires.
-func (s *server) getAbout(w http.ResponseWriter, _ *http.Request) {
-	out := about{Version: s.Version}
+// getAbout describes this cauri: the UI shows the attributions the GeoIP
+// data requires.
+func (s *server) getAbout(w http.ResponseWriter, r *http.Request) {
+	out := about{Version: s.Version, Providers: []string{}}
+	add := func(p string) {
+		if p != "" && !slices.Contains(out.Providers, p) {
+			out.Providers = append(out.Providers, p)
+		}
+	}
 	if s.GeoIP != nil {
 		info := s.GeoIP.Info()
 		out.GeoIP = &info
+		add(info.Provider)
 	}
 	if s.ASN != nil {
 		info := s.ASN.Info()
 		out.ASN = &info
+		add(info.Provider)
 	}
+	// Locations stay stored after their database is removed or replaced.
+	sources, err := store.ListGeoSources(r.Context(), s.DB)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	for _, src := range sources {
+		add(geoip.Provider(src))
+	}
+	slices.Sort(out.Providers)
 	writeJSON(w, http.StatusOK, out)
 }

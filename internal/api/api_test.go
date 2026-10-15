@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -694,6 +695,32 @@ func TestAboutWithoutGeoIP(t *testing.T) {
 	if v, ok := a["geoip"]; !ok || v != nil {
 		t.Errorf("about = %v", a)
 	}
+	if v, ok := a["providers"].([]any); !ok || len(v) != 0 {
+		t.Errorf("providers without any location = %v", a["providers"])
+	}
+}
+
+// Stored locations still require their attribution once their database
+// is no longer loaded.
+func TestAboutStoredLocations(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		if _, err := e.client.SendEvents(context.Background(), events("hp-01")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).
+			Set("geo_source = ?", "DBIP-City-Lite 2026-10-01").Where("1 = 1").Exec(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		var a struct {
+			GeoIP     any      `json:"geoip"`
+			Providers []string `json:"providers"`
+		}
+		get(t, e, "/api/about", http.StatusOK, &a)
+		if a.GeoIP != nil || !slices.Equal(a.Providers, []string{"db-ip"}) {
+			t.Errorf("about = %+v", a)
+		}
+	})
 }
 
 // The statistics answer on the real capture, with their filters.
