@@ -1,3 +1,4 @@
+import { useSessionStorage } from '@vueuse/core'
 import { createRouter, createWebHistory, type LocationQuery, type Router } from 'vue-router'
 
 export const router: Router = createRouter({
@@ -15,6 +16,25 @@ export const router: Router = createRouter({
     { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue') },
     { path: '/:rest(.*)*', name: 'not-found', component: () => import('./views/NotFoundView.vue') },
   ],
+})
+
+// The pages with filters. Their filters, which live in the URL, are kept
+// per page for the browser session: back on a page without filters, as
+// from the menu, it shows the last ones again.
+const filtered = new Set(['overview', 'activity', 'credentials', 'commands', 'payloads', 'sessions', 'login-attempts'])
+const savedFilters = useSessionStorage<Record<string, LocationQuery>>('cauri.filters', {})
+
+router.beforeEach((to, from) => {
+  const name = String(to.name)
+  // A link with filters keeps them; clearing them stays on the page.
+  if (!filtered.has(name) || to.name === from.name || Object.keys(to.query).length > 0) return true
+  const saved = savedFilters.value[name]
+  return saved && Object.keys(saved).length > 0 ? { path: to.path, query: saved, hash: to.hash, replace: true } : true
+})
+
+router.afterEach((to) => {
+  const name = String(to.name)
+  if (filtered.has(name)) savedFilters.value = { ...savedFilters.value, [name]: to.query }
 })
 
 /** First value of a query parameter, or '' if absent. */

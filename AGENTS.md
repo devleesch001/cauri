@@ -223,7 +223,8 @@ When adding support for an event, check it against real Cowrie output.
 `@openvue/themes`, icons from `@openvue/icons`); do not switch to PrimeVue
 without asking. Every user-facing string goes through vue-i18n
 (`ui/src/locales/en.ts` is the typed reference). Filters live in the URL
-query. Visual system in `ui/src/style.css`: IBM Plex Sans for the UI, IBM
+query, kept per page for the browser session and restored when a page is
+reached without any (`ui/src/router.ts`, VueUse `useSessionStorage`). Visual system in `ui/src/style.css`: IBM Plex Sans for the UI, IBM
 Plex Mono only for technical values; red (`--c-shell`) means only "an
 attacker obtained a shell". Colours come from the OpenVue theme
 (`ui/src/theme.ts`): the `--c-*` variables point to its tokens (`--p-*`),
