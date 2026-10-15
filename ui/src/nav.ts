@@ -11,6 +11,7 @@ export interface Page {
 export const primaryPages: Page[] = [
   { name: 'overview', label: 'overview', path: '/' },
   { name: 'sessions', label: 'sessions', path: '/sessions' },
+  { name: 'attackers', label: 'attackers', path: '/attackers' },
   { name: 'login-attempts', label: 'failedLogins', path: '/login-attempts' },
   { name: 'payloads', label: 'payloads', path: '/payloads' },
 ]

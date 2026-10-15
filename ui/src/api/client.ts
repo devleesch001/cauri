@@ -1,6 +1,8 @@
 import type {
   About,
   Activity,
+  Attacker,
+  AttackerDetail,
   AdminToken,
   Chapters,
   CityCount,
@@ -102,6 +104,8 @@ export const api = {
   origins: (params: Params) => get<Origins>('/stats/origins', params),
   commands: (params: Params) => get<Commands>('/stats/commands', params),
   about: () => get<About>('/about'),
+  attackers: (params: Params) => get<Page<Attacker>>('/attackers', params),
+  attacker: (ip: string, params: Params) => get<AttackerDetail>('/attackers/' + encodeURIComponent(ip), params),
   sessions: (params: Params) => get<Page<SessionSummary>>('/sessions', params),
   session: (id: string) => get<SessionDetail>('/sessions/' + encodeURIComponent(id)),
   /** simulated asks for the commands alone, even where a recording exists. */

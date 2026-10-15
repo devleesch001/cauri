@@ -253,3 +253,29 @@ export interface AdminToken {
   last_used_at: string | null
   revoked_at: string | null
 }
+
+/** A source address and what came from it (GET /api/attackers). */
+export interface Attacker {
+  ip: string
+  sessions: number
+  shells: number // sessions that obtained a shell
+  logins: number // login attempts
+  first_seen: string
+  last_seen: string
+  country: string | null
+  city: string | null
+  asn: number | null
+  as_org: string | null
+  // Sessions by stored verdict.
+  humans: number
+  bots: number
+  uncertain: number
+  no_interaction: number
+}
+
+/** One attacker, with what tells it apart (GET /api/attackers/{ip}). */
+export interface AttackerDetail extends Attacker {
+  sensors: string[]
+  clients: { client: string; sessions: number }[]
+  hassh: string[]
+}

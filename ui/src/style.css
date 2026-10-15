@@ -233,6 +233,23 @@ a {
   width: 11rem;
 }
 
+/* Facts of a session or an attacker: names, then values. */
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--c-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Lists filter on two rows: fields to type or pick in, then the choices
    and switches. */
 .filter-rows {

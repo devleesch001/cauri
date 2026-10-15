@@ -564,22 +564,6 @@ h1 > .badge {
   overflow-wrap: anywhere;
 }
 
-.facts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-1) var(--space-3);
-  margin: 0;
-}
-
-.facts dt {
-  color: var(--c-muted);
-}
-
-.facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
 .files {
   margin: 0;
   padding: 0;
