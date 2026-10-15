@@ -20,7 +20,7 @@ let timer: ReturnType<typeof setInterval> | undefined
 async function load() {
   if (paused.value || document.hidden) return
   try {
-    items.value = (await api.sessions({ sensor: props.sensor, verdict: props.verdict, limit: 8 })).items
+    items.value = (await api.sessions({ sensor: props.sensor, verdict: props.verdict, limit: 10 })).items
   } catch {
     // the next poll retries; the pages show API errors
   }

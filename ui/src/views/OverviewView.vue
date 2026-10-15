@@ -49,7 +49,10 @@ watch(
   { immediate: true },
 )
 const located = computed(() => countries.value.reduce((n, c) => n + c.sessions, 0))
-const top = computed(() => countries.value.slice(0, 20))
+// The overview shows the first few of each ranking, so that its cards
+// stay of a size and none scrolls: the pages of each statistic list more.
+const TOP = 10
+const top = computed(() => countries.value.slice(0, TOP))
 const accepted = computed(() => {
   const s = summary.value
   return s && s.logins ? Math.round((1000 * s.accepted) / s.logins) / 10 : 0
@@ -147,11 +150,10 @@ function open(country: string, city?: string) {
 
       <section
         v-if="top.length"
-        class="card ranking"
+        class="card"
       >
         <h2>{{ t('overview.ranking.title') }}</h2>
         <BarList
-          class="ranking-list"
           :items="top"
           :value="(c) => c.sessions"
           :item-key="(c) => c.country"
@@ -183,7 +185,7 @@ function open(country: string, city?: string) {
       >
         <h2>{{ t('overview.sources') }}</h2>
         <BarList
-          :items="origins.sources"
+          :items="origins.sources.slice(0, TOP)"
           :value="(s) => s.sessions"
           :item-key="(s) => s.ip"
           :to="(s) => link('sessions', { ip: s.ip })"
@@ -204,7 +206,7 @@ function open(country: string, city?: string) {
       >
         <h2>{{ t('overview.networks') }}</h2>
         <BarList
-          :items="origins.networks"
+          :items="origins.networks.slice(0, TOP)"
           :value="(n) => n.sessions"
           :item-key="(n) => String(n.asn)"
           :to="(n) => link('sessions', { asn: String(n.asn) })"
@@ -221,7 +223,7 @@ function open(country: string, city?: string) {
       >
         <h2>{{ t('overview.clients') }}</h2>
         <BarList
-          :items="origins.clients"
+          :items="origins.clients.slice(0, TOP)"
           :value="(c) => c.sessions"
           :item-key="(c) => c.client"
           :to="(c) => link('sessions', { client: c.client })"
@@ -240,26 +242,6 @@ function open(country: string, city?: string) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 20rem;
   gap: var(--space-4);
-  align-items: start;
-}
-
-/* Beside the map, the ranking takes the map's height and scrolls: its
-   zero height keeps it out of the row's sizing, its min-height then
-   stretches it to the row. */
-@media (width > 900px) {
-  .ranking {
-    display: flex;
-    flex-direction: column;
-    height: 0;
-    min-height: 100%;
-  }
-
-  .ranking-list {
-    flex: 1 1 0;
-    min-height: 0;
-    overflow-y: auto;
-    padding-right: var(--space-2);
-  }
 }
 
 @media (width <= 900px) {
@@ -286,7 +268,9 @@ function open(country: string, city?: string) {
   margin: 0 0 var(--space-4);
 }
 
+/* Cards of a row take the height of the tallest. */
 .below {
+  align-items: stretch;
   margin-top: var(--space-4);
 }
 
