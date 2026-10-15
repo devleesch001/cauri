@@ -297,29 +297,29 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 		// Misconfiguration or directory not created yet: keep the job.
 		delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
 		log.Warn("tty directory unavailable, retrying", "err", err, "in", delay.String())
-		return in.queue.retry(job.Session, time.Now().Add(delay))
+		return in.queue.retry(job, time.Now().Add(delay))
 	}
 	f, m, err := in.openTTY(job)
 	if err != nil {
 		log.Warn("tty recording unreadable, dropping it", "err", err)
-		return in.queue.done(job.Session)
+		return in.queue.done(job)
 	}
 	res, err := in.Sink.SendTTY(ctx, m, f)
 	_ = f.Close()
 	if err == nil {
 		log.Debug("tty recording delivered", "status", res.Status)
-		return in.queue.done(job.Session)
+		return in.queue.done(job)
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	if errors.Is(err, ErrPermanent) {
 		log.Error("tty recording refused by the api, dropping it", "err", err)
-		return in.queue.done(job.Session)
+		return in.queue.done(job)
 	}
 	delay := min(in.MinBackoff<<min(job.Attempts, 16), in.MaxBackoff)
 	log.Warn("tty upload failed, retrying", "err", err, "in", delay.String())
-	return in.queue.retry(job.Session, time.Now().Add(delay))
+	return in.queue.retry(job, time.Now().Add(delay))
 }
 
 // openTTYRoot opens the TTY directory on first use: Cowrie creates it

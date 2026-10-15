@@ -13,7 +13,9 @@ type ttyJob struct {
 	NextTry  time.Time `json:"next_try"`
 }
 
-// ttyQueue is the persistent list of pending uploads, one per session.
+// ttyQueue is the persistent list of pending uploads, one per recording
+// file of a session: a session has a recording per SSH channel, and
+// channels that ran the same input share Cowrie's file.
 type ttyQueue struct {
 	path   string
 	mu     sync.Mutex
@@ -35,7 +37,7 @@ func (q *ttyQueue) add(jobs ...ttyJob) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for _, j := range jobs {
-		if q.find(j.Session) < 0 {
+		if q.find(j) < 0 {
 			q.jobs = append(q.jobs, j)
 		}
 	}
@@ -63,21 +65,21 @@ func (q *ttyQueue) next(now time.Time) (ttyJob, bool, bool) {
 	return j, true, !j.NextTry.After(now)
 }
 
-// done removes the job of a session and saves the queue.
-func (q *ttyQueue) done(session string) error {
+// done removes a job and saves the queue.
+func (q *ttyQueue) done(job ttyJob) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if i := q.find(session); i >= 0 {
+	if i := q.find(job); i >= 0 {
 		q.jobs = append(q.jobs[:i], q.jobs[i+1:]...)
 	}
 	return saveJSON(q.path, q.jobs)
 }
 
-// retry postpones the job of a session and saves the queue.
-func (q *ttyQueue) retry(session string, at time.Time) error {
+// retry postpones a job and saves the queue.
+func (q *ttyQueue) retry(job ttyJob, at time.Time) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if i := q.find(session); i >= 0 {
+	if i := q.find(job); i >= 0 {
 		q.jobs[i].Attempts++
 		q.jobs[i].NextTry = at
 	}
@@ -90,9 +92,10 @@ func (q *ttyQueue) len() int {
 	return len(q.jobs)
 }
 
-func (q *ttyQueue) find(session string) int {
+// find returns the index of the job of the same recording file.
+func (q *ttyQueue) find(job ttyJob) int {
 	for i, j := range q.jobs {
-		if j.Session == session {
+		if j.Session == job.Session && j.TTYLog == job.TTYLog {
 			return i
 		}
 	}

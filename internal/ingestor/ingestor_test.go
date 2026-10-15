@@ -25,6 +25,7 @@ type fakeSink struct {
 	events     []protocol.Event
 	ttys       map[string]string // session -> content
 	ttyMeta    map[string]protocol.TTYMeta
+	uploads    []protocol.TTYMeta // every upload, in order
 	failEvents int
 	failTTY    int
 	ttyErr     error
@@ -66,6 +67,7 @@ func (s *fakeSink) SendTTY(_ context.Context, m protocol.TTYMeta, body io.Reader
 	}
 	s.ttys[m.Session] = string(data)
 	s.ttyMeta[m.Session] = m
+	s.uploads = append(s.uploads, m)
 	return protocol.TTYResult{Status: protocol.TTYStored, SHA256: m.SHA256}, nil
 }
 
@@ -276,6 +278,26 @@ func TestTTYUpload(t *testing.T) {
 	}
 	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
 	waitFor(t, "empty queue", func() bool { q, _ = loadTTYQueue(q.path); return q.len() == 0 })
+}
+
+// A session has a recording per SSH channel: bots run one command per
+// exec channel. Each file is uploaded, even within one batch.
+func TestTTYUploadPerChannel(t *testing.T) {
+	f := newFixture(t)
+	a := writeTTY(t, f, "Linux svr04\r\n")
+	b := writeTTY(t, f, "root\r\n")
+	f.write(t, LogName, logClosedEvent("s1", a), logClosedEvent("s1", b), logClosedEvent("s1", a))
+	f.start(t, f.config(f.sink))
+	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
+	waitFor(t, "uploads", func() bool { q, _ = loadTTYQueue(q.path); return eventCount(f.sink)() == 3 && q.len() == 0 })
+	f.sink.mu.Lock()
+	defer f.sink.mu.Unlock()
+	// The third channel ran the same input as the first: same Cowrie file,
+	// queued once while pending (the API links it to both channels).
+	if len(f.sink.uploads) != 2 || f.sink.uploads[0].Session != "s1" || f.sink.uploads[1].Session != "s1" ||
+		f.sink.uploads[0].SHA256 == f.sink.uploads[1].SHA256 {
+		t.Errorf("uploads = %+v", f.sink.uploads)
+	}
 }
 
 // A failed upload stays queued across restarts and is retried.
