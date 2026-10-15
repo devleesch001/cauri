@@ -246,6 +246,10 @@ function open(country: string, city?: string) {
 }
 
 .bottom :deep(.filters > *) {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 2.9rem;
   padding: 3px;
   background: color-mix(in srgb, var(--c-surface) 90%, transparent);
   backdrop-filter: blur(6px);
@@ -262,7 +266,13 @@ function open(country: string, city?: string) {
 }
 
 .bottom :deep(.filters .toggle) {
-  padding: 3px var(--space-2);
+  padding: 3px var(--space-3);
+}
+
+/* The clear button is a card like the others, not a bare text button. */
+.bottom :deep(.filters > .p-button) {
+  padding: 3px var(--space-3);
+  color: var(--c-ink);
 }
 
 .notices {
