@@ -198,7 +198,7 @@ func (s *Service) StoreTTY(ctx context.Context, sensorID string, m protocol.TTYM
 		return res, err
 	}
 	if sess.TTYSHA256 != nil && *sess.TTYSHA256 != m.SHA256 {
-		return res, ErrTTYConflict
+		return res, fmt.Errorf("%w: stored %s", ErrTTYConflict, *sess.TTYSHA256)
 	}
 
 	exists, err := s.db.NewSelect().Model((*store.TTYFile)(nil)).Where("sha256 = ?", m.SHA256).Exists(ctx)

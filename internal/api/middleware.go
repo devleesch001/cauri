@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/render"
 
 	"github.com/devleesch001/cauri/internal/auth"
 )
@@ -30,13 +29,13 @@ func (s *server) ingestAuth(next http.Handler) http.Handler {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok || token == "" {
 			w.Header().Set("WWW-Authenticate", "Bearer")
-			render.Render(w, r, errorOf(http.StatusUnauthorized, "missing bearer token"))
+			s.refuse(w, r, http.StatusUnauthorized, "missing bearer token", "remote", r.RemoteAddr)
 			return
 		}
 		sensor, err := s.Tokens.Authenticate(r.Context(), token)
 		if errors.Is(err, auth.ErrUnauthorized) {
 			w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-			render.Render(w, r, errorOf(http.StatusUnauthorized, err.Error()))
+			s.refuse(w, r, http.StatusUnauthorized, err.Error(), "remote", r.RemoteAddr)
 			return
 		}
 		if err != nil {

@@ -17,6 +17,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -175,8 +176,27 @@ func TestIngestAuth(t *testing.T) {
 	}
 }
 
+// syncBuffer collects logs written by the server's goroutines.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
 func TestTTYErrors(t *testing.T) {
-	e := setup(t, storetest.SQLite(t), nil)
+	var logs syncBuffer
+	e := setup(t, storetest.SQLite(t), func(c *api.Config) { c.Logger = slog.New(slog.NewJSONHandler(&logs, nil)) })
 	ctx := context.Background()
 	if _, err := e.client.SendEvents(ctx, events("hp-01")); err != nil {
 		t.Fatal(err)
@@ -216,6 +236,18 @@ func TestTTYErrors(t *testing.T) {
 	m = protocol.TTYMeta{SensorID: "hp-01", Session: "a1b2c3d4e5f6", SHA256: hex.EncodeToString(other[:]), Size: 5}
 	if _, err := e.client.SendTTY(ctx, m, strings.NewReader("other")); statusOf(err) != http.StatusConflict {
 		t.Errorf("conflict: %v", err)
+	}
+	// The log says which sensor, session and recordings, which the request
+	// log alone does not.
+	var refused map[string]any
+	for line := range strings.SplitSeq(logs.String(), "\n") {
+		if strings.Contains(line, `"status":409`) && strings.Contains(line, "ingestion refused") {
+			_ = json.Unmarshal([]byte(line), &refused)
+		}
+	}
+	if refused["sensor"] != "hp-01" || refused["session"] != "a1b2c3d4e5f6" || refused["sha256"] != m.SHA256 ||
+		!strings.Contains(fmt.Sprint(refused["reason"]), "stored "+ttySHA()) {
+		t.Errorf("conflict log = %v\nlogs:\n%s", refused, logs.String())
 	}
 }
 
