@@ -75,6 +75,14 @@ func runAPI(ctx context.Context, args []string) error {
 			if n > 0 {
 				log.Info("located stored sessions", "sessions", n)
 			}
+			// Then the coordinates of sessions located before they were stored.
+			n, err = svc.PlaceSessions(ctx)
+			if err != nil && ctx.Err() == nil {
+				log.Error("placing stored sessions", "err", err)
+			}
+			if n > 0 {
+				log.Info("placed stored sessions", "sessions", n)
+			}
 		}()
 	}
 	// Sessions judged by older criteria, or before verdicts were stored.

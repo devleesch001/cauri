@@ -233,9 +233,9 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 	for _, col := range []string{"ended_at", "duration_ms", "tty_log", "tty_duration_ms"} {
 		q = q.Set(col + " = COALESCE(EXCLUDED." + col + ", ?TableAlias." + col + ")")
 	}
-	// A located session keeps its location: the three columns come from
-	// the same lookup, the first one.
-	for _, col := range []string{"geo_country", "geo_city", "geo_source"} {
+	// A located session keeps its location: the columns come from the same
+	// lookup, the first one.
+	for _, col := range []string{"geo_country", "geo_city", "geo_lat", "geo_lon", "geo_source"} {
 		q = q.Set(col + " = CASE WHEN ?TableAlias.geo_source IS NULL THEN EXCLUDED." + col + " ELSE ?TableAlias." + col + " END")
 	}
 	var out []struct {
@@ -262,6 +262,9 @@ func (w *batchWriter) locate(s *store.Session) {
 	if ok {
 		s.GeoCountry = &loc.Country
 		s.GeoCity = nullable(loc.City)
+		if loc.HasCoords {
+			s.GeoLat, s.GeoLon = &loc.Lat, &loc.Lon
+		}
 	}
 }
 

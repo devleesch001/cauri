@@ -258,6 +258,9 @@ func (s *Service) LocateSessions(ctx context.Context) (int, error) {
 					Set("geo_source = ?", source).Where("id = ?", r.ID).Where("geo_source IS NULL")
 				if ok {
 					q = q.Set("geo_country = ?", loc.Country).Set("geo_city = ?", nullable(loc.City))
+					if loc.HasCoords {
+						q = q.Set("geo_lat = ?", loc.Lat).Set("geo_lon = ?", loc.Lon)
+					}
 				}
 				if _, err := q.Exec(ctx); err != nil {
 					return err
@@ -269,6 +272,47 @@ func (s *Service) LocateSessions(ctx context.Context) (int, error) {
 			return total, err
 		}
 		total += len(rows)
+	}
+}
+
+// PlaceSessions gives coordinates to the sessions located with a city but
+// none, such as before cauri stored them, and returns how many it placed.
+// The location of a session is the one of its time: coordinates are only
+// taken from the current database where it gives the same country and
+// city, so that a point never contradicts the name shown.
+func (s *Service) PlaceSessions(ctx context.Context) (int, error) {
+	if s.locator == nil {
+		return 0, nil
+	}
+	placed := 0
+	var after int64 // sessions left without coordinates are passed once
+	for {
+		var rows []store.Session
+		err := s.db.NewSelect().Model(&rows).Column("id", "src_ip", "geo_country", "geo_city").
+			Where("geo_city IS NOT NULL").Where("geo_lat IS NULL").Where("src_ip IS NOT NULL").
+			Where("id > ?", after).OrderExpr("s.id").Limit(locateBatch).Scan(ctx)
+		if err != nil || len(rows) == 0 {
+			return placed, err
+		}
+		after = rows[len(rows)-1].ID
+		err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+			for _, r := range rows {
+				loc, _, ok := s.locator.Locate(*r.SrcIP)
+				if !ok || !loc.HasCoords || loc.Country != *r.GeoCountry || loc.City != *r.GeoCity {
+					continue
+				}
+				if _, err := tx.NewUpdate().Model((*store.Session)(nil)).
+					Set("geo_lat = ?", loc.Lat).Set("geo_lon = ?", loc.Lon).
+					Where("id = ?", r.ID).Where("geo_lat IS NULL").Exec(ctx); err != nil {
+					return err
+				}
+				placed++
+			}
+			return nil
+		})
+		if err != nil {
+			return placed, err
+		}
 	}
 }
 

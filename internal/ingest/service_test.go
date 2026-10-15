@@ -505,11 +505,18 @@ func TestParseLenient(t *testing.T) {
 
 // fakeLocator locates 203.0.113.0/24 in Iran; its source can change, as
 // an updated database would.
-type fakeLocator struct{ source string }
+type fakeLocator struct {
+	source string
+	city   string // Tehran if empty
+}
 
 func (f *fakeLocator) Locate(ip string) (geoip.Location, string, bool) {
 	if strings.HasPrefix(ip, "203.0.113.") {
-		return geoip.Location{Country: "IR", City: "Tehran"}, f.source, true
+		city := f.city
+		if city == "" {
+			city = "Tehran"
+		}
+		return geoip.Location{Country: "IR", City: city, Lat: 35.69, Lon: 51.42, HasCoords: true}, f.source, true
 	}
 	return geoip.Location{}, f.source, false
 }
@@ -525,8 +532,9 @@ func TestIngestLocates(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := getSession(t, db, sensor, "s1")
-		if s.GeoCountry == nil || *s.GeoCountry != "IR" || *s.GeoCity != "Tehran" || *s.GeoSource != "DBIP-City-Lite 2026-10-01" {
-			t.Fatalf("located session = %v %v %v", s.GeoCountry, s.GeoCity, s.GeoSource)
+		if s.GeoCountry == nil || *s.GeoCountry != "IR" || *s.GeoCity != "Tehran" || *s.GeoSource != "DBIP-City-Lite 2026-10-01" ||
+			s.GeoLat == nil || *s.GeoLat != 35.69 || *s.GeoLon != 51.42 {
+			t.Fatalf("located session = %v %v %v %v", s.GeoCountry, s.GeoCity, s.GeoSource, s.GeoLat)
 		}
 
 		// A later batch, with an updated database, keeps the first location.
@@ -660,6 +668,47 @@ func TestJudgeMissingRecording(t *testing.T) {
 		}
 		if res, err := svc.JudgeSession(ctx, sessionID(t, db, sensor, "a1b2c3d4e5f6")); err != nil || res.Verdict == "" {
 			t.Errorf("on read: %+v, %v", res, err)
+		}
+	})
+}
+
+// Sessions located before coordinates were stored get them, only where
+// the current database gives the same city.
+func TestPlaceSessions(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		for _, sess := range []string{"a", "b", "c"} {
+			if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, sess, 0, nil))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// As located by an older cauri: a, b in Tehran, c in Mashhad, no
+		// coordinates.
+		for sess, city := range map[string]string{"a": "Tehran", "b": "Tehran", "c": "Mashhad"} {
+			if _, err := db.NewUpdate().Model((*store.Session)(nil)).
+				Set("geo_country = 'IR'").Set("geo_city = ?", city).Set("geo_source = 'old'").
+				Where("id = ?", sessionID(t, db, sensor, sess)).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if n, err := svc.PlaceSessions(ctx); n != 0 || err != nil {
+			t.Fatalf("without locator: %d, %v", n, err)
+		}
+		svc.SetLocator(&fakeLocator{source: "new"})
+		if n, err := svc.PlaceSessions(ctx); n != 2 || err != nil {
+			t.Fatalf("placed %d, %v", n, err)
+		}
+		if s := getSession(t, db, sensor, "b"); s.GeoLat == nil || *s.GeoLat != 35.69 || *s.GeoSource != "old" {
+			t.Errorf("session b = %v %v", s.GeoLat, *s.GeoSource)
+		}
+		// The database now says Tehran for c's address: c keeps its city
+		// and stays without a point.
+		if s := getSession(t, db, sensor, "c"); s.GeoLat != nil || *s.GeoCity != "Mashhad" {
+			t.Errorf("session c = %v %v", s.GeoLat, *s.GeoCity)
+		}
+		if n, err := svc.PlaceSessions(ctx); n != 0 || err != nil {
+			t.Errorf("second run placed %d, %v", n, err)
 		}
 	})
 }

@@ -13,9 +13,11 @@ import (
 	"github.com/maxmind/mmdbwriter/mmdbtype"
 )
 
-// Network is a range of addresses with its location.
+// Network is a range of addresses with its location. A network with a
+// city also gets its coordinates, as in city databases.
 type Network struct {
 	CIDR, Country, City string
+	Lat, Lon            float64
 }
 
 // Write writes a database of the given type (such as "DBIP-City-Lite")
@@ -38,6 +40,7 @@ func Write(t testing.TB, dir, dbType string, built time.Time, networks ...Networ
 		rec := mmdbtype.Map{"country": mmdbtype.Map{"iso_code": mmdbtype.String(n.Country)}}
 		if n.City != "" {
 			rec["city"] = mmdbtype.Map{"names": mmdbtype.Map{"en": mmdbtype.String(n.City)}}
+			rec["location"] = mmdbtype.Map{"latitude": mmdbtype.Float64(n.Lat), "longitude": mmdbtype.Float64(n.Lon)}
 		}
 		if err := tree.Insert(ipnet, rec); err != nil {
 			t.Fatal(err)

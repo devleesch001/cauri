@@ -26,6 +26,10 @@ import (
 type Location struct {
 	Country string // ISO 3166-1 alpha-2 code, such as "IR"
 	City    string // in English, empty if the database has no cities
+	// Lat and Lon are the coordinates of the city (or region), set only if
+	// HasCoords: country databases have none.
+	Lat, Lon  float64
+	HasCoords bool
 }
 
 // Info describes the loaded database, for display and attribution.
@@ -50,6 +54,10 @@ type record struct {
 	City struct {
 		Names map[string]string `maxminddb:"names"`
 	} `maxminddb:"city"`
+	Location struct {
+		Latitude  *float64 `maxminddb:"latitude"`
+		Longitude *float64 `maxminddb:"longitude"`
+	} `maxminddb:"location"`
 }
 
 // DB is an MMDB database, reloaded when its file changes.
@@ -127,7 +135,11 @@ func (d *DB) Locate(ip string) (loc Location, source string, ok bool) {
 	if !res.Found() || res.Decode(&rec) != nil || rec.Country.ISOCode == "" {
 		return loc, source, false
 	}
-	return Location{Country: rec.Country.ISOCode, City: rec.City.Names["en"]}, source, true
+	loc = Location{Country: rec.Country.ISOCode, City: rec.City.Names["en"]}
+	if lat, lon := rec.Location.Latitude, rec.Location.Longitude; lat != nil && lon != nil {
+		loc.Lat, loc.Lon, loc.HasCoords = *lat, *lon, true
+	}
+	return loc, source, true
 }
 
 // Watch reloads the database when its file changes, checking every

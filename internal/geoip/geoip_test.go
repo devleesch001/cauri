@@ -18,7 +18,7 @@ var (
 
 func TestLocate(t *testing.T) {
 	path := geoiptest.Write(t, t.TempDir(), "DBIP-City-Lite", oct1,
-		geoiptest.Network{CIDR: "5.160.0.0/16", Country: "IR", City: "Tehran"},
+		geoiptest.Network{CIDR: "5.160.0.0/16", Country: "IR", City: "Tehran", Lat: 35.6944, Lon: 51.4215},
 		geoiptest.Network{CIDR: "2.13.0.0/16", Country: "FR"},
 	)
 	d, err := Open(path, quiet)
@@ -30,14 +30,15 @@ func TestLocate(t *testing.T) {
 	if i := d.Info(); i.Provider != "db-ip" || i.Source() != "DBIP-City-Lite 2026-10-01" {
 		t.Errorf("info = %+v", i)
 	}
+	tehran := Location{Country: "IR", City: "Tehran", Lat: 35.6944, Lon: 51.4215, HasCoords: true}
 	cases := map[string]struct {
 		loc Location
 		ok  bool
 	}{
-		"5.160.3.4":        {Location{"IR", "Tehran"}, true},
-		"2.13.0.1":         {Location{"FR", ""}, true},
-		"::ffff:5.160.3.4": {Location{"IR", "Tehran"}, true}, // IPv4-mapped
-		"203.0.113.7":      {Location{}, false},              // not in the database
+		"5.160.3.4":        {tehran, true},
+		"2.13.0.1":         {Location{Country: "FR"}, true}, // no city, no coordinates
+		"::ffff:5.160.3.4": {tehran, true},                  // IPv4-mapped
+		"203.0.113.7":      {Location{}, false},             // not in the database
 		"not an ip":        {Location{}, false},
 	}
 	for ip, c := range cases {
