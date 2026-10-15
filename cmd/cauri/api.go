@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -40,6 +41,7 @@ func runAPI(ctx context.Context, args []string) error {
 	retention := fs.Int("raw-retention-days", 0, "delete the raw Cowrie lines of events older than this many days, keeping sessions and their details; 0 keeps them")
 	adminPassword := fs.String("admin-password", "", "password of the administration pages; a random one is generated and logged at each start if neither it nor --admin-password-file is set")
 	adminPasswordFile := fs.String("admin-password-file", "", "file holding the password of the administration pages, such as a container secret")
+	trustedProxies := fs.String("trusted-proxies", "", "comma-separated addresses or CIDR ranges of reverse proxies whose X-Forwarded-For names the client, to limit password guesses per client; empty ignores the header")
 	logLevel := fs.String("log-level", "info", "log level: debug, info, warn or error")
 	if err := envflag.Parse(fs, args); err != nil {
 		return err
@@ -53,6 +55,10 @@ func runAPI(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	proxies, err := parsePrefixes(*trustedProxies)
+	if err != nil {
+		return fmt.Errorf("--trusted-proxies: %w", err)
+	}
 	conn, err := db.open(ctx)
 	if err != nil {
 		return err
@@ -65,13 +71,14 @@ func runAPI(ctx context.Context, args []string) error {
 
 	svc := ingest.New(conn, tty, *maxTTY)
 	cfg := api.Config{
-		DB:      conn,
-		Ingest:  svc,
-		TTY:     tty,
-		Tokens:  auth.NewTokens(conn),
-		Admin:   auth.NewAdmin(admin),
-		Logger:  log,
-		Version: buildVersion(),
+		DB:             conn,
+		Ingest:         svc,
+		TTY:            tty,
+		Tokens:         auth.NewTokens(conn),
+		Admin:          auth.NewAdmin(admin),
+		TrustedProxies: proxies,
+		Logger:         log,
+		Version:        buildVersion(),
 	}
 	if *geoDB != "" {
 		geo, err := geoip.Open(*geoDB, log)
@@ -198,4 +205,25 @@ func adminPasswordOf(password, file string, log *slog.Logger) (string, error) {
 	log.Warn("administration password generated: it changes at each start, set CAURI_ADMIN_PASSWORD or CAURI_ADMIN_PASSWORD_FILE to keep one",
 		"password", password)
 	return password, nil
+}
+
+// parsePrefixes reads a comma-separated list of addresses and CIDR ranges.
+func parsePrefixes(list string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, item := range strings.Split(list, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(item); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(item)
+		if err != nil {
+			return nil, fmt.Errorf("%q: want an address or a CIDR range", item)
+		}
+		out = append(out, netip.PrefixFrom(a, a.BitLen()))
+	}
+	return out, nil
 }

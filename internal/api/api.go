@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/netip"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -51,6 +52,10 @@ type Config struct {
 	// Admin opens the administration routes (/api/admin) to the holder of
 	// its password; nil leaves them out.
 	Admin *auth.Admin
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For header
+	// names the client, to limit password guesses per client; empty, the
+	// header is ignored and the client is the connection's address.
+	TrustedProxies []netip.Prefix
 	// ReadAuth protects the read endpoints. Nil lets every request through;
 	// UI authentication will plug in here.
 	ReadAuth func(http.Handler) http.Handler

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"testing"
@@ -58,9 +59,6 @@ func TestAdmin(t *testing.T) {
 		// Signing in.
 		if c := code("POST", "/api/admin/login", `{"password":"s3cret"}`, nil, false); c != http.StatusForbidden {
 			t.Errorf("login without the header = %d", c)
-		}
-		if c := code("POST", "/api/admin/login", `{"password":"wrong"}`, nil, true); c != http.StatusUnauthorized {
-			t.Errorf("wrong password = %d", c)
 		}
 		if c := code("POST", "/api/admin/login", `not json`, nil, true); c != http.StatusBadRequest {
 			t.Errorf("bad body = %d", c)
@@ -141,26 +139,63 @@ func TestAdmin(t *testing.T) {
 		if logout.code != http.StatusNoContent || len(logout.cookies) != 1 || logout.cookies[0].MaxAge >= 0 {
 			t.Errorf("logout = %d, cookies %v", logout.code, logout.cookies)
 		}
+
+		// Last: a wrong guess blocks this client for a while.
+		if c := code("POST", "/api/admin/login", `{"password":"wrong"}`, nil, true); c != http.StatusUnauthorized {
+			t.Errorf("wrong password = %d", c)
+		}
 	})
 }
 
-// Guesses are checked one at a time: while a wrong one is held, even the
-// right password is refused, so a burst cannot try many at once.
-func TestAdminGuessesOneAtATime(t *testing.T) {
+// login signs in from the client forwardedFor names, through the test
+// server, a trusted proxy when the test sets it.
+func login(t *testing.T, e *env, password, forwardedFor string) int {
+	t.Helper()
+	req, err := http.NewRequest("POST", e.srv.URL+"/api/admin/login", strings.NewReader(`{"password":"`+password+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.AdminHeader, "1")
+	req.Header.Set("X-Forwarded-For", forwardedFor)
+	resp, err := e.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode
+}
+
+// A wrong guess blocks its client for a second, and only it: a burst of
+// guesses cannot try many at once, nor lock others out.
+func TestAdminGuessesPerClient(t *testing.T) {
+	e := setup(t, storetest.SQLite(t), func(c *api.Config) {
+		c.Admin = auth.NewAdmin("s3cret")
+		c.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
+	})
+	if c := login(t, e, "guess", "198.51.100.1"); c != http.StatusUnauthorized {
+		t.Fatalf("wrong guess = %d", c)
+	}
+	if c := login(t, e, "s3cret", "198.51.100.1"); c != http.StatusTooManyRequests {
+		t.Errorf("same client right after = %d, want 429", c)
+	}
+	if c := login(t, e, "s3cret", "198.51.100.2"); c != http.StatusNoContent {
+		t.Errorf("another client = %d", c)
+	}
+	time.Sleep(time.Second)
+	if c := login(t, e, "s3cret", "198.51.100.1"); c != http.StatusNoContent {
+		t.Errorf("same client a second later = %d", c)
+	}
+}
+
+// Without trusted proxies, X-Forwarded-For cannot make a guesser another
+// client.
+func TestAdminForwardedForIgnored(t *testing.T) {
 	e := setup(t, storetest.SQLite(t), func(c *api.Config) { c.Admin = auth.NewAdmin("s3cret") })
-	wrong := make(chan int)
-	go func() {
-		wrong <- adminDo(t, e, "POST", "/api/admin/login", `{"password":"guess"}`, nil, true).code
-	}()
-	time.Sleep(200 * time.Millisecond) // the wrong guess holds the turn
-	if c := adminDo(t, e, "POST", "/api/admin/login", `{"password":"s3cret"}`, nil, true).code; c != http.StatusTooManyRequests {
-		t.Errorf("attempt during a wrong one = %d, want 429", c)
+	if c := login(t, e, "guess", "198.51.100.1"); c != http.StatusUnauthorized {
+		t.Fatalf("wrong guess = %d", c)
 	}
-	if c := <-wrong; c != http.StatusUnauthorized {
-		t.Errorf("wrong guess = %d", c)
-	}
-	if c := adminDo(t, e, "POST", "/api/admin/login", `{"password":"s3cret"}`, nil, true).code; c != http.StatusNoContent {
-		t.Errorf("attempt after = %d", c)
+	if c := login(t, e, "s3cret", "198.51.100.2"); c != http.StatusTooManyRequests {
+		t.Errorf("forged other client = %d, want 429", c)
 	}
 }
 

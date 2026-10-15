@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,15 +29,54 @@ const (
 	AdminHeader = "X-Cauri-Admin"
 )
 
-// failedLoginDelay slows guessing the password: sign-in attempts are
-// checked one at a time, whatever address they come from (behind a proxy
-// they all share its address), and a wrong one holds the turn this long.
-// Attempts arriving meanwhile are refused at once, not queued: at most one
-// guess per delay, without piling requests up.
+// failedLoginDelay slows guessing the password, per client (see
+// clientOf): its attempts are checked one at a time, and a wrong one
+// blocks it this long. Attempts arriving meanwhile are refused at once,
+// not queued: at most one guess per delay and client, without piling
+// requests up, and other clients can still sign in.
 const failedLoginDelay = time.Second
 
+// maxGuessers is the number of clients past which those no longer
+// blocked are forgotten.
+const maxGuessers = 1024
+
 type adminState struct {
-	attempt sync.Mutex // held while an attempt is checked
+	mu sync.Mutex
+	// Clients with an attempt being checked (zero time) or blocked until
+	// the time given.
+	busy map[netip.Prefix]time.Time
+}
+
+// take reserves the turn of client c, false if it is checking or blocked.
+func (a *adminState) take(c netip.Prefix, now time.Time) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if until, ok := a.busy[c]; ok && (until.IsZero() || now.Before(until)) {
+		return false
+	}
+	if a.busy == nil {
+		a.busy = map[netip.Prefix]time.Time{}
+	}
+	if len(a.busy) >= maxGuessers {
+		for k, until := range a.busy {
+			if !until.IsZero() && !now.Before(until) {
+				delete(a.busy, k)
+			}
+		}
+	}
+	a.busy[c] = time.Time{}
+	return true
+}
+
+// done ends the turn of c: a wrong guess blocks it for failedLoginDelay.
+func (a *adminState) done(c netip.Prefix, wrong bool, now time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if wrong {
+		a.busy[c] = now.Add(failedLoginDelay)
+	} else {
+		delete(a.busy, c)
+	}
 }
 
 // adminSession refuses requests without a valid session, and changes
@@ -76,17 +116,18 @@ func (s *server) adminLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "want a JSON body with a password")
 		return
 	}
-	// Taken before checking: checked first, a burst of guesses would all be
-	// answered, the right one at once.
-	if !s.admin.attempt.TryLock() {
+	// The turn is taken before checking: checked first, a burst of guesses
+	// would all be answered, the right one at once.
+	client := s.clientOf(r)
+	if !s.admin.take(client, time.Now()) {
 		w.Header().Set("Retry-After", "1")
-		writeError(w, http.StatusTooManyRequests, "another sign-in attempt is being checked, retry in a second")
+		writeError(w, http.StatusTooManyRequests, "too many sign-in attempts, retry in a second")
 		return
 	}
-	defer s.admin.attempt.Unlock()
-	if !s.Admin.Check(in.Password) {
-		time.Sleep(failedLoginDelay)
-		s.Logger.Warn("failed administration login", "remote", r.RemoteAddr)
+	ok := s.Admin.Check(in.Password)
+	s.admin.done(client, !ok, time.Now())
+	if !ok {
+		s.Logger.Warn("failed administration login", "client", client.String(), "remote", r.RemoteAddr)
 		writeError(w, http.StatusUnauthorized, "wrong password")
 		return
 	}
