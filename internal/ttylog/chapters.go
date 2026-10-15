@@ -76,7 +76,7 @@ func Chapters(r io.ReadSeeker, cmds []Command) (Summary, error) {
 			m.enter(rec.Time)
 		}
 	}
-	enters := m.finish()
+	enters, typed := m.finish()
 	if sum.Records == 0 {
 		return sum, ErrTruncated
 	}
@@ -88,6 +88,9 @@ func Chapters(r io.ReadSeeker, cmds []Command) (Summary, error) {
 	budget := MaxTotalOutput
 	for i, cmd := range cmds {
 		segs[i].enter = enters[i]
+		// Without an Enter key, the command was not typed: it ran on an
+		// exec channel, which echoes nothing.
+		segs[i].exec = !typed[i]
 		segs[i].budget = &budget
 		segs[i].Chapter = Chapter{Time: max(cmd.Time.Sub(start), 0), Command: cmd.Input}
 	}
@@ -125,55 +128,59 @@ func Chapters(r io.ReadSeeker, cmds []Command) (Summary, error) {
 // both in time order, so the closest key is the last one before the
 // command or the first one after it: one merge pass, nothing stored.
 type enterMatcher struct {
-	cmds []Command
-	out  []time.Time
-	prev time.Time
-	seen bool // prev is set
-	j    int  // next command to match
+	cmds  []Command
+	out   []time.Time
+	found []bool // an Enter key was matched
+	prev  time.Time
+	seen  bool // prev is set
+	j     int  // next command to match
 }
 
 func newEnterMatcher(cmds []Command) *enterMatcher {
-	return &enterMatcher{cmds: cmds, out: make([]time.Time, len(cmds))}
+	return &enterMatcher{cmds: cmds, out: make([]time.Time, len(cmds)), found: make([]bool, len(cmds))}
 }
 
 // enter takes the next Enter key of the recording, at t.
 func (m *enterMatcher) enter(t time.Time) {
 	for m.j < len(m.cmds) && m.cmds[m.j].Time.Before(t) {
-		m.out[m.j] = m.closest(m.cmds[m.j].Time, &t)
+		m.out[m.j], m.found[m.j] = m.closest(m.cmds[m.j].Time, &t)
 		m.j++
 	}
 	m.prev, m.seen = t, true
 }
 
-// finish matches the commands logged after the last Enter key.
-func (m *enterMatcher) finish() []time.Time {
+// finish matches the commands logged after the last Enter key, and
+// returns the time of each command's Enter key, and whether it had one.
+func (m *enterMatcher) finish() ([]time.Time, []bool) {
 	for ; m.j < len(m.cmds); m.j++ {
-		m.out[m.j] = m.closest(m.cmds[m.j].Time, nil)
+		m.out[m.j], m.found[m.j] = m.closest(m.cmds[m.j].Time, nil)
 	}
-	return m.out
+	return m.out, m.found
 }
 
 // closest picks, for a command logged at t, the previous Enter key or the
-// next one (nil if none), whichever is closer and within enterWindow.
-func (m *enterMatcher) closest(t time.Time, next *time.Time) time.Time {
-	best, gap := t, enterWindow
+// next one (nil if none), whichever is closer and within enterWindow; t
+// itself, and false, if neither is.
+func (m *enterMatcher) closest(t time.Time, next *time.Time) (time.Time, bool) {
+	best, gap, found := t, enterWindow, false
 	if m.seen {
 		if d := t.Sub(m.prev); d <= gap {
-			best, gap = m.prev, d
+			best, gap, found = m.prev, d, true
 		}
 	}
 	if next != nil {
 		if d := next.Sub(t); d < gap {
-			best = *next
+			best, found = *next, true
 		}
 	}
-	return best
+	return best, found
 }
 
 // segment collects the output of one chapter.
 type segment struct {
 	Chapter
 	enter    time.Time
+	exec     bool // run on an exec channel: no echo, and its input is the command
 	echoDone bool // the line feed ending the echo of the command was seen
 	stopped  bool // a key was typed after the output: the next command
 	raw      []byte
@@ -186,7 +193,7 @@ func (s *segment) add(rec Record) {
 	}
 	if rec.Dir == DirInput {
 		// Keys typed before the echo ended belong to this command line.
-		if s.echoDone {
+		if s.echoDone && !s.exec {
 			s.stopped = true
 		}
 		return
@@ -195,7 +202,7 @@ func (s *segment) add(rec Record) {
 		return
 	}
 	data := rec.Data
-	if !s.echoDone {
+	if !s.echoDone && !s.exec {
 		i := strings.IndexByte(string(data), '\n')
 		if i < 0 {
 			return // still the echo
