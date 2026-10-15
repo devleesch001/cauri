@@ -378,10 +378,10 @@ Signing in opens a session for 12 hours, in a cookie restricted to
 `/api/admin` and to HTTPS (browsers accept it on `http://localhost` too);
 changing the password ends every session.
 
-Password guesses are limited per client: its attempts are checked one at
-a time, and a wrong one blocks it for a second (429 until then); other
-clients can still sign in. Behind a reverse proxy every request comes
-from the proxy's address, so they would all count as one client: set
+Sign-in attempts are limited per client to 10 a minute (429 with
+`Retry-After` past that); other clients can still sign in. Behind a
+reverse proxy every request comes from the proxy's address, so they
+would all count as one client: set
 `CAURI_TRUSTED_PROXIES` to the proxy's address or network (with the
 compose files, the range of the Docker network Traefik reaches the API
 on). The client is then the address the proxy adds to

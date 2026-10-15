@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/uptrace/bun"
 
@@ -165,25 +164,33 @@ func login(t *testing.T, e *env, password, forwardedFor string) int {
 	return resp.StatusCode
 }
 
-// A wrong guess blocks its client for a second, and only it: a burst of
-// guesses cannot try many at once, nor lock others out.
+// Sign-in attempts are limited per client: past the limit even the right
+// password is refused, while another client can still sign in.
 func TestAdminGuessesPerClient(t *testing.T) {
 	e := setup(t, storetest.SQLite(t), func(c *api.Config) {
 		c.Admin = auth.NewAdmin("s3cret")
 		c.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
 	})
-	if c := login(t, e, "guess", "198.51.100.1"); c != http.StatusUnauthorized {
-		t.Fatalf("wrong guess = %d", c)
+	for i := range 10 {
+		if c := login(t, e, "guess", "198.51.100.1"); c != http.StatusUnauthorized {
+			t.Fatalf("guess %d = %d", i, c)
+		}
 	}
 	if c := login(t, e, "s3cret", "198.51.100.1"); c != http.StatusTooManyRequests {
-		t.Errorf("same client right after = %d, want 429", c)
+		t.Errorf("same client past the limit = %d, want 429", c)
 	}
 	if c := login(t, e, "s3cret", "198.51.100.2"); c != http.StatusNoContent {
 		t.Errorf("another client = %d", c)
 	}
-	time.Sleep(time.Second)
-	if c := login(t, e, "s3cret", "198.51.100.1"); c != http.StatusNoContent {
-		t.Errorf("same client a second later = %d", c)
+	// An IPv6 client is its /64: other addresses in it share its limit.
+	for i := range 10 {
+		login(t, e, "guess", "2001:db8:0:1::"+strconv.Itoa(i+1))
+	}
+	if c := login(t, e, "s3cret", "2001:db8:0:1::ffff"); c != http.StatusTooManyRequests {
+		t.Errorf("same /64 past the limit = %d, want 429", c)
+	}
+	if c := login(t, e, "s3cret", "2001:db8:0:2::1"); c != http.StatusNoContent {
+		t.Errorf("another /64 = %d", c)
 	}
 }
 
@@ -191,11 +198,27 @@ func TestAdminGuessesPerClient(t *testing.T) {
 // client.
 func TestAdminForwardedForIgnored(t *testing.T) {
 	e := setup(t, storetest.SQLite(t), func(c *api.Config) { c.Admin = auth.NewAdmin("s3cret") })
-	if c := login(t, e, "guess", "198.51.100.1"); c != http.StatusUnauthorized {
-		t.Fatalf("wrong guess = %d", c)
+	for i := range 10 {
+		login(t, e, "guess", "198.51.100."+strconv.Itoa(i+1))
 	}
-	if c := login(t, e, "s3cret", "198.51.100.2"); c != http.StatusTooManyRequests {
+	if c := login(t, e, "s3cret", "198.51.100.99"); c != http.StatusTooManyRequests {
 		t.Errorf("forged other client = %d, want 429", c)
+	}
+	// Refused like any other error of the API, saying when to retry.
+	req, err := http.NewRequest("POST", e.srv.URL+"/api/admin/login", strings.NewReader(`{"password":"s3cret"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.AdminHeader, "1")
+	resp, err := e.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body struct{ Error string }
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil || body.Error == "" ||
+		resp.Header.Get("Content-Type") != "application/json" || resp.Header.Get("Retry-After") == "" {
+		t.Errorf("429 = %v %+v, headers %v", err, body, resp.Header)
 	}
 }
 

@@ -3,13 +3,13 @@ package api
 import (
 	"errors"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/go-chi/render"
 
 	"github.com/devleesch001/cauri/internal/auth"
@@ -29,54 +29,23 @@ const (
 	AdminHeader = "X-Cauri-Admin"
 )
 
-// failedLoginDelay slows guessing the password, per client (see
-// clientOf): its attempts are checked one at a time, and a wrong one
-// blocks it this long. Attempts arriving meanwhile are refused at once,
-// not queued: at most one guess per delay and client, without piling
-// requests up, and other clients can still sign in.
-const failedLoginDelay = time.Second
+// Password guesses are limited per client: adminLoginLimit attempts per
+// adminLoginWindow. The client is what the ClientIPFrom* middleware of chi
+// resolved (see New), its IPv6 addresses grouped by /64.
+const (
+	adminLoginLimit  = 10
+	adminLoginWindow = time.Minute
+)
 
-// maxGuessers is the number of clients past which those no longer
-// blocked are forgotten.
-const maxGuessers = 1024
-
-type adminState struct {
-	mu sync.Mutex
-	// Clients with an attempt being checked (zero time) or blocked until
-	// the time given.
-	busy map[netip.Prefix]time.Time
-}
-
-// take reserves the turn of client c, false if it is checking or blocked.
-func (a *adminState) take(c netip.Prefix, now time.Time) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if until, ok := a.busy[c]; ok && (until.IsZero() || now.Before(until)) {
-		return false
-	}
-	if a.busy == nil {
-		a.busy = map[netip.Prefix]time.Time{}
-	}
-	if len(a.busy) >= maxGuessers {
-		for k, until := range a.busy {
-			if !until.IsZero() && !now.Before(until) {
-				delete(a.busy, k)
-			}
-		}
-	}
-	a.busy[c] = time.Time{}
-	return true
-}
-
-// done ends the turn of c: a wrong guess blocks it for failedLoginDelay.
-func (a *adminState) done(c netip.Prefix, wrong bool, now time.Time) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if wrong {
-		a.busy[c] = now.Add(failedLoginDelay)
-	} else {
-		delete(a.busy, c)
-	}
+// adminLoginLimiter limits sign-in attempts per client, answering 429.
+func adminLoginLimiter() func(http.Handler) http.Handler {
+	return httprate.LimitBy(adminLoginLimit, adminLoginWindow,
+		func(r *http.Request) (string, error) {
+			return httprate.CanonicalizeIP(middleware.GetClientIP(r.Context())), nil
+		},
+		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+			render.Render(w, r, errorOf(http.StatusTooManyRequests, "too many sign-in attempts, retry later"))
+		}))
 }
 
 // adminSession refuses requests without a valid session, and changes
@@ -116,18 +85,8 @@ func (s *server) adminLogin(w http.ResponseWriter, r *http.Request) {
 		render.Render(w, r, errorOf(http.StatusBadRequest, "want a JSON body with a password"))
 		return
 	}
-	// The turn is taken before checking: checked first, a burst of guesses
-	// would all be answered, the right one at once.
-	client := s.clientOf(r)
-	if !s.admin.take(client, time.Now()) {
-		w.Header().Set("Retry-After", "1")
-		render.Render(w, r, errorOf(http.StatusTooManyRequests, "too many sign-in attempts, retry in a second"))
-		return
-	}
-	ok := s.Admin.Check(in.Password)
-	s.admin.done(client, !ok, time.Now())
-	if !ok {
-		s.Logger.Warn("failed administration login", "client", client.String(), "remote", r.RemoteAddr)
+	if !s.Admin.Check(in.Password) {
+		s.Logger.Warn("failed administration login", "client", middleware.GetClientIP(r.Context()), "remote", r.RemoteAddr)
 		render.Render(w, r, errorOf(http.StatusUnauthorized, "wrong password"))
 		return
 	}

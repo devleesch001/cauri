@@ -112,7 +112,8 @@ func New(c Config) http.Handler {
 
 		if c.Admin != nil {
 			r.Route("/admin", func(r chi.Router) {
-				r.Post("/login", s.adminLogin)
+				r.Use(clientIP(c.TrustedProxies))
+				r.With(adminLoginLimiter()).Post("/login", s.adminLogin)
 				r.Post("/logout", s.adminLogout)
 				r.Group(func(r chi.Router) {
 					r.Use(s.adminSession)
@@ -139,7 +140,21 @@ func New(c Config) http.Handler {
 
 type server struct {
 	Config
-	admin adminState
+}
+
+// clientIP resolves who sent a request (middleware.GetClientIP): the
+// address X-Forwarded-For gives, read from the right past the trusted
+// proxies, when the request comes from one of them; else the address of
+// the connection.
+func clientIP(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	if len(trusted) == 0 {
+		return middleware.ClientIPFromRemoteAddr
+	}
+	prefixes := make([]string, len(trusted))
+	for i, p := range trusted {
+		prefixes[i] = p.String()
+	}
+	return middleware.ClientIPFromXFF(prefixes...)
 }
 
 func (s *server) healthz(w http.ResponseWriter, r *http.Request) {
