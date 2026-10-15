@@ -179,7 +179,13 @@ UI: no request leaves for another site.
 The **overview** page, the first one, maps where attacks come from:
 countries coloured by sessions (logarithmic scale), sessions and shells
 on hover, with the period, sensor and human/bot filters of the lists; a
-country leads to its sessions. The borders are
+country leads to its sessions. With a city database (DB-IP City Lite,
+GeoLite2 City), the 500 most active cities are placed too, as circles
+whose area follows their sessions; a city leads to its sessions. Their
+position is the centre of the city from the GeoIP database, not a
+precise location; a country database places none. Sessions located
+before cauri stored coordinates get them when the API starts, where the
+current database still gives the same city. The borders are
 [Natural Earth](https://www.naturalearthdata.com) 1:50m (public domain),
 drawn with [d3-geo](https://github.com/d3/d3-geo) and
 [topojson-client](https://github.com/topojson/topojson-client) (ISC),
@@ -496,8 +502,6 @@ jobs use the `Dockerfile`, which also builds the UI.
 - **All-in-one binary** (build tag `allinone`): the ingestor writes to a
   `Sink` interface; an in-process implementation calling
   `ingest.Service` replaces HTTPS.
-- **City markers on the map**: the map's overlay layer receives the
-  projection; sessions need their coordinates stored first.
 - Message broker: not designed in yet, nothing prevents it.
 
 ## License
