@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/uptrace/bun"
 
@@ -141,6 +142,26 @@ func TestAdmin(t *testing.T) {
 			t.Errorf("logout = %d, cookies %v", logout.code, logout.cookies)
 		}
 	})
+}
+
+// Guesses are checked one at a time: while a wrong one is held, even the
+// right password is refused, so a burst cannot try many at once.
+func TestAdminGuessesOneAtATime(t *testing.T) {
+	e := setup(t, storetest.SQLite(t), func(c *api.Config) { c.Admin = auth.NewAdmin("s3cret") })
+	wrong := make(chan int)
+	go func() {
+		wrong <- adminDo(t, e, "POST", "/api/admin/login", `{"password":"guess"}`, nil, true).code
+	}()
+	time.Sleep(200 * time.Millisecond) // the wrong guess holds the turn
+	if c := adminDo(t, e, "POST", "/api/admin/login", `{"password":"s3cret"}`, nil, true).code; c != http.StatusTooManyRequests {
+		t.Errorf("attempt during a wrong one = %d, want 429", c)
+	}
+	if c := <-wrong; c != http.StatusUnauthorized {
+		t.Errorf("wrong guess = %d", c)
+	}
+	if c := adminDo(t, e, "POST", "/api/admin/login", `{"password":"s3cret"}`, nil, true).code; c != http.StatusNoContent {
+		t.Errorf("attempt after = %d", c)
+	}
 }
 
 // Without an administration password, the routes do not exist.

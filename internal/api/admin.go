@@ -28,13 +28,15 @@ const (
 	AdminHeader = "X-Cauri-Admin"
 )
 
-// failedLoginDelay slows guessing the password: wrong attempts wait their
-// turn, one at a time, whatever address they come from (behind a proxy
-// they all share its address).
+// failedLoginDelay slows guessing the password: sign-in attempts are
+// checked one at a time, whatever address they come from (behind a proxy
+// they all share its address), and a wrong one holds the turn this long.
+// Attempts arriving meanwhile are refused at once, not queued: at most one
+// guess per delay, without piling requests up.
 const failedLoginDelay = time.Second
 
 type adminState struct {
-	failed sync.Mutex
+	attempt sync.Mutex // held while an attempt is checked
 }
 
 // adminSession refuses requests without a valid session, and changes
@@ -74,10 +76,16 @@ func (s *server) adminLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "want a JSON body with a password")
 		return
 	}
+	// Taken before checking: checked first, a burst of guesses would all be
+	// answered, the right one at once.
+	if !s.admin.attempt.TryLock() {
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusTooManyRequests, "another sign-in attempt is being checked, retry in a second")
+		return
+	}
+	defer s.admin.attempt.Unlock()
 	if !s.Admin.Check(in.Password) {
-		s.admin.failed.Lock()
 		time.Sleep(failedLoginDelay)
-		s.admin.failed.Unlock()
 		s.Logger.Warn("failed administration login", "remote", r.RemoteAddr)
 		writeError(w, http.StatusUnauthorized, "wrong password")
 		return

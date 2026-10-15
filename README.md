@@ -375,8 +375,9 @@ generated`): set one to keep it across restarts.
 
 Signing in opens a session for 12 hours, in a cookie restricted to
 `/api/admin` and to HTTPS (browsers accept it on `http://localhost` too);
-changing the password ends every session. Wrong passwords are answered
-one per second at most.
+changing the password ends every session. Sign-in attempts are checked
+one at a time and a wrong one holds the turn for a second: at most one
+guess per second, others are refused (429) until then.
 
 ## Deployment
 
