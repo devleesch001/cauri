@@ -912,6 +912,25 @@ func TestSimulatedReplay(t *testing.T) {
 	if got.Simulated {
 		t.Fatal("recording stored but replay simulated")
 	}
+	// The recording exists, and the client may still ask for the simulation.
+	if resp, _ := getRaw(t, e, "/api/sessions/"+id+"/cast", nil); resp.header.Get("X-Cauri-Replay") != "recording" {
+		t.Errorf("replay = %q, want the recording", resp.header.Get("X-Cauri-Replay"))
+	}
+	resp, body := getRaw(t, e, "/api/sessions/"+id+"/cast?simulated=1", nil)
+	if resp.code != http.StatusOK || resp.header.Get("X-Cauri-Replay") != "simulated" ||
+		resp.header.Get("ETag") != "" || !strings.Contains(body, `"o", "# id\r\n"]`) {
+		t.Errorf("forced simulation: %d %q %s", resp.code, resp.header.Get("X-Cauri-Replay"), body)
+	}
+	got = chapters{}
+	get(t, e, "/api/sessions/"+id+"/chapters?simulated=1", http.StatusOK, &got)
+	if !got.Simulated || len(got.Chapters) != 1 || got.Chapters[0].Output != "" {
+		t.Errorf("forced chapters = %+v", got)
+	}
+	if resp, _ := getRaw(t, e, "/api/sessions/"+id+"/cast?simulated=maybe", nil); resp.code != http.StatusBadRequest {
+		t.Errorf("simulated=maybe: %d", resp.code)
+	}
+	got = chapters{}
+	get(t, e, "/api/sessions/"+id+"/chapters", http.StatusOK, &got)
 	if err := os.RemoveAll(filepath.Join(dir, m.SHA256[:2])); err != nil {
 		t.Fatal(err)
 	}

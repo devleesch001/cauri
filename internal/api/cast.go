@@ -28,11 +28,28 @@ const (
 // clients do not keep an old replay (it is part of the ETag).
 const castVersion = "v3.3"
 
+// simulationRequested reads the simulated parameter: the client asks for the
+// replay built from the commands even where a recording exists.
+func simulationRequested(r *http.Request) (bool, error) {
+	switch v := r.URL.Query().Get("simulated"); v {
+	case "", "0", "false":
+		return false, nil
+	case "1", "true":
+		return true, nil
+	default:
+		return false, fmt.Errorf("parameter simulated: want 1 or 0, got %q", v)
+	}
+}
+
 // replaySource returns the stored recording of a session and its file, or
-// neither when the replay is simulated: the session has no recording (a
-// bot opening a channel per command sends none), or its file was removed
-// from the volume, which is how an operator limits retention.
-func (s *server) replaySource(r *http.Request) (*store.Recording, *os.File, error) {
+// neither when the replay is simulated: the client asked for it (forced),
+// the session has no recording (a bot opening a channel per command sends
+// none), or its file was removed from the volume, which is how an operator
+// limits retention.
+func (s *server) replaySource(r *http.Request, forced bool) (*store.Recording, *os.File, error) {
+	if forced {
+		return nil, nil, nil
+	}
 	rec, err := store.GetRecording(r.Context(), s.DB, sessionID(r))
 	if errors.Is(err, store.ErrNoRecording) {
 		return nil, nil, nil
@@ -102,7 +119,12 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 		render.Render(w, r, errorOf(http.StatusBadRequest, err.Error()))
 		return
 	}
-	rec, f, err := s.replaySource(r)
+	forced, err := simulationRequested(r)
+	if err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, err.Error()))
+		return
+	}
+	rec, f, err := s.replaySource(r, forced)
 	if err != nil {
 		s.replayError(w, r, err)
 		return
@@ -128,6 +150,7 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 		sizes[i] = ttylog.TermSize{Time: sz.TS.Time, Cols: sz.Cols, Rows: sz.Rows}
 	}
 	w.Header().Set("Content-Type", asciicast.ContentType)
+	w.Header().Set("X-Cauri-Replay", "recording")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s.cast"`, rec.Session))
 	out := &countingWriter{w: w}
 	err = ttylog.Convert(f, asciicast.NewV3(out), ttylog.Options{
@@ -154,6 +177,7 @@ func (s *server) simulatedCast(w http.ResponseWriter, r *http.Request, idle time
 		return
 	}
 	w.Header().Set("Content-Type", asciicast.ContentType)
+	w.Header().Set("X-Cauri-Replay", "simulated")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%d-simulated.cast"`, sessionID(r)))
 	h := asciicast.Header{Cols: ttylog.DefaultCols, Rows: ttylog.DefaultRows, Timestamp: start, IdleTimeLimit: idle}
 	if err := asciicast.Simulate(asciicast.NewV3(w), h, prompt, steps); err != nil {
@@ -184,7 +208,12 @@ type chapters struct {
 // output as plain text, for the chapter list next to the replay. Without a
 // recording they come without output, as in the simulated replay.
 func (s *server) getChapters(w http.ResponseWriter, r *http.Request) {
-	rec, f, err := s.replaySource(r)
+	forced, err := simulationRequested(r)
+	if err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, err.Error()))
+		return
+	}
+	rec, f, err := s.replaySource(r, forced)
 	if err != nil {
 		s.replayError(w, r, err)
 		return
