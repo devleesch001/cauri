@@ -46,8 +46,9 @@ const (
 )
 
 // Version identifies the criteria below. Stored verdicts of another
-// version are recomputed: change it with any threshold or point.
-const Version = "1"
+// version are recomputed: change it with any threshold or point, or with
+// what is judged (2: every recording of the session, not its duplicates).
+const Version = "2"
 
 // Thresholds.
 const (

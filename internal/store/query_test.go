@@ -61,7 +61,7 @@ func seed(t *testing.T, db *bun.DB) *ingest.Service {
 		ev{"eventid": "cowrie.login.success", "username": "root", "password": "123456"},
 		ev{"eventid": "cowrie.command.input", "input": "uname -a"},
 		ev{"eventid": "cowrie.command.input", "input": "cat /proc/cpuinfo"},
-		ev{"eventid": "cowrie.log.closed", "shasum": ttySHA, "size": len(ttyContent)},
+		ev{"eventid": "cowrie.log.closed", "ttylog": "var/lib/cowrie/tty/" + ttySHA, "shasum": ttySHA, "size": len(ttyContent)},
 		ev{"eventid": "cowrie.session.closed", "duration": 7.0},
 	)
 	send("hp-01", "2", time.Hour,
@@ -156,7 +156,7 @@ func TestListSessionsPageAndSummary(t *testing.T) {
 		if len(s.Credentials) != 2 || s.Credentials[1] != (store.Credential{Username: "root", Password: "123456", Success: true}) {
 			t.Errorf("credentials = %+v", s.Credentials)
 		}
-		if *s.ClientVersion != "SSH-2.0-OpenSSH_9.6" || *s.DurationMS != 7000 || s.Sensor != "hp-01" || *s.TTYSize != 9 {
+		if *s.ClientVersion != "SSH-2.0-OpenSSH_9.6" || *s.DurationMS != 7000 || s.Sensor != "hp-01" {
 			t.Errorf("fields = %+v", s.Session)
 		}
 	})
@@ -179,6 +179,9 @@ func TestGetSession(t *testing.T) {
 		}
 		if len(d.CommandList) != 2 || d.CommandList[0].Input != "uname -a" || len(d.LoginAttemptList) != 2 {
 			t.Errorf("lists = %+v / %+v", d.CommandList, d.LoginAttemptList)
+		}
+		if len(d.Recordings) != 1 || d.Recordings[0].SHA256 == nil || *d.Recordings[0].Size != 9 || d.Recordings[0].Duplicate {
+			t.Errorf("recordings = %+v", d.Recordings)
 		}
 		if _, err := store.GetSession(ctx, db, 999); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("missing: err = %v", err)

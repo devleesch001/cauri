@@ -6,6 +6,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/ttylog"
 	"github.com/devleesch001/cauri/internal/verdict"
 )
 
@@ -21,16 +22,15 @@ func (s *Service) judge(ctx context.Context, db bun.IDB, id int64) (verdict.Resu
 	if err != nil {
 		return verdict.Result{}, err
 	}
-	// A recording missing from the volume or unreadable leaves the events
-	// alone to judge: it must not block the ingestion of events.
+	// The recordings typed in this session, read as one. Missing from the
+	// volume or unreadable, they leave the events alone to judge: they must
+	// not block the ingestion of events.
 	var typing *verdict.Typing
-	if facts.RecordingSHA256 != nil {
-		if f, err := s.tty.Open(*facts.RecordingSHA256); err == nil {
-			ty, err := verdict.ReadTyping(f)
-			_ = f.Close()
-			if err == nil {
-				typing = &ty
-			}
+	if parts, _, closeAll := s.OpenRecording(facts.Typed); len(parts) > 0 {
+		ty, err := verdict.ReadTyping(ttylog.Join(parts...))
+		closeAll()
+		if err == nil {
+			typing = &ty
 		}
 	}
 	return verdict.Judge(verdict.Facts{

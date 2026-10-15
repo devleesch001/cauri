@@ -54,6 +54,9 @@ type cowrieEvent struct {
 
 	TTYLog *string // log.closed
 	Size   *int64
+	// Duplicate (log.closed): Cowrie already had a recording of the same
+	// input and kept that file instead of this one.
+	Duplicate bool
 	// log.closed and session.closed, in milliseconds: Cowrie 3 writes
 	// duration_ms, older versions duration in seconds, as a number or a
 	// string.
@@ -79,6 +82,9 @@ func parseEvent(raw []byte) (*cowrieEvent, error) {
 		Username: m.str("username"), Password: m.str("password"), Input: m.str("input"),
 		URL: m.str("url"), DestFile: m.str("destfile"), Filename: m.str("filename"), Shasum: m.str("shasum"),
 		TTYLog: m.str("ttylog"), Size: m.int64("size"),
+	}
+	if d := get[bool](m, "duplicate"); d != nil {
+		ev.Duplicate = *d
 	}
 	if ms := m.float("duration_ms"); ms != nil {
 		ev.durationMS = millis(*ms)

@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -85,7 +86,7 @@ func events(sensor string) protocol.EventBatch {
 		{"eventid": "cowrie.session.connect", "src_port": 4242},
 		{"eventid": "cowrie.login.success", "username": "root", "password": "root"},
 		{"eventid": "cowrie.command.input", "input": "id"},
-		{"eventid": "cowrie.log.closed", "shasum": ttySHA(), "size": len(ttyContent)},
+		{"eventid": "cowrie.log.closed", "ttylog": "var/lib/cowrie/tty/" + ttySHA(), "shasum": ttySHA(), "size": len(ttyContent)},
 	} {
 		e["session"] = "a1b2c3d4e5f6"
 		e["src_ip"] = "203.0.113.9"
@@ -868,4 +869,67 @@ func TestJSONOnly(t *testing.T) {
 			t.Errorf("%s = %d %s %s", path, resp.StatusCode, resp.Header.Get("Content-Type"), body)
 		}
 	}
+}
+
+// A session of one command per exec channel replays all its recordings in
+// a row, each command a chapter with its output, a duplicate at its own
+// time (testdata/cowrie-v3.1.2-exec.json, see internal/ingest).
+func TestChaptersExecChannels(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		ctx := context.Background()
+		data, err := os.ReadFile("../ingest/testdata/cowrie-v3.1.2-exec.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := protocol.EventBatch{SensorID: "hp-01"}
+		var uploads []protocol.TTYMeta
+		for _, l := range bytes.Split(bytes.TrimSpace(data), []byte("\n")) {
+			b.Events = append(b.Events, protocol.Event{ID: protocol.EventID("hp-01", l), Raw: l})
+			var ev struct{ EventID, Session, TTYLog string }
+			if json.Unmarshal(l, &ev) == nil && ev.EventID == "cowrie.log.closed" {
+				uploads = append(uploads, protocol.TTYMeta{SensorID: "hp-01", Session: ev.Session, SHA256: path.Base(ev.TTYLog)})
+			}
+		}
+		if _, err := e.client.SendEvents(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range uploads {
+			content, err := os.ReadFile("../ingest/testdata/cowrie-v3.1.2-exec-tty/" + m.SHA256)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := sha256.Sum256(content)
+			m.SHA256, m.Size = hex.EncodeToString(sum[:]), int64(len(content))
+			if _, err := e.client.SendTTY(ctx, m, bytes.NewReader(content)); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		var got struct {
+			Chapters []struct {
+				Time    float64 `json:"time"`
+				Command string  `json:"command"`
+				Output  string  `json:"output"`
+			} `json:"chapters"`
+		}
+		for sess, want := range map[string][]string{
+			"7dfe84911c9f": {"uname -a", "Linux svr04", "whoami", "root", "uname -a", "Linux svr04"},
+			"246b6f85171f": {"whoami", "root", "cat /proc/cpuinfo | grep name | wc -l", "2"},
+		} {
+			get(t, e, "/api/sessions/"+sid(t, e, "hp-01", sess)+"/chapters", http.StatusOK, &got)
+			if len(got.Chapters) != len(want)/2 {
+				t.Fatalf("%s: chapters = %+v", sess, got.Chapters)
+			}
+			last := -1.0
+			for i, c := range got.Chapters {
+				// Every chapter comes after the previous one: a duplicate is
+				// placed at its own channel, not at its file's times.
+				if c.Command != want[2*i] || !strings.HasPrefix(c.Output, want[2*i+1]) || c.Time <= last || c.Time > 5 {
+					t.Errorf("%s #%d = %+v", sess, i, c)
+				}
+				last = c.Time
+			}
+		}
+	})
 }

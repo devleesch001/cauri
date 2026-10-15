@@ -99,8 +99,11 @@ func TestEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Events) != 5 || len(d.CommandList) != 1 || !d.LoginSuccess || *d.TTYSHA256 != sha || *d.TTYLog != name || *d.DurationMS != 4000 || *d.TTYDurationMS != 2500 {
+	if len(d.Events) != 5 || len(d.CommandList) != 1 || !d.LoginSuccess || *d.DurationMS != 4000 {
 		t.Fatalf("session = %+v", d)
+	}
+	if len(d.Recordings) != 1 || *d.Recordings[0].SHA256 != sha || d.Recordings[0].TTYLog != name || *d.Recordings[0].DurationMS != 2500 {
+		t.Fatalf("recordings = %+v", d.Recordings)
 	}
 	f, err := tty.Open(sha)
 	if err != nil {

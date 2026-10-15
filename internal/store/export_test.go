@@ -8,6 +8,9 @@ import (
 	"github.com/uptrace/bun"
 )
 
+// MigrateTo applies the migrations up to last, for tests of a migration.
+var MigrateTo = migrateTo
+
 // The keyset of EachSession and EachLoginAttempt must give every row once,
 // in order, across batches, including rows with the same time.
 func TestEachAcrossBatches(t *testing.T) {

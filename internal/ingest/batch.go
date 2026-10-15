@@ -18,9 +18,9 @@ import (
 // Sessions are merged with rules that do not depend on arrival order, in
 // memory within a batch and in SQL across batches (see upsertSessions):
 // connection details keep their first value, started_at the earliest
-// timestamp, end and recording details their last value, login_success
-// becomes true once any login succeeded. The recording file is only set by
-// StoreTTY, from the uploaded file.
+// timestamp, end details their last value, login_success becomes true once
+// any login succeeded. Each cowrie.log.closed is a recording of the
+// session; its file is only set by StoreTTY, from the uploaded file.
 type batchWriter struct {
 	now       store.Time
 	locator   Locator   // optional
@@ -94,13 +94,6 @@ func (w *batchWriter) merge(s *store.Session, ev *cowrieEvent) {
 		firstStr(&s.HASSH, ev.HASSH)
 	case evLoginSuccess:
 		s.LoginSuccess = true
-	case evLogClosed:
-		if name := ev.ttyName(); name != nil {
-			s.TTYLog = name
-		}
-		if d := ev.durationMS; d != nil {
-			s.TTYDurationMS = d
-		}
 	case evSessionClosed:
 		ts := store.NewTime(ev.ts)
 		s.EndedAt = &ts
@@ -112,9 +105,10 @@ func (w *batchWriter) merge(s *store.Session, ev *cowrieEvent) {
 
 // rows are the table rows of a known event of a session.
 type rows struct {
-	logins   []store.LoginAttempt
-	commands []store.Command
-	xfers    []store.Transfer
+	logins     []store.LoginAttempt
+	commands   []store.Command
+	xfers      []store.Transfer
+	recordings []store.SessionRecording
 }
 
 func (r *rows) add(sessionID int64, ev *cowrieEvent) {
@@ -127,6 +121,19 @@ func (r *rows) add(sessionID int64, ev *cowrieEvent) {
 		})
 	case evCommandInput:
 		r.commands = append(r.commands, store.Command{SessionID: sessionID, TS: ts, Input: deref(ev.Input)})
+	case evLogClosed:
+		name := ev.ttyName()
+		if name == nil {
+			return
+		}
+		// Cowrie logs the end of the channel: it started duration before.
+		start := ts
+		if ev.durationMS != nil {
+			start = store.NewTime(ev.ts.Add(-time.Duration(*ev.durationMS) * time.Millisecond))
+		}
+		r.recordings = append(r.recordings, store.SessionRecording{
+			SessionID: sessionID, TTYLog: *name, StartedAt: start, DurationMS: ev.durationMS, Duplicate: ev.Duplicate,
+		})
 	case evFileDownload:
 		r.xfers = append(r.xfers, store.Transfer{
 			SessionID: sessionID, TS: ts, Direction: store.Download,
@@ -210,6 +217,9 @@ func (w *batchWriter) write(ctx context.Context, tx bun.Tx) (int, error) {
 	if err := insert(ctx, tx, &r.xfers); err != nil {
 		return 0, fmt.Errorf("transfers: %w", err)
 	}
+	if err := insert(ctx, tx, &r.recordings); err != nil {
+		return 0, fmt.Errorf("recordings: %w", err)
+	}
 	return len(stored), nil
 }
 
@@ -233,7 +243,7 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "hassh", "asn", "as_org"} {
 		q = q.Set(col + " = COALESCE(?TableAlias." + col + ", EXCLUDED." + col + ")")
 	}
-	for _, col := range []string{"ended_at", "duration_ms", "tty_log", "tty_duration_ms"} {
+	for _, col := range []string{"ended_at", "duration_ms"} {
 		q = q.Set(col + " = COALESCE(EXCLUDED." + col + ", ?TableAlias." + col + ")")
 	}
 	// A located session keeps its location: the columns come from the same
