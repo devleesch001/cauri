@@ -8,23 +8,27 @@ import WindowMaximizeIcon from '@openvue/icons/windowmaximize'
 import WindowMinimizeIcon from '@openvue/icons/windowminimize'
 import { api } from './api/client'
 import type { About } from './api/types'
+import NavSearch from './components/NavSearch.vue'
 import SensorSelect from './components/SensorSelect.vue'
+import { primaryPages, statsPages, trailingPages } from './nav'
 import { useSensors } from './stores/sensors'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-// Statistics pages share one menu, which stands for the page shown.
-const statsPages = ['activity', 'credentials', 'commands'] as const
+// Statistics pages share one menu, which stands for the page shown. It
+// opens on hover or focus (CSS) and on click, for touch screens.
 const statsItems = computed(() =>
-  statsPages.map((name) => ({
-    label: t(`nav.${name}`),
-    command: () => void router.push({ name }),
+  statsPages.map((p) => ({
+    label: t(`nav.${p.label}`),
+    command: () => {
+      statsOpen.value = false
+      void router.push({ name: p.name })
+    },
   })),
 )
-const statsActive = computed(() => statsPages.some((name) => route.name === name))
-const statsMenu = ref<InstanceType<typeof Menu> | null>(null)
+const statsActive = computed(() => statsPages.some((p) => route.name === p.name))
 const statsOpen = ref(false)
 const sensors = useSensors()
 // The GeoIP database, when there is one, requires an attribution.
@@ -66,42 +70,42 @@ onMounted(() => {
       cauri
     </RouterLink>
     <nav :aria-label="t('nav.sections')">
-      <RouterLink to="/">
-        {{ t('nav.overview') }}
-      </RouterLink>
-      <RouterLink to="/sessions">
-        {{ t('nav.sessions') }}
-      </RouterLink>
-      <RouterLink to="/login-attempts">
-        {{ t('nav.failedLogins') }}
-      </RouterLink>
-      <RouterLink to="/payloads">
-        {{ t('nav.payloads') }}
-      </RouterLink>
-      <button
-        type="button"
-        class="menu-trigger"
-        :class="{ active: statsActive }"
-        aria-haspopup="menu"
-        aria-controls="statistics-menu"
-        :aria-expanded="statsOpen"
-        @click="(e) => statsMenu?.toggle(e)"
+      <RouterLink
+        v-for="p in primaryPages"
+        :key="p.name"
+        :to="p.path"
       >
-        {{ t('nav.statistics') }}
-        <span aria-hidden="true">▾</span>
-      </button>
-      <Menu
-        id="statistics-menu"
-        ref="statsMenu"
-        :model="statsItems"
-        popup
-        @show="statsOpen = true"
-        @hide="statsOpen = false"
-      />
-      <RouterLink to="/admin">
-        {{ t('nav.admin') }}
+        {{ t(`nav.${p.label}`) }}
+      </RouterLink>
+      <div
+        class="nav-group"
+        :class="{ open: statsOpen }"
+        @keydown.esc="statsOpen = false"
+      >
+        <button
+          type="button"
+          class="menu-trigger"
+          :class="{ active: statsActive }"
+          aria-haspopup="menu"
+          :aria-expanded="statsOpen"
+          @click="statsOpen = !statsOpen"
+        >
+          {{ t('nav.statistics') }}
+          <span aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-dropdown">
+          <Menu :model="statsItems" />
+        </div>
+      </div>
+      <RouterLink
+        v-for="p in trailingPages"
+        :key="p.name"
+        :to="p.path"
+      >
+        {{ t(`nav.${p.label}`) }}
       </RouterLink>
     </nav>
+    <NavSearch class="search" />
     <SensorSelect class="sensor" />
   </header>
   <main>
@@ -200,6 +204,26 @@ nav a {
   text-decoration: none;
 }
 
+.nav-group {
+  position: relative;
+}
+
+/* Directly under the button, with no gap, so that the pointer can reach it. */
+.nav-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 3;
+  min-width: 10rem;
+}
+
+.nav-group:hover .nav-dropdown,
+.nav-group:focus-within .nav-dropdown,
+.nav-group.open .nav-dropdown {
+  display: block;
+}
+
 .menu-trigger {
   padding: var(--space-1) var(--space-2);
   border: 0;
@@ -226,8 +250,13 @@ nav a.router-link-active {
   border-radius: 0;
 }
 
-.sensor {
+.search {
   margin-left: auto;
+  width: 16rem;
+}
+
+.search :deep(input) {
+  width: 100%;
 }
 
 @media (max-width: 720px) {
@@ -235,6 +264,7 @@ nav a.router-link-active {
     padding: var(--space-2) var(--space-3);
   }
 
+  .search,
   .sensor {
     margin-left: 0;
     width: 100%;
