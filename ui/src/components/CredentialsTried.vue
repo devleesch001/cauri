@@ -52,7 +52,7 @@ const list = computed(() => {
 <template>
   <span
     v-if="first"
-    v-tooltip.top="more ? list : null"
+    v-tooltip.top="more ? { value: list, class: 'credentials-tip' } : null"
     class="credentials"
     :tabindex="more ? 0 : undefined"
     :aria-label="more ? list : undefined"

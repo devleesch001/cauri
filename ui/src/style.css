@@ -311,3 +311,15 @@ a {
   --term-color-14: var(--p-cyan-300);
   --term-color-15: var(--p-surface-0);
 }
+
+/* The credentials a session tried, over its cell (CredentialsTried): one
+   pair per line, never wrapped, as wide as the screen allows; a longer
+   one is cut at its edge. The tooltip is outside the component. */
+.credentials-tip {
+  max-width: 90vw;
+}
+
+.credentials-tip .p-tooltip-text {
+  overflow: hidden;
+  white-space: pre;
+}
