@@ -67,7 +67,19 @@ Times are integer microseconds (`store.Time`), durations milliseconds.
 Times are stored in UTC (SQLite compares them as text). The API is the
 only writer, except `cauri token` and `cauri purge`, accepted by the user.
 
-**Foreign keys** are named `fk_<table>_<column>` and carry an explicit
+**Every key and index is named**, the same in both engines (the user
+insists on it): primary keys `pk_<table>`, unique keys
+`uk_<table>_<columns>`, foreign keys `fk_<table>_<column>`, other indexes
+`ix_<table>_<columns>`, columns joined by `_` in key order. Declare
+primary and foreign keys as named table constraints (`CONSTRAINT pk_t
+PRIMARY KEY (id)`: in SQLite an `INTEGER` key stays the rowid). A unique
+key is a named constraint in PostgreSQL, which names its index after it,
+and a `CREATE UNIQUE INDEX uk_…` in SQLite, whose inline unique
+constraints get `sqlite_autoindex_…` indexes: both engines then show the
+same name. Never leave a name to the engine. Names from before this rule
+are renamed by a dedicated migration.
+
+**Foreign keys** carry an explicit
 `ON DELETE` (`docs/db.md`): projections and events cascade from their
 session, a recording's removal sets the session's reference to null,
 sensors are `RESTRICT`ed while they have sessions. Code relies on them
