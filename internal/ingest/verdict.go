@@ -13,43 +13,51 @@ import (
 // bot, from its recording and its events (see package verdict). It returns
 // store.ErrNotFound for an unknown session.
 func (s *Service) JudgeSession(ctx context.Context, id int64) (verdict.Result, error) {
-	return s.judge(ctx, s.db, id)
+	res, _, err := s.judge(ctx, s.db, id)
+	return res, err
 }
 
-func (s *Service) judge(ctx context.Context, db bun.IDB, id int64) (verdict.Result, error) {
+// judge also tells, from the same reading of the recording, whether the
+// session typed in an interactive shell: nil without a recording to read.
+func (s *Service) judge(ctx context.Context, db bun.IDB, id int64) (verdict.Result, *bool, error) {
 	facts, err := store.GetSessionFacts(ctx, db, id)
 	if err != nil {
-		return verdict.Result{}, err
+		return verdict.Result{}, nil, err
 	}
 	// A recording missing from the volume or unreadable leaves the events
 	// alone to judge: it must not block the ingestion of events.
 	var typing *verdict.Typing
+	var shell *bool
 	if facts.RecordingSHA256 != nil {
 		if f, err := s.tty.Open(*facts.RecordingSHA256); err == nil {
 			ty, err := verdict.ReadTyping(f)
 			_ = f.Close()
 			if err == nil {
 				typing = &ty
+				shell = new(ty.Shell())
 			}
 		}
 	}
 	return verdict.Judge(verdict.Facts{
 		Terminal: facts.Terminal, Commands: facts.Commands, ClientVersion: facts.ClientVersion,
 		Channels: facts.Channels,
-	}, typing), nil
+	}, typing), shell, nil
 }
 
-// storeVerdict judges sessions and stores their verdict, to filter the
-// session list. It runs in the transaction that changed them, after the
-// change: the row lock taken by the change orders concurrent judgements.
+// storeVerdict judges sessions and stores their verdict and whether they
+// typed in a shell, to filter the session list. It runs in the transaction
+// that changed them, after the change: the row lock taken by the change
+// orders concurrent judgements.
 func (s *Service) storeVerdict(ctx context.Context, db bun.IDB, ids ...int64) error {
 	for _, id := range ids {
-		res, err := s.judge(ctx, db, id)
+		res, shell, err := s.judge(ctx, db, id)
 		if err != nil {
 			return err
 		}
 		if _, err := db.NewUpdate().Model((*store.Session)(nil)).
 			Set("verdict = ?", string(res.Verdict)).
+			// A recording gone since (retention) keeps what it told.
+			Set("shell = COALESCE(?, shell)", shell).
 			Set("verdict_score = ?", res.Score).
 			Set("verdict_version = ?", verdict.Version).
 			Where("id = ?", id).Exec(ctx); err != nil {

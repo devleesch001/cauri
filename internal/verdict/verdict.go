@@ -47,8 +47,9 @@ const (
 )
 
 // Version identifies the criteria below. Stored verdicts of another
-// version are recomputed: change it with any threshold or point.
-const Version = "2"
+// version are recomputed: change it with any threshold or point, or with
+// anything else stored from the same reading (3: Typing.Shell).
+const Version = "3"
 
 // Thresholds.
 const (
@@ -118,7 +119,16 @@ type Typing struct {
 	Edits    int             // backspace, arrows, Tab, Ctrl-C
 	KeyGaps  []time.Duration // between keys of a same line
 	Pauses   []time.Duration // from an Enter key to the next key
+	// Interact counts exec commands: Cowrie writes the command of an exec
+	// channel whole, in its own direction, and its standard input not at
+	// all. A shell starts with a prompt and records what is typed.
+	Interact int
 }
+
+// Shell reports whether the recording is of an interactive shell in which
+// something was typed: input, and no exec command. A script piping its
+// commands to a shell counts: the verdict tells it from a human.
+func (ty Typing) Shell() bool { return ty.Inputs > 0 && ty.Interact == 0 }
 
 // ReadTyping reads the input of a recording, in one pass and bounded
 // memory. A damaged recording is read up to the damage.
@@ -137,6 +147,9 @@ func ReadTyping(r io.Reader) (Typing, error) {
 				return ty, err
 			}
 			return ty, nil
+		}
+		if rec.Op == ttylog.OpWrite && rec.Dir == ttylog.DirInteract {
+			ty.Interact++
 		}
 		if rec.Op != ttylog.OpWrite || rec.Dir != ttylog.DirInput || len(rec.Data) == 0 {
 			continue

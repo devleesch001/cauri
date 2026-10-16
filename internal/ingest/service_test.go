@@ -373,6 +373,58 @@ func TestStoreTTY(t *testing.T) {
 	})
 }
 
+// Whether a session typed in a shell is read from its recording, with the
+// verdict, and kept when the file is gone.
+func TestStoreTTYShell(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		files := map[string]string{
+			"a1b2c3d4e5f6": "../ttylog/testdata/cowrie-v3.1.2.tty",
+			"b1b2c3d4e5f6": "testdata/cowrie-v3.1.2-exec-tty/28ba533b0f3c4df63d6b4a5ead73860697bdf735bb353e4ca928474889eb8a15",
+			"c1b2c3d4e5f6": "",
+		}
+		for sess, file := range files {
+			if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, fullSession(sess, "terminal output only")...)); err != nil {
+				t.Fatal(err)
+			}
+			if file == "" {
+				continue
+			}
+			content, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := svc.StoreTTY(ctx, sensor, ttyMeta(sess, string(content)), bytes.NewReader(content)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		shell := func(sess string) string {
+			if s := getSession(t, db, sensor, sess).Shell; s != nil {
+				return fmt.Sprint(*s)
+			}
+			return "unknown"
+		}
+		for sess, want := range map[string]string{"a1b2c3d4e5f6": "true", "b1b2c3d4e5f6": "false", "c1b2c3d4e5f6": "unknown"} {
+			if got := shell(sess); got != want {
+				t.Errorf("%s: shell = %s, want %s", sess, got, want)
+			}
+		}
+
+		// The file removed to limit retention, then the session judged again.
+		s := getSession(t, db, sensor, "a1b2c3d4e5f6")
+		if err := svc.ForgetTTY(ctx, *s.TTYSHA256); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.storeVerdict(ctx, db, s.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := shell("a1b2c3d4e5f6"); got != "true" {
+			t.Errorf("after the file is gone: shell = %s", got)
+		}
+	})
+}
+
 // Cowrie stores identical recordings once (duplicate: true): a second
 // session pointing at a known file only gets linked.
 func TestStoreTTYSharedFile(t *testing.T) {

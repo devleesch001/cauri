@@ -47,7 +47,7 @@ func TestMigrateLogs(t *testing.T) {
 				`"msg":"database"`, `"engine":"` + engine + `"`, `"version":"`,
 				`"msg":"database schema"`, `"version":"none (empty database)"`,
 				`"msg":"database upgrade needed"`, `"msg":"applying migration","migration":"00001_init"`,
-				`"msg":"migration applied","migration":"00005_named_foreign_keys"`, `"msg":"database upgraded"`,
+				`"msg":"migration applied","migration":"00006_session_shell"`, `"msg":"database upgraded"`,
 			} {
 				if !strings.Contains(first, want) {
 					t.Errorf("first run: no %s in\n%s", want, first)
@@ -62,7 +62,7 @@ func TestMigrateLogs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if second := out.String(); !strings.Contains(second, `"msg":"database schema is up to date"`) ||
-				!strings.Contains(second, `"version":"00005_named_foreign_keys","latest":"00005_named_foreign_keys","pending":0`) ||
+				!strings.Contains(second, `"version":"00006_session_shell","latest":"00006_session_shell","pending":0`) ||
 				strings.Contains(second, "applying migration") {
 				t.Errorf("second run:\n%s", second)
 			}

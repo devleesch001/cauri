@@ -99,7 +99,10 @@ human/bot verdict (`/api/sessions/{id}/verdict`, `internal/verdict`): it
 always returns its reasons with their points, and its thresholds stay
 grouped there to be tuned. The verdict is also stored per session (for
 the list filter), computed in `internal/ingest`: bump `verdict.Version`
-with any change of the criteria so stored verdicts are recomputed. A new asciicast version is a new `Encoder`, not a
+with any change of the criteria so stored verdicts are recomputed. The
+same reading stores `sessions.shell` (typed in an interactive shell:
+input, and no exec command, `ttylog.DirInteract`); bump the version
+with any change of it too. A new asciicast version is a new `Encoder`, not a
 change of the converter.
 
 **Simulated replays.** `/cast` and `/chapters` serve the stored recording

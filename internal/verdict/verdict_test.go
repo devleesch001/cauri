@@ -219,3 +219,33 @@ func FuzzReadTyping(f *testing.F) {
 		_ = Judge(Facts{Terminal: true, Commands: 1}, &ty)
 	})
 }
+
+// Recordings written by the official cowrie/cowrie image: shells start
+// with a prompt and record what is typed, exec channels write their
+// command whole and not their standard input.
+func TestShell(t *testing.T) {
+	for file, want := range map[string]bool{
+		"../ttylog/testdata/cowrie-v3.1.2.tty":                                                                       true,  // typed at the prompt
+		"../ttylog/testdata/cowrie-56b2abb-shell-piped.tty":                                                          true,  // printf 'id\nexit\n' | ssh -T host
+		"../ttylog/testdata/cowrie-56b2abb-exec-stdin.tty":                                                           false, // printf 'uname -a\nwhoami\n' | ssh host 'bash -s'
+		"../ingest/testdata/cowrie-v3.1.2-exec-tty/28ba533b0f3c4df63d6b4a5ead73860697bdf735bb353e4ca928474889eb8a15": false, // ssh host 'uname -a'
+	} {
+		f, err := os.Open(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ty, err := ReadTyping(f)
+		_ = f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ty.Shell() != want {
+			t.Errorf("%s: shell = %v, want %v (%+v)", file, ty.Shell(), want, ty)
+		}
+	}
+	// A shell opened and left without typing tells nothing.
+	ty, err := ReadTyping(bytes.NewReader(record(ttylog.OpWrite, ttylog.DirOutput, 0, "root@svr04:~# ")))
+	if err != nil || ty.Shell() {
+		t.Errorf("prompt only: %+v, %v", ty, err)
+	}
+}

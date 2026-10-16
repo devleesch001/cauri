@@ -28,8 +28,9 @@ const (
 
 // Write directions.
 const (
-	DirInput  = 1 // typed by the user
-	DirOutput = 2 // shown on the terminal
+	DirInput    = 1 // typed by the user
+	DirOutput   = 2 // shown on the terminal
+	DirInteract = 3 // the command of an exec channel, written whole
 )
 
 // header is the layout of a record header (Cowrie's struct "<iLiiLL").

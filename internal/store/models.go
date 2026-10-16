@@ -72,6 +72,7 @@ type Session struct {
 	Verdict        *string  `bun:"verdict" json:"verdict"` // see package verdict; nil until judged
 	VerdictScore   *int     `bun:"verdict_score" json:"verdict_score"`
 	VerdictVersion *string  `bun:"verdict_version" json:"-"`
+	Shell          *bool    `bun:"shell" json:"shell"` // typed in an interactive shell; nil without a recording read
 }
 
 type Event struct {

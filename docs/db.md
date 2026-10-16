@@ -106,6 +106,7 @@ erDiagram
         text verdict
         integer verdict_score
         text verdict_version
+        boolean shell "typed in an interactive shell"
     }
     events {
         integer id PK
@@ -158,7 +159,7 @@ erDiagram
 |---|---|---|
 | `sensors` | The honeypots; `name` is the id the operator gives the ingestor | A few |
 | `ingest_tokens` | Ingestor credentials, one or more per sensor; only the hash is stored | A few |
-| `sessions` | One SSH or Telnet connection: the summary of its events, plus the location and verdict computed by the API | One per connection |
+| `sessions` | One SSH or Telnet connection: the summary of its events, plus the location, verdict and shell computed by the API | One per connection |
 | `events` | One per Cowrie line: what happened, when, in which session; and the hash that recognises a line sent twice | 5 per session (measured) |
 | `event_data` | The Cowrie line itself, to show it raw and to project it again; can be purged | One per event, until purged |
 | `login_attempts` | Username and password tried, success or not | ~1 per session |
@@ -281,6 +282,7 @@ constraints are indexes too.
 | `sessions (src_ip)` | Filter by source address |
 | `sessions (geo_country, geo_city)` | Country and city filters, country counts (migration 00002) |
 | `sessions (verdict)` | Human/bot filter |
+| `sessions (shell)` | Interactive shell filter (migration 00006) |
 | `events (hash)` unique | Deduplication |
 | `events (session_id, ts)` | Events of a session page |
 | `login_attempts (session_id)` | Logins of a session; credentials in the list |
