@@ -26,6 +26,12 @@ const showCities = computed({
   set: (v: boolean) => void patchQuery({ cities: v ? undefined : 'hide' }),
 })
 
+// Off by default: every session; on, only those whose login succeeded.
+const loginSuccess = computed({
+  get: () => q('login') === 'success',
+  set: (v: boolean) => void patchQuery({ login: v ? 'success' : undefined }),
+})
+
 const summary = ref<Summary | null>(null)
 const countries = ref<CountryCount[]>([])
 const cities = ref<CityCount[]>([])
@@ -201,6 +207,10 @@ function open(country: string, city?: string) {
 
     <div class="bottom">
       <StatsFilters>
+        <label class="toggle">
+          <ToggleSwitch v-model="loginSuccess" />
+          {{ t('sessions.filters.loginSuccess') }}
+        </label>
         <label class="toggle">
           <ToggleSwitch v-model="showCities" />
           {{ t('overview.map.cities') }}

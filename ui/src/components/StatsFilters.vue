@@ -24,9 +24,9 @@ const options = computed(() => [
   { label: t('sessions.filters.humans'), value: 'human' },
   { label: t('sessions.filters.bots'), value: 'bot' },
 ])
-const filtered = computed(() => ['from', 'to', 'verdict'].some((k) => q(k)))
+const filtered = computed(() => ['from', 'to', 'verdict', 'login'].some((k) => q(k)))
 function clear() {
-  void patchQuery({ from: undefined, to: undefined, verdict: undefined })
+  void patchQuery({ from: undefined, to: undefined, verdict: undefined, login: undefined })
 }
 </script>
 
