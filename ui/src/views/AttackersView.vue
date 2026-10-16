@@ -402,7 +402,10 @@ function clearFilters() {
           {{ data.logins ? data.logins.toLocaleString() : '—' }}
         </template>
       </Column>
-      <Column :header="t('attackers.columns.firstSeen')">
+      <Column
+        :header="t('attackers.columns.firstSeen')"
+        body-class="nowrap"
+      >
         <template #body="{ data }">
           {{ formatTime(data.first_seen) }}
         </template>
@@ -410,6 +413,7 @@ function clearFilters() {
       <Column
         field="last_seen"
         :header="t('attackers.columns.lastSeen')"
+        body-class="nowrap"
         sortable
       >
         <template #body="{ data }">
@@ -465,5 +469,11 @@ function clearFilters() {
 
 :deep(.num) {
   text-align: right;
+}
+
+/* Headers and dates on one line: the table scrolls rather than wrap them. */
+:deep(.p-datatable-column-title),
+:deep(.nowrap) {
+  white-space: nowrap;
 }
 </style>
