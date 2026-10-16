@@ -43,8 +43,8 @@ func runAPI(ctx context.Context, args []string) error {
 	withUI := fs.Bool("ui", false, "also serve the web UI, for a single container")
 	var geo geoFlags
 	geo.register(fs)
-	retention := keepForever
-	fs.Var(&retention, "event-raw-data-retention-days", "days the raw Cowrie lines of events are kept, sessions and their details staying: -1 for ever, 0 none (not even stored), empty or null for ever")
+	retention := defaultRetention
+	fs.Var(&retention, "event-raw-data-retention-days", "days the raw Cowrie lines of events are kept, sessions and their details staying: -1, empty or null for ever, 0 none (not even stored)")
 	adminPassword := fs.String("admin-password", "", "password of the administration pages; a random one is generated and logged at each start if neither it nor --admin-password-file is set")
 	adminPasswordFile := fs.String("admin-password-file", "", "file holding the password of the administration pages, such as a container secret")
 	trustedProxies := fs.String("trusted-proxies", "", "comma-separated addresses or CIDR ranges of reverse proxies whose X-Forwarded-For names the client, to limit password guesses per client; empty ignores the header")

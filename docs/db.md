@@ -268,7 +268,7 @@ Sessions, events and their data, projections and deduplication are
 untouched; only the raw view of old events (the session page then shows
 their data) and their reprocessing are lost. Retention is an operator
 setting, `CAURI_EVENT_RAW_DATA_RETENTION_DAYS`: -1 keeps the lines for
-ever (the default), N days, 0 none (the ingestion stops storing them and
+ever, N days (15 by default), 0 none (the ingestion stops storing them and
 those stored are purged); the purge runs at start and every hour, in
 batches (`store.PurgeRawEvents`). Measured on 20,778
 sessions: 107 MB with every raw line, 27 MB once they are all purged and

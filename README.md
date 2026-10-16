@@ -373,9 +373,9 @@ what the other tables do not hold of a line is kept with its event.
 
 | Value | Raw lines |
 |---|---|
-| `-1`, empty or `null` (the default) | Kept for ever |
+| `-1`, empty or `null` | Kept for ever |
 | `0` | Not stored at all; those stored before are deleted |
-| `N` | Deleted once older than N days, at start then every hour |
+| `N` (`15` by default) | Deleted once older than N days, at start then every hour |
 
 Sessions, their events and what they held, logins, commands, files and
 the deduplication of resent lines stay, and the session page shows an
@@ -449,7 +449,7 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_GEOIP_ASN_DB` | `data/asn.mmdb` (image: `/data/asn.mmdb`) | MMDB ASN database (DB-IP ASN Lite or GeoLite2-ASN) giving the network of sessions once the file exists; empty: off |
 | `CAURI_GEOIP_ASN_DB_URL` | DB-IP ASN Lite of the month | Where `cauri download asn` fetches it; empty: the default |
 | `CAURI_MAX_TTY_SIZE` | `134217728` (128 MiB)                     | Largest recording accepted, in bytes                                         |
-| `CAURI_EVENT_RAW_DATA_RETENTION_DAYS` | `-1` (keep)              | Days the raw Cowrie lines are kept: `-1` for ever, `0` not stored, see [Raw data retention](#raw-data-retention) |
+| `CAURI_EVENT_RAW_DATA_RETENTION_DAYS` | `15`                      | Days the raw Cowrie lines are kept: `-1` for ever, `0` not stored, see [Raw data retention](#raw-data-retention) |
 | `CAURI_ADMIN_PASSWORD` | (generated) | Password of the administration page, see [Administration](#administration) |
 | `CAURI_ADMIN_PASSWORD_FILE` | (none) | File holding that password, such as a container secret; set only one of the two |
 | `CAURI_TRUSTED_PROXIES` | (none) | Comma-separated addresses or CIDR ranges of the reverse proxies whose `X-Forwarded-For` names the client, see [Administration](#administration) |

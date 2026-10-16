@@ -14,6 +14,10 @@ type retentionDays int
 
 const keepForever retentionDays = -1
 
+// defaultRetention keeps the raw lines 15 days: long enough to look at
+// recent events raw, without letting them fill the database.
+const defaultRetention retentionDays = 15
+
 func (r *retentionDays) String() string { return strconv.Itoa(int(*r)) }
 
 func (r *retentionDays) Set(s string) error {
