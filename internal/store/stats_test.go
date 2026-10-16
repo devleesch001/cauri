@@ -33,6 +33,11 @@ func TestSummarize(t *testing.T) {
 		if err != nil || sum.Sessions != 2 || sum.Logins != 2 || sum.Previous == nil || sum.Previous.Sessions != 1 || sum.Previous.Accepted != 1 {
 			t.Errorf("period = %+v (previous %+v), %v", sum, sum.Previous, err)
 		}
+		// Only the sessions that got a shell: A, its two attempts.
+		sum, err = store.Summarize(ctx, db, store.StatsFilter{Login: store.LoginSuccess})
+		if err != nil || sum.Sessions != 1 || sum.Shells != 1 || sum.Logins != 2 || sum.Accepted != 1 {
+			t.Errorf("shells only = %+v, %v", sum, err)
+		}
 		// Empty: zeros, not errors.
 		sum, err = store.Summarize(ctx, db, store.StatsFilter{Sensor: "nowhere"})
 		if err != nil || *sum != (store.Summary{}) {

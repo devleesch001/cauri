@@ -281,6 +281,7 @@ func statsFilter(q *query) store.StatsFilter {
 		To:      q.time("to"),
 		Verdict: q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
 		SrcIP:   q.str("ip"),
+		Login:   q.oneOf("login", store.LoginSuccess, store.LoginFailed),
 	}
 }
 

@@ -572,6 +572,7 @@ type StatsFilter struct {
 	From, To *time.Time // on started_at, To exclusive
 	Verdict  string     // VerdictHuman or VerdictBot, as in SessionFilter
 	SrcIP    string     // one attacker's address, exactly
+	Login    string     // LoginSuccess or LoginFailed, as in SessionFilter
 }
 
 // ListCountries returns the countries sessions came from, most sessions
@@ -598,6 +599,12 @@ func (f StatsFilter) apply(q *bun.SelectQuery) *bun.SelectQuery {
 	}
 	if f.SrcIP != "" {
 		q = q.Where("s.src_ip = ?", f.SrcIP)
+	}
+	switch f.Login {
+	case LoginSuccess:
+		q = q.Where("s.login_success = ?", true)
+	case LoginFailed:
+		q = q.Where("s.login_success = ?", false)
 	}
 	return whereVerdict(q, f.Verdict)
 }
