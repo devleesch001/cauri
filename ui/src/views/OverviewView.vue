@@ -125,7 +125,7 @@ function open(country: string, city?: string) {
             <span
               v-if="item.shells"
               class="shell"
-              :title="t('overview.shells', { n: item.shells.toLocaleString() }, item.shells)"
+              :title="t('overview.loggedIn', { n: item.shells.toLocaleString() }, item.shells)"
             > · {{ item.shells.toLocaleString() }}</span>
           </template>
         </BarList>

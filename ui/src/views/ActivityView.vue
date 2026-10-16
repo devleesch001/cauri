@@ -130,7 +130,7 @@ const mostDay = computed(() => Math.max(1, ...days.value.map((d) => d.sessions))
           v-for="d in days"
           :key="d.day"
           class="day"
-          :title="t('activity.day', { day: d.day, n: d.sessions.toLocaleString(), shells: d.shells.toLocaleString() })"
+          :title="t('activity.day', { day: d.day, n: d.sessions.toLocaleString(), loggedIn: d.shells.toLocaleString() })"
         >
           <span
             class="col"
@@ -158,7 +158,7 @@ const mostDay = computed(() => Math.max(1, ...days.value.map((d) => d.sessions))
       </p>
       <p class="muted legend">
         <span class="swatch" /> {{ t('activity.legendSessions') }}
-        <span class="swatch shell-swatch" /> {{ t('activity.legendShells') }}
+        <span class="swatch shell-swatch" /> {{ t('activity.legendLoggedIn') }}
       </p>
     </section>
   </div>

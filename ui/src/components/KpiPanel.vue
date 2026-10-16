@@ -46,7 +46,7 @@ const bubbles = computed<Bubble[]>(() => {
       ],
     },
     {
-      key: 'shells', label: t('stats.shells'), value: n(s.shells), note: change(s.shells, p?.shells) ?? undefined,
+      key: 'shells', label: t('stats.loggedIn'), value: n(s.shells), note: change(s.shells, p?.shells) ?? undefined,
       details: [
         { label: t('overview.details.ofSessions'), value: `${percent(s.shells, s.sessions)} %` },
         ...history(s.shells, p?.shells),

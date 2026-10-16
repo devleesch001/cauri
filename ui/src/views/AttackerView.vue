@@ -117,7 +117,7 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
           :previous="summary.previous?.sessions"
         />
         <KpiCard
-          :label="t('stats.shells')"
+          :label="t('stats.loggedIn')"
           :value="summary.shells"
           :previous="summary.previous?.shells"
         />
@@ -336,7 +336,7 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
               <span
                 v-if="data.login_success"
                 class="shell"
-              >{{ t('sessions.outcome.shell') }}</span>
+              >{{ t('sessions.outcome.loggedIn') }}</span>
               <span
                 v-else-if="data.login_attempts"
                 class="muted"

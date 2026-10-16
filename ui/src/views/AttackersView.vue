@@ -190,7 +190,7 @@ function clearFilters() {
         />
         <label class="toggle">
           <ToggleSwitch v-model="shell" />
-          {{ t('attackers.filters.shell') }}
+          {{ t('attackers.filters.loggedIn') }}
         </label>
         <Button
           v-if="filtered"
@@ -274,7 +274,7 @@ function clearFilters() {
       </Column>
       <Column
         field="shells"
-        :header="t('attackers.columns.shells')"
+        :header="t('attackers.columns.loggedIn')"
         sortable
         class="num"
       >

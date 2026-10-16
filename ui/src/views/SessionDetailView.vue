@@ -176,11 +176,11 @@ const logins = computed(() => {
           <span
             v-if="session.login_success"
             class="shell verdict"
-          >{{ t('session.gotShell') }}</span>
+          >{{ t('session.loggedIn') }}</span>
           <span
             v-else
             class="muted verdict"
-          >{{ t('session.noShell') }}</span>
+          >{{ t('session.notLoggedIn') }}</span>
           <span
             v-if="verdict"
             class="badge"

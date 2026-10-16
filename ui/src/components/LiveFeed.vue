@@ -86,7 +86,7 @@ const time = (s: string) => new Date(s).toLocaleTimeString()
         <span
           v-if="s.login_success"
           class="shell"
-        >{{ t('sessions.outcome.shell') }}</span>
+        >{{ t('sessions.outcome.loggedIn') }}</span>
         <span
           v-else
           class="muted"

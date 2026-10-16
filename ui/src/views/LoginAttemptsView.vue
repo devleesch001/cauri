@@ -132,7 +132,7 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       <div class="filters">
         <label class="toggle">
           <ToggleSwitch v-model="withShells" />
-          {{ t('logins.includeShells') }}
+          {{ t('logins.includeLoggedIn') }}
         </label>
         <Button
           v-if="filtered"

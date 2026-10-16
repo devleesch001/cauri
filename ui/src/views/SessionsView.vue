@@ -69,7 +69,7 @@ const login = computed({
 })
 const loginOptions = computed(() => [
   { label: t('sessions.filters.anyOutcome'), value: 'any' },
-  { label: t('sessions.filters.shellObtained'), value: 'success' },
+  { label: t('sessions.filters.loginSuccess'), value: 'success' },
   { label: t('sessions.filters.loginFailed'), value: 'failed' },
 ])
 // Bots include uncertain sessions and those without interaction (the API counts them so).
@@ -426,7 +426,7 @@ function clearFilters() {
           <span
             v-if="data.login_success"
             class="shell"
-          >{{ t('sessions.outcome.shell') }}</span>
+          >{{ t('sessions.outcome.loggedIn') }}</span>
           <span
             v-else-if="data.login_attempts"
             class="muted"

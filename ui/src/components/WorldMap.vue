@@ -294,7 +294,7 @@ function select(a2?: string) {
         <span
           v-if="hover.shells"
           class="shell"
-        >{{ t('overview.shells', { n: hover.shells.toLocaleString() }, hover.shells) }}</span>
+        >{{ t('overview.loggedIn', { n: hover.shells.toLocaleString() }, hover.shells) }}</span>
       </template>
     </div>
     <div class="legend muted">
