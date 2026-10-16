@@ -296,6 +296,25 @@ It works with or without the location database. Sessions stored before
 get their network when the API starts; the overview lists the busiest
 networks and each session shows its own.
 
+### Filters
+
+The filters typed by hand (address, session, username, password, client,
+city, command, HASSH, file) match the start of a value by default, in the
+pages and in the API:
+
+| Typed | Matches |
+|---|---|
+| `test` | values starting with `test`, any case |
+| `*test*` or `%test%` | values containing `test`; `*` and `%` are the same wildcard, anywhere |
+| `"test"` | exactly `test`, case included |
+| `1.2.3.4` | a complete address: exactly that one |
+| `1.2.3` | addresses starting with `1.2.3`, including `1.2.30.x` |
+
+`_` and `\` are themselves. Links from one page to another (a username,
+an address, a command) quote their value, to match it exactly. Lists
+(sensor, country, verdict) are always exact. Purges are exact unless a
+value holds a wildcard (see [Deleting sessions](#deleting-sessions)).
+
 ### Statistics
 
 Besides the lists, the UI has pages that count:
@@ -327,7 +346,7 @@ the same whatever address the tool runs from; the HASSH covers four of
 them). The **Attackers** page lists either (`/attackers/ip`,
 `/attackers/kex`). Addresses come with their sessions, those that logged
 in, login attempts, first and last seen, location, network and the
-verdict most of their sessions got, filtered by address prefix, country,
+verdict most of their sessions got, filtered by address, country,
 network, verdict, period and whether they logged in. Key exchanges come
 with their HASSH, host key algorithms, addresses, sessions, logins and
 times, filtered by HASSH, verdict, period and logins. Both sort by
@@ -346,7 +365,7 @@ an address typed in the search, lead to their profile; a session's
 HASSH to its key exchange.
 
 The API serves them as `GET /api/attackers/ip` (parameters of the
-statistics plus `country`, `asn`, `ip_prefix`, `logged_in`, `sort` =
+statistics plus `country`, `asn`, `logged_in`, `sort` =
 `sessions`, `logged_in` or `last_seen`, `order`, `limit`, `offset`),
 `GET /api/attackers/ip/{ip}`, `GET /api/attackers/kex` (parameters of the
 statistics plus `hassh`, `logged_in`, `sort` = `sessions`, `sources`,
@@ -507,7 +526,8 @@ cauri purge --username admin --password 1234 --yes
 cauri purge --command 'uname -a' --sensor hp-01 --to 2026-01-01 --yes
 ```
 
-Criteria are exact values: `--ip`, `--session` (Cowrie's identifier),
+Criteria are exact values, unless they hold a wildcard (`*` or `%`, see
+[Filters](#filters)): `--ip`, `--session` (Cowrie's identifier),
 `--username`, `--password`, `--command`, `--hassh`, `--file` (SHA-256 of
 a transferred file), `--sensor`, `--from` and `--to` (a day, midnight
 UTC, or an RFC 3339 time; `--to` excluded). At least one is required.
