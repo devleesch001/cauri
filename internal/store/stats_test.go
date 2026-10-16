@@ -204,8 +204,8 @@ func TestCommands(t *testing.T) {
 		if _, got := sessions(t, db, store.SessionFilter{Command: "uname -a"}); got != "1" {
 			t.Errorf("sessions that ran uname -a = %q", got)
 		}
-		if _, got := sessions(t, db, store.SessionFilter{Command: "uname"}); got != "" {
-			t.Errorf("a command filter matches exactly: %q", got)
+		if _, got := sessions(t, db, store.SessionFilter{Command: `"uname"`}); got != "" {
+			t.Errorf("a quoted command filter matches exactly: %q", got)
 		}
 		if _, got := sessions(t, db, store.SessionFilter{HASSH: "abc"}); got != "1" {
 			t.Errorf("sessions with HASSH abc = %q", got)

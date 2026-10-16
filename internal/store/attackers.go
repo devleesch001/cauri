@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"strings"
 
 	"github.com/uptrace/bun"
 )
@@ -23,9 +22,8 @@ type AttackerFilter struct {
 	StatsFilter
 	Country  string // ISO 3166-1 alpha-2 code
 	ASN      int64
-	IPPrefix string // start of the address
-	LoggedIn *bool  // logged in at least once, or never
-	Sort     Sort   // by SortSessions (the default), SortLastSeen or SortLoggedIn
+	LoggedIn *bool // logged in at least once, or never
+	Sort     Sort  // by SortSessions (the default), SortLastSeen or SortLoggedIn
 	Page
 }
 
@@ -74,9 +72,6 @@ func ListAttackers(ctx context.Context, db bun.IDB, f AttackerFilter) ([]Attacke
 	}
 	if f.ASN != 0 {
 		q = q.Where("s.network_id IN (?)", networkOf(db, f.ASN))
-	}
-	if f.IPPrefix != "" {
-		q = q.Where(`s.src_ip LIKE ? ESCAPE '\'`, likePrefix(f.IPPrefix))
 	}
 	if f.LoggedIn != nil {
 		if *f.LoggedIn {
@@ -165,10 +160,4 @@ func GetAttacker(ctx context.Context, db bun.IDB, ip string, f StatsFilter) (*At
 		return nil, err
 	}
 	return d, nil
-}
-
-// likePrefix matches what starts with s, its LIKE wildcards escaped.
-func likePrefix(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return r.Replace(s) + "%"
 }

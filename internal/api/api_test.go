@@ -1056,7 +1056,7 @@ func TestAttackers(t *testing.T) {
 		if list.Total != 1 {
 			t.Errorf("with a shell = %+v", list)
 		}
-		get(t, e, "/api/attackers/ip?ip_prefix=2001:", http.StatusOK, &list)
+		get(t, e, "/api/attackers/ip?ip=2001:", http.StatusOK, &list)
 		if list.Total != 1 || list.Items[0].IP != "2001:db8::1" {
 			t.Errorf("by prefix = %+v", list)
 		}

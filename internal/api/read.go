@@ -304,7 +304,6 @@ func (s *server) listAttackers(w http.ResponseWriter, r *http.Request) {
 		StatsFilter: statsFilter(&q),
 		Country:     q.country("country"),
 		ASN:         int64(q.int("asn")),
-		IPPrefix:    q.str("ip_prefix"),
 		LoggedIn:    q.bool("logged_in"),
 		Sort:        q.sort(store.AttackerSorts()),
 		Page:        q.page(),

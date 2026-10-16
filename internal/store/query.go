@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -50,16 +49,18 @@ const (
 )
 
 // SessionFilter selects sessions. Zero values do not filter.
+//
+// SrcIP, Session, Username, Password, Client, City, File, Command and HASSH
+// are typed filters (see match): a start by default, wildcards or quotes.
 type SessionFilter struct {
 	Sensor string // name
 	SrcIP  string
-	// Session is a Cowrie session identifier, exactly.
+	// Session is a Cowrie session identifier.
 	Session string
 	// Username and Password match sessions with such a login attempt.
-	Username string
-	Password string
-	// Client matches a substring of the client version, ignoring case.
-	Client      string
+	Username    string
+	Password    string
+	Client      string     // the client version
 	Country     string     // ISO 3166-1 alpha-2 code of the source address
 	City        string     // with Country: names are only unique within a country
 	From, To    *time.Time // on started_at, To exclusive
@@ -70,10 +71,13 @@ type SessionFilter struct {
 	Shell       *bool  // typed in an interactive shell, or not; without a recording read, neither
 	File        string // SHA-256 of a file the session transferred
 	ASN         int64  // autonomous system of the source address
-	Command     string // a command line run in the session, exactly
+	Command     string // a command line run in the session
 	HASSH       string // client fingerprint
 	Kex         int64  // key exchange (ssh_kex id)
-	Sort        Sort   // of the list only, by SessionSorts
+	// Exact makes the typed filters exact unless they hold a wildcard:
+	// purges never delete wider than written.
+	Exact bool
+	Sort  Sort // of the list only, by SessionSorts
 	Page
 }
 
@@ -166,20 +170,24 @@ func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 	if f.Sensor != "" {
 		q = q.Where("sn.name = ?", f.Sensor)
 	}
+	mode := matchStart
+	if f.Exact {
+		mode = matchExact
+	}
 	if f.SrcIP != "" {
-		q = q.Where("s.src_ip = ?", f.SrcIP)
+		q = q.Where(matchIP("s.src_ip", f.SrcIP, mode))
 	}
 	if f.Session != "" {
-		q = q.Where("s.cowrie_session = ?", f.Session)
+		q = q.Where(match("s.cowrie_session", f.Session, mode))
 	}
 	if f.Country != "" {
 		q = q.Where("s.geo_country = ?", f.Country)
 	}
 	if f.City != "" {
-		q = q.Where("s.geo_city = ?", f.City)
+		q = q.Where(match("s.geo_city", f.City, mode))
 	}
 	if f.Client != "" {
-		q = q.Where(`LOWER(s.client_version) LIKE ? ESCAPE '\'`, likeContains(f.Client))
+		q = q.Where(match("s.client_version", f.Client, mode))
 	}
 	if f.From != nil {
 		q = q.Where("s.started_at >= ?", Micro(*f.From))
@@ -199,10 +207,10 @@ func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 		// are read once, not once per session.
 		sub := db.NewSelect().TableExpr("login_attempts AS fla").ColumnExpr("fla.session_id")
 		if f.Username != "" {
-			sub = sub.Where("fla.username = ?", f.Username)
+			sub = sub.Where(match("fla.username", f.Username, mode))
 		}
 		if f.Password != "" {
-			sub = sub.Where("fla.password = ?", f.Password)
+			sub = sub.Where(match("fla.password", f.Password, mode))
 		}
 		q = q.Where("s.id IN (?)", sub)
 	}
@@ -211,21 +219,21 @@ func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where(existsExpr(*f.HasCommands), sub)
 	}
 	if f.Command != "" {
-		sub := db.NewSelect().TableExpr("commands AS fcm").ColumnExpr("fcm.session_id").Where("fcm.input = ?", f.Command)
+		sub := db.NewSelect().TableExpr("commands AS fcm").ColumnExpr("fcm.session_id").Where(match("fcm.input", f.Command, mode))
 		q = q.Where("s.id IN (?)", sub)
 	}
 	if f.Kex != 0 {
 		q = q.Where("s.ssh_kex_id = ?", f.Kex)
 	}
 	if f.HASSH != "" {
-		sub := db.NewSelect().TableExpr("ssh_kex AS fk").ColumnExpr("fk.id").Where("fk.hassh = ?", f.HASSH)
+		sub := db.NewSelect().TableExpr("ssh_kex AS fk").ColumnExpr("fk.id").Where(match("fk.hassh", f.HASSH, mode))
 		q = q.Where("s.ssh_kex_id IN (?)", sub)
 	}
 	if f.ASN != 0 {
 		q = q.Where("s.network_id IN (?)", networkOf(db, f.ASN))
 	}
 	if f.File != "" {
-		sub := db.NewSelect().TableExpr("transfers AS fx").ColumnExpr("fx.session_id").Where("fx.sha256 = ?", f.File)
+		sub := db.NewSelect().TableExpr("transfers AS fx").ColumnExpr("fx.session_id").Where(match("fx.sha256", f.File, mode))
 		q = q.Where("s.id IN (?)", sub)
 	}
 	if f.Shell != nil {
@@ -343,7 +351,8 @@ func GetSession(ctx context.Context, db bun.IDB, id int64) (*SessionDetail, erro
 	return d, err
 }
 
-// LoginAttemptFilter selects login attempts. Zero values do not filter.
+// LoginAttemptFilter selects login attempts. Zero values do not filter;
+// SrcIP, Username and Password are typed filters (see match).
 type LoginAttemptFilter struct {
 	Sensor   string // name
 	SrcIP    string
@@ -418,16 +427,16 @@ func (f LoginAttemptFilter) query(db bun.IDB) *bun.SelectQuery {
 		q = q.Where("sn.name = ?", f.Sensor)
 	}
 	if f.SrcIP != "" {
-		q = q.Where("s.src_ip = ?", f.SrcIP)
+		q = q.Where(matchIP("s.src_ip", f.SrcIP, matchStart))
 	}
 	if f.Username != "" {
-		q = q.Where("la.username = ?", f.Username)
+		q = q.Where(match("la.username", f.Username, matchStart))
 	}
 	if f.Country != "" {
 		q = q.Where("s.geo_country = ?", f.Country)
 	}
 	if f.Password != "" {
-		q = q.Where("la.password = ?", f.Password)
+		q = q.Where(match("la.password", f.Password, matchStart))
 	}
 	if f.From != nil {
 		q = q.Where("la.ts >= ?", Micro(*f.From))
@@ -449,13 +458,6 @@ func ListSensors(ctx context.Context, db bun.IDB) ([]Sensor, error) {
 	sensors := []Sensor{}
 	err := db.NewSelect().Model(&sensors).Where("first_seen IS NOT NULL").Order("name").Scan(ctx)
 	return sensors, err
-}
-
-// likeContains returns a LIKE pattern matching s anywhere, case folded,
-// to use with ESCAPE '\'.
-func likeContains(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return "%" + r.Replace(strings.ToLower(s)) + "%"
 }
 
 // ErrNoRecording means the session exists but its TTY recording has not
@@ -585,7 +587,7 @@ type StatsFilter struct {
 	Sensor   string     // name
 	From, To *time.Time // on started_at, To exclusive
 	Verdict  string     // VerdictHuman or VerdictBot, as in SessionFilter
-	SrcIP    string     // one attacker's address, exactly
+	SrcIP    string     // the source address, a typed filter (see match): one attacker's when complete
 	Kex      int64      // one attacker's key exchange (ssh_kex id)
 	Login    string     // LoginSuccess or LoginFailed, as in SessionFilter
 }
@@ -613,7 +615,7 @@ func (f StatsFilter) apply(q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where("s.started_at < ?", Micro(*f.To))
 	}
 	if f.SrcIP != "" {
-		q = q.Where("s.src_ip = ?", f.SrcIP)
+		q = q.Where(matchIP("s.src_ip", f.SrcIP, matchStart))
 	}
 	if f.Kex != 0 {
 		q = q.Where("s.ssh_kex_id = ?", f.Kex)

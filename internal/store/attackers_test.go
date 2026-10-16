@@ -70,8 +70,8 @@ func TestListAttackers(t *testing.T) {
 			"logged in, most first": {store.AttackerFilter{Sort: store.Sort{By: store.SortLoggedIn}}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
 			"logged in":             {store.AttackerFilter{LoggedIn: ptr(true)}, []string{"203.0.113.1"}},
 			"never":                 {store.AttackerFilter{LoggedIn: ptr(false)}, []string{"203.0.113.3", "203.0.113.2"}},
-			"prefix":                {store.AttackerFilter{IPPrefix: "203.0.113.3"}, []string{"203.0.113.3"}},
-			"wildcards":             {store.AttackerFilter{IPPrefix: "203_0%"}, []string{}},
+			"complete address":      {store.AttackerFilter{StatsFilter: store.StatsFilter{SrcIP: "203.0.113.3"}}, []string{"203.0.113.3"}},
+			"wildcards":             {store.AttackerFilter{StatsFilter: store.StatsFilter{SrcIP: "203_0%"}}, []string{}},
 			// The statistics filter applies to sessions: from hp-02, the
 			// first attacker has one session, one login.
 			"sensor": {store.AttackerFilter{StatsFilter: store.StatsFilter{Sensor: "hp-02"}}, []string{"203.0.113.1", "203.0.113.3"}},

@@ -33,7 +33,7 @@ func KexSorts() []string { return kexSort.names() }
 // sessions; zero values do not filter.
 type KexFilter struct {
 	StatsFilter
-	HASSH    string // Cowrie's fingerprint, exactly
+	HASSH    string // Cowrie's fingerprint, a typed filter (see match)
 	LoggedIn *bool  // logged in at least once, or never
 	Sort     Sort   // by SortSessions (the default), SortSources, SortLastSeen or SortLoggedIn
 	Page
@@ -85,7 +85,7 @@ func ListKex(ctx context.Context, db bun.IDB, f KexFilter) ([]KexAttacker, int, 
 	rows := []KexAttacker{}
 	q := selectKex(db, f.StatsFilter)
 	if f.HASSH != "" {
-		q = q.Where("k.hassh = ?", f.HASSH)
+		q = q.Where(match("k.hassh", f.HASSH, matchStart))
 	}
 	if f.LoggedIn != nil {
 		if *f.LoggedIn {

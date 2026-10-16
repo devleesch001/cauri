@@ -29,7 +29,8 @@ session has (rows and files). Without --yes, only says what would go.
 Lines Cowrie still has come back if an ingestor sends them again (a new
 ingestor started from the beginning, a lost state file).
 
-Criteria are exact values and are never read from the environment.
+Criteria are exact values, unless they hold a wildcard (* or %), and are
+never read from the environment.
 Database options (--db-driver, --db-dsn) and --tty-dir are the same as for
 "cauri api", environment variables included.
 

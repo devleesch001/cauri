@@ -48,10 +48,12 @@ func (p *Purger) Sessions(ctx context.Context, f store.SessionFilter, apply bool
 // far after each batch. It stops between two batches once ctx is
 // canceled, returning what went: each batch is whole.
 func (p *Purger) SessionsProgress(ctx context.Context, f store.SessionFilter, apply bool, progress func(store.PurgeCounts)) (store.PurgeCounts, error) {
-	f.Page, f.Sort = store.Page{}, store.Sort{}
+	f.Page, f.Sort, f.Exact = store.Page{}, store.Sort{}, false
 	if f == (store.SessionFilter{}) {
 		return store.PurgeCounts{}, ErrNoCriteria
 	}
+	// Never wider than written: a value is exact unless it holds a wildcard.
+	f.Exact = true
 	if !apply {
 		return store.CountPurge(ctx, p.db, f)
 	}
