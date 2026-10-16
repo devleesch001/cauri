@@ -7,9 +7,11 @@ import BarList from '@/components/BarList.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import KpiCard from '@/components/KpiCard.vue'
+import SessionFilters from '@/components/SessionFilters.vue'
 import SessionTable from '@/components/SessionTable.vue'
 import StatsFilters from '@/components/StatsFilters.vue'
 import { formatTime } from '@/format'
+import { useSessionFilterParams } from '@/sessionFilters'
 import { useStatsFilters } from '@/stats'
 
 // One attacker, a source address: who it is and everything it did, the
@@ -60,8 +62,10 @@ const accepted = computed(() => {
 const days = computed(() => [...(activity.value?.days ?? [])].reverse())
 const shown = (v: string) => (v === '' ? t('session.logins.emptyPassword') : v)
 const mine = (extra: Record<string, string>) => link('sessions', { ip: props.ip, ...extra })
-// Its sessions, listed as on the sessions page; the export is theirs too.
-const sessionParams = computed(() => ({ ...params.value, ip: props.ip }))
+// Its sessions, listed and filtered as on the sessions page, but for the
+// address, country, period and verdict the page sets; the export is theirs.
+const sessionFilters = useSessionFilterParams()
+const sessionParams = computed(() => ({ ...sessionFilters.value, ip: props.ip }))
 const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
 </script>
 
@@ -293,9 +297,11 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
             >{{ t('attacker.allSessions') }}</RouterLink>
           </span>
         </div>
+        <SessionFilters :hide="['ip', 'country', 'dates', 'verdict']" />
         <SessionTable
           v-model:total="sessionTotal"
           :params="sessionParams"
+          filtered
         />
       </section>
     </template>
