@@ -24,7 +24,7 @@ harder.
 Do not break these without the user's explicit agreement.
 
 **One binary, one image.** Roles are subcommands of `cmd/cauri`: `api`,
-`api --ui`, `ui`, `ingestor`, `token`, `purge`, `version`. A future all-in-one
+`api --ui`, `ui`, `ingestor`, `token`, `purge`, `db-copy`, `version`. A future all-in-one
 binary is a build tag (`allinone`), not a fork.
 
 **The ingestor only decides which recording to send.** It sends each
@@ -65,7 +65,11 @@ PostgreSQL-only features, no SQLite-only functions in queries (use
 database; an event's SHA-256 is only a unique column, for deduplication.
 Times are integer microseconds (`store.Time`), durations milliseconds.
 Times are stored in UTC (SQLite compares them as text). The API is the
-only writer, except `cauri token` and `cauri purge`, accepted by the user.
+only writer, except `cauri token`, `cauri purge` and `cauri db-copy` (into
+an empty target only), accepted by the user. `internal/dbcopy` copies
+through the bun models, by table in the order of the foreign keys: a new
+table or column goes into its list and its model (`TestTablesCovered`,
+`TestColumnsCovered`).
 
 **Every key and index is named**, the same in both engines (the user
 insists on it): primary keys `pk_<table>`, unique keys
@@ -173,6 +177,7 @@ mandatory.
 | `internal/store/` | bun models, migrations, read queries, statistics (`stats.go`), raw-data retention; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
 | `internal/purge/` | Deletes the sessions a `store.SessionFilter` selects, rows by batches (with the recordings, key exchanges, networks and GeoIP databases no other session uses) then orphaned recording files; `cauri purge` and the admin API |
+| `internal/dbcopy/` | Copies a database into an empty one, same engine or the other, ids included, in one transaction; `cauri db-copy` |
 | `internal/jobs/` | The administration's background tasks: one at a time, progress, cancel, the last 20 in memory |
 | `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model, v3 encoder and simulated replay |
 | `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |

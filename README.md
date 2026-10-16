@@ -634,6 +634,32 @@ it. PostgreSQL is supported as an option, on a server you run: set
 `postgres://cauri:<password>@<host>:5432/cauri?sslmode=require`. Back it
 up with the TTY directory, like the SQLite file.
 
+### Changing database engine
+
+`cauri db-copy` copies a database into an empty one, from SQLite to
+PostgreSQL, back, or to the same engine elsewhere. Every row is copied
+with its id; the recordings stay in the TTY directory, which the API keeps
+using. The source is only read and must be at the schema of this version
+(start the API on it once after an upgrade). The target must hold no rows:
+an empty database, or one cauri migrated but never used. It is migrated,
+then filled in one transaction, so a failure leaves it empty. Without
+`--yes` it only checks both and counts what would be copied:
+
+```sh
+# Stop the API first: rows it writes during the copy would be missed.
+cauri db-copy --from-db-dsn data/cauri.db \
+              --to-db-driver postgres --to-db-dsn 'postgres://cauri:<password>@<host>:5432/cauri'
+cauri db-copy … --yes
+```
+
+`--from-db-driver` defaults to `sqlite` and `--to-db-driver` to
+`postgres`; the four options can come from the environment
+(`CAURI_FROM_DB_DSN`, `CAURI_TO_DB_DSN`…), which keeps passwords out of
+the command line. Then start the API on the target (`CAURI_DB_DRIVER`,
+`CAURI_DB_DSN`). Ingestors wait while the API is stopped: Cowrie's logs
+are their buffer. Measured on 20,778 sessions and 109,206 events: 9 s from
+SQLite to PostgreSQL, 3 s back.
+
 ### Protecting the UI
 
 **The UI and the read API have no authentication yet** (only the
