@@ -47,7 +47,7 @@ func TestMigrateLogs(t *testing.T) {
 				`"msg":"database"`, `"engine":"` + engine + `"`, `"version":"`,
 				`"msg":"database schema"`, `"version":"none (empty database)"`,
 				`"msg":"database upgrade needed"`, `"msg":"applying migration","migration":"00001_init"`,
-				`"msg":"migration applied","migration":"00007_named_keys"`, `"msg":"database upgraded"`,
+				`"msg":"migration applied","migration":"00009_project_raw_events"`, `"msg":"database upgraded"`,
 			} {
 				if !strings.Contains(first, want) {
 					t.Errorf("first run: no %s in\n%s", want, first)
@@ -62,7 +62,7 @@ func TestMigrateLogs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if second := out.String(); !strings.Contains(second, `"msg":"database schema is up to date"`) ||
-				!strings.Contains(second, `"version":"00007_named_keys","latest":"00007_named_keys","pending":0`) ||
+				!strings.Contains(second, `"version":"00009_project_raw_events","latest":"00009_project_raw_events","pending":0`) ||
 				strings.Contains(second, "applying migration") {
 				t.Errorf("second run:\n%s", second)
 			}
@@ -231,6 +231,8 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 			t.Fatal(err)
 		}
 		fk := regexp.MustCompile(`CONSTRAINT (\w+) FOREIGN KEY \((\w+)\) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?`)
+		// A column added to a table holds its key in its own definition.
+		column := regexp.MustCompile(`(\w+) \w+ CONSTRAINT (\w+) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?`)
 		unnamed := regexp.MustCompile(`REFERENCES `)
 		pk := regexp.MustCompile(`CONSTRAINT (\w+) PRIMARY KEY \((\w+)\)`)
 		for _, d := range defs {
@@ -242,6 +244,9 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 				t.Errorf("%s: %d primary keys, %d named", d.Name, n, len(keys))
 			}
 			named := fk.FindAllStringSubmatch(d.SQL, -1)
+			for _, m := range column.FindAllStringSubmatch(d.SQL, -1) {
+				named = append(named, []string{m[0], m[2], m[1], m[3], m[4], m[5]})
+			}
 			for _, m := range named {
 				action := strings.ToLower(m[5])
 				if action == "" {
@@ -341,6 +346,7 @@ func TestForeignKeyNamesAndActions(t *testing.T) {
 		"fk fk_ingest_tokens_sensor_id: ingest_tokens(sensor_id) -> sensors(id) cascade",
 		"fk fk_login_attempts_session_id: login_attempts(session_id) -> sessions(id) cascade",
 		"fk fk_sessions_sensor_id: sessions(sensor_id) -> sensors(id) restrict",
+		"fk fk_sessions_ssh_kex_id: sessions(ssh_kex_id) -> ssh_kex(id) restrict",
 		"fk fk_sessions_tty_file_id: sessions(tty_file_id) -> tty_files(id) set null",
 		"fk fk_transfers_session_id: transfers(session_id) -> sessions(id) cascade",
 	}

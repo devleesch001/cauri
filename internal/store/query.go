@@ -100,9 +100,10 @@ type SessionSummary struct {
 func selectSessions(db bun.IDB, dst any) *bun.SelectQuery {
 	return db.NewSelect().Model(dst).
 		ColumnExpr("s.*").
-		ColumnExpr("sn.name AS sensor, t.sha256 AS tty_sha256, t.size AS tty_size").
+		ColumnExpr("sn.name AS sensor, t.sha256 AS tty_sha256, t.size AS tty_size, k.hassh AS hassh").
 		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
-		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id")
+		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
+		Join("LEFT JOIN ssh_kex AS k ON k.id = s.ssh_kex_id")
 }
 
 // ListSessions returns a page of sessions, latest first, and the number
@@ -210,7 +211,8 @@ func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where("s.id IN (?)", sub)
 	}
 	if f.HASSH != "" {
-		q = q.Where("s.hassh = ?", f.HASSH)
+		sub := db.NewSelect().TableExpr("ssh_kex AS fk").ColumnExpr("fk.id").Where("fk.hassh = ?", f.HASSH)
+		q = q.Where("s.ssh_kex_id IN (?)", sub)
 	}
 	if f.ASN != 0 {
 		q = q.Where("s.asn = ?", f.ASN)
@@ -327,7 +329,8 @@ func GetSession(ctx context.Context, db bun.IDB, id int64) (*SessionDetail, erro
 		}
 	}
 	err = db.NewSelect().Model((*Event)(nil)).
-		ColumnExpr("e.id, e.type, e.ts, ed.data").
+		// The raw line while it is kept, then what the tables do not hold.
+		ColumnExpr("e.id, e.type, e.ts, COALESCE(ed.data, e.data) AS data").
 		Join("LEFT JOIN event_data AS ed ON ed.event_id = e.id").
 		Where("e.session_id = ?", id).OrderExpr("e.ts, e.id").Scan(ctx, &d.Events)
 	return d, err
@@ -487,15 +490,13 @@ func GetRecording(ctx context.Context, db bun.IDB, id int64) (*Recording, error)
 		Order("ts", "id").Scan(ctx); err != nil {
 		return nil, err
 	}
-	// Terminal sizes are only in the raw lines: purging raw data must keep
-	// cowrie.client.size (see docs/db.md).
+	// Terminal sizes are in the event's data, which outlives the raw line.
 	var sizes []struct {
 		TS   Time   `bun:"ts"`
 		Data string `bun:"data"`
 	}
-	if err := db.NewSelect().Model((*Event)(nil)).ColumnExpr("e.ts, ed.data").
-		Join("JOIN event_data AS ed ON ed.event_id = e.id").
-		Where("e.session_id = ?", id).Where("e.type = ?", "cowrie.client.size").
+	if err := db.NewSelect().Model((*Event)(nil)).ColumnExpr("e.ts, e.data").
+		Where("e.session_id = ?", id).Where("e.type = ?", "cowrie.client.size").Where("e.data IS NOT NULL").
 		OrderExpr("e.ts, e.id").Scan(ctx, &sizes); err != nil {
 		return nil, err
 	}

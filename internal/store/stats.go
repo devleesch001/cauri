@@ -398,11 +398,12 @@ func GetCommands(ctx context.Context, db bun.IDB, f StatsFilter) (*Commands, err
 		return nil, err
 	}
 	ran := db.NewSelect().TableExpr("commands AS hc").ColumnExpr("hc.session_id")
-	q := db.NewSelect().Model((*Session)(nil)).Column("hassh").
+	q := db.NewSelect().Model((*Session)(nil)).ColumnExpr("k.hassh").
 		ColumnExpr("MIN(s.client_version) AS client, COUNT(DISTINCT s.client_version) AS clients").
 		ColumnExpr("COUNT(*) AS n, COUNT(DISTINCT s.src_ip) AS sources").
-		Where("s.hassh IS NOT NULL").Where("s.id IN (?)", ran).
-		GroupExpr("s.hassh").OrderExpr("n DESC, s.hassh").Limit(TopCommands)
+		Join("JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
+		Where("k.hassh IS NOT NULL").Where("s.id IN (?)", ran).
+		GroupExpr("k.hassh").OrderExpr("n DESC, k.hassh").Limit(TopCommands)
 	if err := f.apply(q).Scan(ctx, &c.HASSH); err != nil {
 		return nil, err
 	}

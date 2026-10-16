@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/devleesch001/cauri/internal/cowrie"
 	"github.com/devleesch001/cauri/internal/store"
 )
 
@@ -28,6 +29,7 @@ type batchWriter struct {
 	sensor    store.Sensor
 	sessions  map[string]*store.Session // by Cowrie session id
 	order     []string                  // Cowrie session ids, in order of appearance
+	kex       map[string]*cowrie.Kex    // the first key exchange of each session
 	events    []pendingEvent
 	// sessionIDs are the sessions written, once write returned.
 	sessionIDs []int64
@@ -47,6 +49,7 @@ func newBatchWriter(sensor string, now time.Time, locator Locator, networker Net
 		networker: networker,
 		sensor:    store.Sensor{Name: sensor},
 		sessions:  map[string]*store.Session{},
+		kex:       map[string]*cowrie.Kex{},
 	}
 }
 
@@ -91,7 +94,9 @@ func (w *batchWriter) merge(s *store.Session, ev *cowrieEvent) {
 	case evClientVersion:
 		firstStr(&s.ClientVersion, ev.Version)
 	case evClientKex:
-		firstStr(&s.HASSH, ev.HASSH)
+		if _, ok := w.kex[ev.Session]; !ok && ev.Kex != nil {
+			w.kex[ev.Session] = ev.Kex
+		}
 	case evLoginSuccess:
 		s.LoginSuccess = true
 	case evLogClosed:
@@ -164,7 +169,7 @@ func (w *batchWriter) write(ctx context.Context, tx bun.Tx) (int, error) {
 	for i, p := range w.events {
 		events[i] = store.Event{
 			Hash: p.hash, SensorID: w.sensor.ID, Type: p.ev.EventID,
-			TS: store.NewTime(p.ev.ts), ReceivedAt: w.now,
+			TS: store.NewTime(p.ev.ts), ReceivedAt: w.now, Data: p.ev.data,
 		}
 		if id, ok := sessionIDs[p.ev.Session]; ok {
 			events[i].SessionID = &id
@@ -220,17 +225,25 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 	if len(w.order) == 0 {
 		return ids, nil
 	}
+	kexIDs, err := w.upsertKex(ctx, tx)
+	if err != nil {
+		return nil, fmt.Errorf("key exchanges: %w", err)
+	}
 	rows := make([]store.Session, len(w.order))
 	for i, cs := range w.order {
 		rows[i] = *w.sessions[cs]
 		rows[i].SensorID = w.sensor.ID
+		if k, ok := w.kex[cs]; ok {
+			id := kexIDs[string(k.Digest)]
+			rows[i].SSHKexID = &id
+		}
 		w.locate(&rows[i])
 		w.network(&rows[i])
 	}
 	q := tx.NewInsert().Model(&rows).On("CONFLICT (sensor_id, cowrie_session) DO UPDATE").
 		Set("started_at = CASE WHEN EXCLUDED.started_at < ?TableAlias.started_at THEN EXCLUDED.started_at ELSE ?TableAlias.started_at END").
 		Set("login_success = (?TableAlias.login_success OR EXCLUDED.login_success)")
-	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "hassh", "asn", "as_org"} {
+	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "ssh_kex_id", "asn", "as_org"} {
 		q = q.Set(col + " = COALESCE(?TableAlias." + col + ", EXCLUDED." + col + ")")
 	}
 	for _, col := range []string{"ended_at", "duration_ms", "tty_log", "tty_duration_ms"} {
@@ -251,6 +264,37 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 	for _, o := range out {
 		ids[o.CowrieSession] = o.ID
 		w.sessionIDs = append(w.sessionIDs, o.ID)
+	}
+	return ids, nil
+}
+
+// upsertKex stores the key exchanges of the batch, once per combination,
+// and returns their ids by digest.
+func (w *batchWriter) upsertKex(ctx context.Context, tx bun.Tx) (map[string]int64, error) {
+	ids := map[string]int64{}
+	if len(w.kex) == 0 {
+		return ids, nil
+	}
+	var rows []store.SSHKex
+	var digests [][]byte
+	for _, cs := range w.order {
+		k, ok := w.kex[cs]
+		if !ok || ids[string(k.Digest)] != 0 {
+			continue
+		}
+		ids[string(k.Digest)] = -1 // listed once
+		rows = append(rows, store.SSHKex{Digest: k.Digest, HASSH: k.HASSH, Algorithms: k.Algorithms, KeyAlgs: k.KeyAlgs, LangAlgs: k.LangAlgs})
+		digests = append(digests, k.Digest)
+	}
+	if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (digest) DO NOTHING").Exec(ctx); err != nil {
+		return nil, err
+	}
+	var found []store.SSHKex
+	if err := tx.NewSelect().Model(&found).Column("id", "digest").Where("digest IN (?)", bun.List(digests)).Scan(ctx); err != nil {
+		return nil, err
+	}
+	for _, k := range found {
+		ids[string(k.Digest)] = k.ID
 	}
 	return ids, nil
 }

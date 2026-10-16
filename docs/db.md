@@ -46,7 +46,9 @@ session), has these problems:
   the integer. Ordering is always right, and grouping by hour or day for
   statistics is a portable division (`ts / 3600000000`).
 - **Raw data is separate and purgeable**: `event_data` holds the Cowrie line,
-  everything else points to `events`, which stays.
+  everything else points to `events`, which stays. What the tables do not
+  hold of a line is kept in `events.data` (migration 00009), so purging
+  loses nothing the application uses.
 - **One set of migrations per engine**, so each uses its own types,
   applied by bun's `migrate` package (goose is dropped).
 - **Every index serves a named query** (see [Indexes](#indexes)).
@@ -64,6 +66,7 @@ erDiagram
     sessions ||--o{ commands : "runs"
     sessions ||--o{ transfers : "downloads, uploads"
     tty_files |o--o{ sessions : "recording of"
+    ssh_kex |o--o{ sessions : "offered by the client of"
 
     sensors {
         integer id PK
@@ -90,7 +93,7 @@ erDiagram
         integer dst_port
         text protocol
         text client_version
-        text hassh
+        integer ssh_kex_id FK
         bigint started_at
         bigint ended_at
         bigint duration_ms
@@ -116,6 +119,7 @@ erDiagram
         text type "cowrie.login.failed..."
         bigint ts
         bigint received_at
+        text data "JSON: what the tables do not hold"
     }
     event_data {
         integer event_id PK, FK
@@ -144,6 +148,14 @@ erDiagram
         text filename
         text sha256
     }
+    ssh_kex {
+        integer id PK
+        blob digest UK "SHA-256 of every list"
+        text hassh
+        text algorithms "what the HASSH hashes"
+        text key_algs
+        text lang_algs
+    }
     tty_files {
         integer id PK
         text sha256 UK
@@ -166,6 +178,7 @@ erDiagram
 | `commands` | Commands typed or run | Few sessions, several each |
 | `transfers` | Files downloaded (`wget`, `curl`) or uploaded (SFTP, SCP) | Rare |
 | `tty_files` | Recordings stored in the TTY volume, by digest of the file | One per distinct recording |
+| `ssh_kex` | What SSH clients offered in the key exchange (`cowrie.client.kex`), once per combination of lists | A few dozen (68 for 20,000 sessions) |
 
 ### Sessions and events
 
@@ -177,7 +190,24 @@ session id. The API keeps each line as an **event**, and derives from them:
   duration from `cowrie.session.closed`, recording from `cowrie.log.closed`;
 - the **projections**: one row in `login_attempts` per
   `cowrie.login.success`/`failed`, in `commands` per `cowrie.command.input`,
-  in `transfers` per `cowrie.session.file_download`/`file_upload`.
+  in `transfers` per `cowrie.session.file_download`/`file_upload`, and the
+  key exchange in `ssh_kex`;
+- the event's **data** (`events.data`, `cowrie.Fragment`): the line
+  without what every line repeats (event id, time, session, Cowrie's
+  sensor and uuid, its message; the connection fields when the event has
+  a session) and without the fields its projection stores, as a JSON
+  object, or null when nothing is left. It keeps the public keys offered,
+  terminal sizes, environment variables, password changes, each
+  channel's recording, and any event Cowrie adds, with no code. A field
+  of an unexpected type, which its column leaves empty, stays in it. It
+  is never queried in SQL (JSON functions differ between the engines):
+  a field worth filtering on gets a column.
+
+`ssh_kex` holds one row per combination of lists, its unique key the
+SHA-256 of all of them (`digest`): the lists come from the attacker, of
+any length, too long for an index. The HASSH, Cowrie's fingerprint of the
+client, hashes only part of them: the host key algorithms (`key_algs`)
+vary for one HASSH, a scanner asking each type of key in turn.
 
 ```mermaid
 flowchart LR
@@ -196,11 +226,14 @@ data is purged, and do not depend on how events are stored.
 
 In one transaction:
 
-1. Upsert the sensor and the sessions named by the batch (merge rules
-   unchanged: first value wins for connection fields, earliest start, etc.).
+1. Upsert the sensor, the key exchanges (`ON CONFLICT (digest) DO
+   NOTHING`) and the sessions named by the batch (merge rules unchanged:
+   first value wins for connection fields and key exchange, earliest
+   start, etc.).
 2. `INSERT INTO events ... ON CONFLICT (hash) DO NOTHING RETURNING id, hash`:
    only the lines not seen before come back, with their new ids.
-3. For those only: insert `event_data` and the projections. A resent batch
+3. For those only: insert `event_data` (and `events.data` with the
+   event) and the projections. A resent batch
    inserts nothing: ingestion stays idempotent without the projections
    needing the event's key.
 4. Judge the touched sessions (verdict).
@@ -212,15 +245,25 @@ DELETE FROM event_data
 WHERE event_id IN (SELECT id FROM events WHERE ts < :limit);
 ```
 
-Sessions, events, projections and deduplication are untouched; only the
-raw view of old events and their reprocessing are lost. Retention is an
-operator setting, off by default: `CAURI_RAW_RETENTION_DAYS`, run at
-start and every hour, in batches (`store.PurgeRawEvents`).
+Sessions, events and their data, projections and deduplication are
+untouched; only the raw view of old events (the session page then shows
+their data) and their reprocessing are lost. Retention is an operator
+setting, off by default: `CAURI_RAW_RETENTION_DAYS`, run at start and
+every hour, in batches (`store.PurgeRawEvents`). Measured on 20,778
+sessions: 107 MB with every raw line, 27 MB once they are all purged and
+the file vacuumed.
 
-One feature still reads raw lines: replays take the terminal sizes from
-`cowrie.client.size` lines (`store.GetRecording`). The purge keeps those
-(`store.RawKept`); projecting them into their own table would remove the
-exception.
+Nothing reads raw lines any more: replays take the terminal sizes from
+`events.data`.
+
+### Migrations written in Go
+
+Migration 00009 reads the JSON of the raw lines already stored to fill
+`events.data`, `ssh_kex` and `sessions.ssh_kex_id`, which portable SQL
+cannot: it is Go (`store.projectRawEvents`, sharing package `cowrie` with
+the ingestion), the same for both engines, run in a transaction. A
+session whose key exchange line was purged gets a row with its HASSH
+alone. It then drops `sessions.hassh`.
 
 ## Names
 
@@ -302,6 +345,9 @@ indexes too.
 | `ix_sessions_src_ip` | Filter by source address |
 | `ix_sessions_geo_country_geo_city` | Country and city filters, country counts (migration 00002) |
 | `ix_sessions_verdict` | Human/bot filter |
+| `ix_sessions_ssh_kex_id` | HASSH filter and counts, through `ssh_kex` (migration 00008) |
+| `uk_ssh_kex_digest` | Find a key exchange at ingestion |
+| `ix_ssh_kex_hassh` | HASSH filter |
 | `ix_sessions_asn` | Network filter (migration 00004) |
 | `ix_sessions_shell` | Interactive shell filter (migration 00006) |
 | `uk_events_hash` | Deduplication |
@@ -356,10 +402,9 @@ a test compares the schema read back from both engines.
   (goose's `goose_db_version` table present) with a message saying so,
   rather than creating new tables beside the old ones.
 - **`events.type`**: text, as Cowrie names its events.
-- **Retention of `event_data`**: later. `cowrie.client.kex` lines (the
-  client's SSH algorithm lists, about half of the raw volume; their HASSH
-  fingerprint is already in `sessions.hassh`) will be part of that
-  discussion.
+- **Retention of `event_data`**: off by default. Since migration 00009,
+  purging loses only the raw view and reprocessing; whether to purge by
+  default is still open.
 
 ## Statistics at scale
 

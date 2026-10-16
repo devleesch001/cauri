@@ -178,7 +178,11 @@ func TestCommands(t *testing.T) {
 		if c.Total != 2 || c.Distinct != 2 || c.Sessions != 1 || len(c.Top) != 2 || c.Top[0].Sessions != 1 || len(c.HASSH) != 0 {
 			t.Errorf("commands = %+v", c)
 		}
-		if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("hassh = 'abc'").
+		k := store.SSHKex{Digest: []byte("abc"), HASSH: ptr("abc")}
+		if _, err := db.NewInsert().Model(&k).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("ssh_kex_id = ?", k.ID).
 			Where("id = ?", lookup(t, db, "hp-01", "1")).Exec(ctx); err != nil {
 			t.Fatal(err)
 		}

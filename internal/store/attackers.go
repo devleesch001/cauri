@@ -155,8 +155,9 @@ func GetAttacker(ctx context.Context, db bun.IDB, ip string, f StatsFilter) (*At
 	if err := f.apply(q).Scan(ctx, &d.Clients); err != nil {
 		return nil, err
 	}
-	q = db.NewSelect().Model((*Session)(nil)).ColumnExpr("DISTINCT s.hassh").
-		Where("s.hassh IS NOT NULL").OrderExpr("s.hassh")
+	q = db.NewSelect().Model((*Session)(nil)).ColumnExpr("DISTINCT k.hassh").
+		Join("JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
+		Where("k.hassh IS NOT NULL").OrderExpr("k.hassh")
 	if err := f.apply(q).Scan(ctx, &d.HASSH); err != nil {
 		return nil, err
 	}

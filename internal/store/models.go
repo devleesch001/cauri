@@ -29,6 +29,19 @@ type IngestToken struct {
 	RevokedAt  *Time  `bun:"revoked_at"`
 }
 
+// SSHKex is a key exchange offer of SSH clients (cowrie.client.kex), once
+// per combination of lists (see cowrie.Kex).
+type SSHKex struct {
+	bun.BaseModel `bun:"table:ssh_kex,alias:k"`
+
+	ID         int64   `bun:"id,pk,autoincrement"`
+	Digest     []byte  `bun:"digest"`
+	HASSH      *string `bun:"hassh"`
+	Algorithms *string `bun:"algorithms"`
+	KeyAlgs    *string `bun:"key_algs"`
+	LangAlgs   *string `bun:"lang_algs"`
+}
+
 type TTYFile struct {
 	bun.BaseModel `bun:"table:tty_files,alias:t"`
 
@@ -52,7 +65,8 @@ type Session struct {
 	DstPort        *int     `bun:"dst_port" json:"dst_port"`
 	Protocol       *string  `bun:"protocol" json:"protocol"`
 	ClientVersion  *string  `bun:"client_version" json:"client_version"`
-	HASSH          *string  `bun:"hassh" json:"hassh"`
+	SSHKexID       *int64   `bun:"ssh_kex_id" json:"-"`
+	HASSH          *string  `bun:"hassh,scanonly" json:"hassh"` // of its key exchange
 	StartedAt      Time     `bun:"started_at" json:"started_at"`
 	EndedAt        *Time    `bun:"ended_at" json:"ended_at"`
 	DurationMS     *int64   `bun:"duration_ms" json:"duration_ms"`
@@ -85,6 +99,9 @@ type Event struct {
 	Type       string `bun:"column:type"`
 	TS         Time   `bun:"ts"`
 	ReceivedAt Time   `bun:"received_at"`
+	// Data is what the tables do not hold of the line (cowrie.Fragment):
+	// it outlives the raw line.
+	Data *string `bun:"data"`
 }
 
 type EventData struct {

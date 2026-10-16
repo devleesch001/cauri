@@ -106,6 +106,8 @@ func Migrate(ctx context.Context, db *bun.DB, log *slog.Logger) error {
 	if err := found.Discover(fsys); err != nil {
 		return err
 	}
+	// The migrations written in Go, the same for both engines.
+	found.Add(projectRawEvents)
 	// Each migration says when it starts and ends.
 	ms := migrate.NewMigrations()
 	for _, mig := range found.Sorted() {

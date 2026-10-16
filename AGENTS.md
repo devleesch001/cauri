@@ -90,13 +90,20 @@ and `TestForeignKeyNamesAndActions` in step.
 (`internal/store/migrations/sqlite/` and `postgres/`, same names, `.tx.up.sql`
 and `.tx.down.sql`), embedded and applied when the API starts, logging the
 state of the database, the pending migrations and each one run (`store.Migrate`);
-`TestSchemasMatch` checks both describe the same schema. Released
+`TestSchemasMatch` checks both describe the same schema. A migration that
+needs Go (reading JSON, as 00009 does) is registered in `store.Migrate`
+for both engines and runs in a transaction. Released
 migrations are immutable: add a new file. Design in `docs/db.md`.
 
 **Raw data is purgeable.** `event_data` holds the Cowrie lines; nothing
-may reference it except its event. Projections point to sessions. What
-still needs the raw line (terminal sizes for replays) is listed in
-`docs/db.md`, for the retention to keep.
+may reference it except its event, and nothing may need it: what the
+tables do not hold of a line is kept in `events.data` (`cowrie.Fragment`:
+the line without its envelope and its projected fields), read by the
+session page and replays. Projections point to sessions; client key
+exchanges are in `ssh_kex`, once per combination. When projecting a new
+field, add it to `cowrie`'s projected list so it leaves the fragment,
+and never query `events.data` in SQL: a field worth filtering on gets a
+column.
 
 **TTY recordings** are stored as the ingestor sends them (at most one per
 session, see above), never modified, in a volume, named by the SHA-256 of
@@ -157,6 +164,7 @@ mandatory.
 | `cmd/cauri/` | Subcommands; flags via `internal/envflag` (flag `--db-dsn` = env `CAURI_DB_DSN`) |
 | `pkg/protocol/`, `pkg/client/` | Public ingestion protocol and its HTTP client |
 | `internal/ingest/` | Ingestion service; Cowrie parsing in `cowrie.go`, projection in `batch.go` |
+| `internal/cowrie/` | What is kept of a Cowrie line besides it: projected fields, the event's data (`Fragment`), key exchanges (`Kex`); shared by ingestion and migrations |
 | `internal/store/` | bun models, migrations, read queries, statistics (`stats.go`), raw-data retention; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
 | `internal/purge/` | Deletes the sessions a `store.SessionFilter` selects, rows by batches then orphaned recording files; `cauri purge` now, the admin API later |

@@ -69,9 +69,10 @@ and symbolic links are ignored.
 
 | Table                      | Content                                                                                       |
 |----------------------------|-----------------------------------------------------------------------------------------------|
-| `events`                   | One row per Cowrie line: type, time, session, and the hash that recognises a line sent twice  |
-| `event_data`               | Each line as Cowrie wrote it, including fields not used today; separate so it can be purged   |
-| `sessions`                 | One row per Cowrie session and sensor: source, client, HASSH, times, login outcome, recording |
+| `events`                   | One row per Cowrie line: type, time, session, the hash that recognises a line sent twice, and what no other table holds of it (public keys offered, terminal size, environment, …) |
+| `event_data`               | Each line as Cowrie wrote it; separate so it can be purged                                    |
+| `sessions`                 | One row per Cowrie session and sensor: source, client, times, login outcome, recording        |
+| `ssh_kex`                  | What SSH clients offered in the key exchange, with their HASSH, once per combination          |
 | `login_attempts`           | Username and password of every login, with its outcome                                        |
 | `commands`                 | Commands typed                                                                                |
 | `transfers`                | Downloads and uploads: URL or file name, SHA-256                                              |
@@ -326,12 +327,14 @@ running it as a formula.
 
 ### Raw data retention
 
-The raw Cowrie lines are most of the database (31.6 of 40.4 MB on 7,437
-real sessions) and serve only to show an event raw or to reprocess it.
+The raw Cowrie lines are most of the database (80 of 107 MB on 20,778
+real sessions) and serve only to show an event raw or to reprocess it:
+what the other tables do not hold of a line is kept with its event.
 `CAURI_RAW_RETENTION_DAYS=N` makes the API delete those older than N
-days, at start then every hour; sessions, their events, logins,
-commands, files and the deduplication of resent lines stay. Terminal
-sizes, which replays need, are kept. Off by default. With SQLite, freed
+days, at start then every hour; sessions, their events and what they
+held, logins, commands, files and the deduplication of resent lines
+stay, and the session page shows an old event's data instead of its
+line. Purging every line took that database to 27 MB. Off by default. With SQLite, freed
 space is reused by new data; the file only shrinks after a `VACUUM`.
 
 ### Human or bot

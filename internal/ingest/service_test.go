@@ -70,8 +70,9 @@ func sum(s string) string {
 func getSession(t *testing.T, db *bun.DB, sensorID, sess string) *store.Session {
 	t.Helper()
 	s := new(store.Session)
-	err := db.NewSelect().Model(s).ColumnExpr("s.*, t.sha256 AS tty_sha256, t.size AS tty_size").
+	err := db.NewSelect().Model(s).ColumnExpr("s.*, t.sha256 AS tty_sha256, t.size AS tty_size, k.hassh AS hassh").
 		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
+		Join("LEFT JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
 		Where("s.id = ?", sessionID(t, db, sensorID, sess)).Scan(context.Background())
 	if err != nil {
 		t.Fatalf("session %s/%s: %v", sensorID, sess, err)
@@ -421,6 +422,71 @@ func TestStoreTTYShell(t *testing.T) {
 		}
 		if got := shell("a1b2c3d4e5f6"); got != "true" {
 			t.Errorf("after the file is gone: shell = %s", got)
+		}
+	})
+}
+
+// What the tables do not hold of a line is kept with its event, and a key
+// exchange is stored once per combination, whatever the batches.
+func TestIngestDataAndKex(t *testing.T) {
+	raw, err := os.ReadFile("testdata/cowrie-56b2abb-fragments.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines [][]byte
+	var kex []byte
+	for _, l := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+		lines = append(lines, l)
+		if bytes.Contains(l, []byte(`"cowrie.client.kex"`)) {
+			kex = l
+		}
+	}
+	// Another session of the same client.
+	other := bytes.Replace(kex, []byte("16bb822161d2"), []byte("26bb822161d2"), 1)
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		ctx := context.Background()
+		for range 2 { // sent again: nothing changes
+			if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, lines...)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, other)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var kexes []store.SSHKex
+		if err := db.NewSelect().Model(&kexes).Scan(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if len(kexes) != 1 || *kexes[0].HASSH != "eeca2460550b9ded084ecf2f70a75356" || kexes[0].KeyAlgs == nil ||
+			!strings.HasPrefix(*kexes[0].Algorithms, "mlkem768x25519-sha256,") || len(kexes[0].Digest) != 32 {
+			t.Fatalf("ssh_kex = %+v", kexes)
+		}
+		for _, sess := range []string{"16bb822161d2", "26bb822161d2"} {
+			if s := getSession(t, db, sensor, sess); s.SSHKexID == nil || *s.SSHKexID != kexes[0].ID || *s.HASSH != *kexes[0].HASSH {
+				t.Errorf("%s: key exchange %v", sess, s.SSHKexID)
+			}
+		}
+		var data []struct {
+			Type string `bun:"type"`
+			Data string `bun:"data"`
+		}
+		if err := db.NewSelect().Model((*store.Event)(nil)).Column("type", "data").Where("data IS NOT NULL").
+			OrderExpr("type").Scan(ctx, &data); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"cowrie.client.fingerprint", "cowrie.client.var", "cowrie.command.chpasswd", "cowrie.command.failed",
+			"cowrie.log.closed", "cowrie.login.failed", "cowrie.session.params"}
+		if len(data) != len(want) {
+			t.Fatalf("events with data = %+v", data)
+		}
+		for i, d := range data {
+			if d.Type != want[i] {
+				t.Errorf("event %d with data: %s, want %s", i, d.Type, want[i])
+			}
+		}
+		if data[1].Data != `{"name":"LANG","value":"fr_FR.UTF-8"}` {
+			t.Errorf("client.var data = %s", data[1].Data)
 		}
 	})
 }

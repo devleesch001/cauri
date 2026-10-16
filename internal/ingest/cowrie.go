@@ -1,30 +1,29 @@
 package ingest
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"math"
 	"path"
 	"strconv"
-	"strings"
 	"time"
-	"unicode/utf8"
+
+	"github.com/devleesch001/cauri/internal/cowrie"
 )
 
-// Cowrie event identifiers projected into dedicated tables. Every other
-// event is only kept in events and event_data.
+// Cowrie event identifiers projected into dedicated tables (package
+// cowrie lists the fields each one stores).
 const (
-	evConnect       = "cowrie.session.connect"
-	evClientVersion = "cowrie.client.version"
-	evClientKex     = "cowrie.client.kex"
-	evLoginSuccess  = "cowrie.login.success"
-	evLoginFailed   = "cowrie.login.failed"
-	evCommandInput  = "cowrie.command.input"
-	evFileDownload  = "cowrie.session.file_download"
-	evFileUpload    = "cowrie.session.file_upload"
-	evLogClosed     = "cowrie.log.closed"
-	evSessionClosed = "cowrie.session.closed"
+	evConnect       = cowrie.Connect
+	evClientVersion = cowrie.ClientVersion
+	evClientKex     = cowrie.ClientKex
+	evLoginSuccess  = cowrie.LoginSuccess
+	evLoginFailed   = cowrie.LoginFailed
+	evCommandInput  = cowrie.CommandInput
+	evFileDownload  = cowrie.FileDownload
+	evFileUpload    = cowrie.FileUpload
+	evLogClosed     = cowrie.LogClosed
+	evSessionClosed = cowrie.SessionClosed
 )
 
 // cowrieEvent holds the fields of a cowrie.json line that cauri uses.
@@ -39,8 +38,8 @@ type cowrieEvent struct {
 	DstPort  *int
 	Protocol *string
 
-	Version *string // client.version
-	HASSH   *string // client.kex
+	Version *string     // client.version
+	Kex     *cowrie.Kex // client.kex
 
 	Username *string // login.*
 	Password *string
@@ -59,23 +58,23 @@ type cowrieEvent struct {
 	// string.
 	durationMS *int64
 
+	// data is what the tables do not hold of the line (cowrie.Fragment).
+	data *string
+
 	ts time.Time
 }
 
 // parseEvent validates a raw cowrie.json object and extracts its fields.
 func parseEvent(raw []byte) (*cowrieEvent, error) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || raw[0] != '{' {
+	f, ok := cowrie.Parse(raw)
+	if !ok {
 		return nil, errors.New("not a JSON object")
 	}
-	var m fields
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, err
-	}
+	m := fields(f)
 	ev := &cowrieEvent{
 		SrcIP: m.str("src_ip"), SrcPort: m.int("src_port"),
 		DstIP: m.str("dst_ip"), DstPort: m.int("dst_port"), Protocol: m.str("protocol"),
-		Version: m.str("version"), HASSH: m.str("hassh"),
+		Version:  m.str("version"),
 		Username: m.str("username"), Password: m.str("password"), Input: m.str("input"),
 		URL: m.str("url"), DestFile: m.str("destfile"), Filename: m.str("filename"), Shasum: m.str("shasum"),
 		TTYLog: m.str("ttylog"), Size: m.int64("size"),
@@ -104,6 +103,11 @@ func parseEvent(raw []byte) (*cowrieEvent, error) {
 	}
 	ev.ts = ts.UTC()
 	ev.sanitize()
+	if ev.EventID == evClientKex {
+		k := cowrie.ParseKex(f)
+		ev.Kex = &k
+	}
+	ev.data = cowrie.Fragment(f, ev.EventID, ev.Session != "")
 	return ev, nil
 }
 
@@ -153,7 +157,7 @@ func (m fields) float(key string) *float64 {
 // attackers do send them (as usernames, passwords or commands).
 func (ev *cowrieEvent) sanitize() {
 	for _, p := range []*string{
-		ev.SrcIP, ev.DstIP, ev.Protocol, ev.Version, ev.HASSH, ev.Username,
+		ev.SrcIP, ev.DstIP, ev.Protocol, ev.Version, ev.Username,
 		ev.Password, ev.Input, ev.URL, ev.DestFile, ev.Filename, ev.Shasum, ev.TTYLog,
 	} {
 		if p != nil {
@@ -164,10 +168,7 @@ func (ev *cowrieEvent) sanitize() {
 	ev.Session = cleanText(ev.Session)
 }
 
-func cleanText(s string) string {
-	s = strings.ToValidUTF8(s, string(utf8.RuneError))
-	return strings.ReplaceAll(s, "\x00", string(utf8.RuneError))
-}
+func cleanText(s string) string { return cowrie.CleanText(s) }
 
 // ttyName returns the file name of the TTY recording of a log.closed
 // event. Cowrie derives it from a hash of the terminal output, not of the
