@@ -459,7 +459,8 @@ func TestIngestDataAndKex(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(kexes) != 1 || *kexes[0].HASSH != "eeca2460550b9ded084ecf2f70a75356" || kexes[0].KeyAlgs == nil ||
-			!strings.HasPrefix(*kexes[0].Algorithms, "mlkem768x25519-sha256,") || len(kexes[0].Digest) != 32 {
+			!strings.HasPrefix(*kexes[0].KexAlgs, "mlkem768x25519-sha256,") || *kexes[0].CompAlgs != "none,zlib@openssh.com" ||
+			len(kexes[0].Digest) != 32 {
 			t.Fatalf("ssh_kex = %+v", kexes)
 		}
 		for _, sess := range []string{"16bb822161d2", "26bb822161d2"} {

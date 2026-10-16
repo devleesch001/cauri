@@ -283,7 +283,7 @@ func (w *batchWriter) upsertKex(ctx context.Context, tx bun.Tx) (map[string]int6
 			continue
 		}
 		ids[string(k.Digest)] = -1 // listed once
-		rows = append(rows, store.SSHKex{Digest: k.Digest, HASSH: k.HASSH, Algorithms: k.Algorithms, KeyAlgs: k.KeyAlgs, LangAlgs: k.LangAlgs})
+		rows = append(rows, store.NewSSHKex(*k))
 		digests = append(digests, k.Digest)
 	}
 	if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (digest) DO NOTHING").Exec(ctx); err != nil {

@@ -126,14 +126,15 @@ func holds(v json.RawMessage, want kind) bool {
 }
 
 // Kex is what a client offered in the SSH key exchange (cowrie.client.kex),
-// stored once per combination in ssh_kex.
+// stored once per combination in ssh_kex. Each list is joined by commas,
+// as SSH sends it.
 type Kex struct {
 	HASSH *string
-	// Algorithms is what the HASSH hashes: key exchange, encryption, MAC
-	// and compression lists, separated by ";".
-	Algorithms *string
-	KeyAlgs    *string // host key algorithms, not in the HASSH
-	LangAlgs   *string
+	// What the HASSH hashes: key exchange, encryption, MAC and compression
+	// algorithms (Cowrie's kexAlgs, encCS, macCS, compCS).
+	KexAlgs, EncAlgs, MacAlgs, CompAlgs *string
+	// Not in the HASSH: host key algorithms and languages (keyAlgs, langCS).
+	KeyAlgs, LangAlgs *string
 	// Digest is the SHA-256 of all of the above: one row per combination.
 	// The lists come from the attacker, of any length: a digest keeps the
 	// unique key small, and SHA-256 cannot be made to collide.
@@ -142,13 +143,18 @@ type Kex struct {
 
 // ParseKex reads the key exchange of a cowrie.client.kex line.
 func ParseKex(f Fields) Kex {
-	k := Kex{HASSH: str(f, "hassh"), KeyAlgs: joined(f, "keyAlgs"), LangAlgs: joined(f, "langCS")}
-	parts := []*string{joined(f, "kexAlgs"), joined(f, "encCS"), joined(f, "macCS"), joined(f, "compCS")}
-	if parts[0] != nil && parts[1] != nil && parts[2] != nil && parts[3] != nil {
-		s := *parts[0] + ";" + *parts[1] + ";" + *parts[2] + ";" + *parts[3]
-		k.Algorithms = &s
-	} else {
-		k.Algorithms = str(f, "hasshAlgorithms")
+	k := Kex{
+		HASSH: str(f, "hassh"), KexAlgs: joined(f, "kexAlgs"), EncAlgs: joined(f, "encCS"),
+		MacAlgs: joined(f, "macCS"), CompAlgs: joined(f, "compCS"),
+		KeyAlgs: joined(f, "keyAlgs"), LangAlgs: joined(f, "langCS"),
+	}
+	// Without the lists, the four Cowrie joined for the HASSH.
+	if k.KexAlgs == nil && k.EncAlgs == nil && k.MacAlgs == nil && k.CompAlgs == nil {
+		if h := str(f, "hasshAlgorithms"); h != nil {
+			if p := strings.Split(*h, ";"); len(p) == 4 {
+				k.KexAlgs, k.EncAlgs, k.MacAlgs, k.CompAlgs = &p[0], &p[1], &p[2], &p[3]
+			}
+		}
 	}
 	k.digest()
 	return k
@@ -164,7 +170,7 @@ func HASSHOnly(hassh string) Kex {
 
 func (k *Kex) digest() {
 	// Absent and empty differ in the digest.
-	b, _ := json.Marshal([]*string{k.HASSH, k.Algorithms, k.KeyAlgs, k.LangAlgs})
+	b, _ := json.Marshal([]*string{k.HASSH, k.KexAlgs, k.EncAlgs, k.MacAlgs, k.CompAlgs, k.KeyAlgs, k.LangAlgs})
 	sum := sha256.Sum256(b)
 	k.Digest = sum[:]
 }

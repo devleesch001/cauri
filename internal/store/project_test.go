@@ -67,7 +67,7 @@ func TestProjectRawEvents(t *testing.T) {
 		if err := db.NewSelect().Model(&kexes).OrderExpr("hassh").Scan(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if len(kexes) != 3 || *kexes[0].HASSH != "h0" || kexes[0].Algorithms != nil ||
+		if len(kexes) != 3 || *kexes[0].HASSH != "h0" || kexes[0].KexAlgs != nil ||
 			*kexes[1].HASSH != "h1" || *kexes[2].HASSH != "h1" {
 			t.Fatalf("ssh_kex = %+v", kexes)
 		}

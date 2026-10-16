@@ -88,7 +88,8 @@ func TestParseKex(t *testing.T) {
 		return f
 	}
 	a, b := ParseKex(line(`"ssh-ed25519"`)), ParseKex(line(`"ecdsa-sha2-nistp256"`))
-	if deref(a.HASSH) != "eeca2460550b9ded084ecf2f70a75356" || deref(a.Algorithms) != "k1,k2;e1;m1;none" ||
+	if deref(a.HASSH) != "eeca2460550b9ded084ecf2f70a75356" || deref(a.KexAlgs) != "k1,k2" || deref(a.EncAlgs) != "e1" ||
+		deref(a.MacAlgs) != "m1" || deref(a.CompAlgs) != "none" ||
 		deref(a.KeyAlgs) != "ssh-ed25519" || deref(a.LangAlgs) != "" || len(a.Digest) != 32 {
 		t.Errorf("kex = %+v", a)
 	}
@@ -99,9 +100,9 @@ func TestParseKex(t *testing.T) {
 	if h := HASSHOnly("eeca2460550b9ded084ecf2f70a75356"); bytes.Equal(h.Digest, a.Digest) || deref(h.HASSH) != deref(a.HASSH) {
 		t.Errorf("HASSH only = %+v", h)
 	}
-	// Without the lists, the algorithms Cowrie joined.
-	f, _ := Parse([]byte(`{"hassh":"x","hasshAlgorithms":"a;b;c;d"}`))
-	if k := ParseKex(f); deref(k.Algorithms) != "a;b;c;d" || k.KeyAlgs != nil {
+	// Without the lists, the four Cowrie joined for the HASSH.
+	f, _ := Parse([]byte(`{"hassh":"x","hasshAlgorithms":"a,b;c;d;e"}`))
+	if k := ParseKex(f); deref(k.KexAlgs) != "a,b" || deref(k.CompAlgs) != "e" || k.KeyAlgs != nil {
 		t.Errorf("kex without lists = %+v", k)
 	}
 }

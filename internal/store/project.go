@@ -43,7 +43,7 @@ func projectUp(ctx context.Context, tx bun.Tx) error {
 		if id, ok := kexIDs[string(k.Digest)]; ok {
 			return id, nil
 		}
-		row := SSHKex{Digest: k.Digest, HASSH: k.HASSH, Algorithms: k.Algorithms, KeyAlgs: k.KeyAlgs, LangAlgs: k.LangAlgs}
+		row := NewSSHKex(k)
 		if _, err := tx.NewInsert().Model(&row).On("CONFLICT (digest) DO NOTHING").Exec(ctx); err != nil {
 			return 0, err
 		}

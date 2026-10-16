@@ -152,9 +152,12 @@ erDiagram
         integer id PK
         blob digest UK "SHA-256 of every list"
         text hassh
-        text algorithms "what the HASSH hashes"
-        text key_algs
-        text lang_algs
+        text kex_algs "kexAlgs"
+        text enc_algs "encCS"
+        text mac_algs "macCS"
+        text comp_algs "compCS"
+        text key_algs "keyAlgs, not in the HASSH"
+        text lang_algs "langCS, not in the HASSH"
     }
     tty_files {
         integer id PK
