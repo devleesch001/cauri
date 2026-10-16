@@ -18,6 +18,14 @@ const { call, tasks, started, refresh } = useAdmin()
 onMounted(refresh)
 
 const severity = { running: 'info', done: 'success', failed: 'warn', canceled: 'secondary' } as const
+// A download counts bytes, the others rows.
+const amount = (j: AdminJob, n: number) => (j.kind.startsWith('download-') ? formatBytes(n) : n.toLocaleString())
+const progress = (j: AdminJob) =>
+  j.progress.total
+    ? t('admin.tasks.progress', { done: amount(j, j.progress.done), total: amount(j, j.progress.total) })
+    : j.progress.done
+      ? amount(j, j.progress.done)
+      : ''
 const percent = (j: AdminJob) => (j.progress.total ? Math.min(100, Math.round((100 * j.progress.done) / j.progress.total)) : 0)
 const duration = (j: AdminJob) => formatMillis(new Date(j.finished ?? Date.now()).getTime() - new Date(j.started).getTime())
 // What a task was asked, in one line: its query or its parameters.
@@ -25,10 +33,11 @@ const params = (j: AdminJob) =>
   Object.entries(j.params ?? {})
     .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(',') : String(v)}`)
     .join(' ')
-// What it did, in one line: what was deleted, or the size of the database
-// before and after.
+// What it did, in one line: what was deleted, the size of the database
+// before and after, or the database downloaded.
 function result(j: AdminJob): string {
   const r = j.result ?? {}
+  if ('type' in r && 'built' in r) return `${r.type} ${String(r.built).slice(0, 10)}`
   if ('size_before' in r) return `${formatBytes(r.size_before)} → ${formatBytes(r.size_after)}`
   const label = (k: string) =>
     te('admin.purge.counts.' + k) ? t('admin.purge.counts.' + k) : te('admin.tasks.results.' + k) ? t('admin.tasks.results.' + k) : k
@@ -88,12 +97,9 @@ async function cancel(j: AdminJob) {
               :show-value="false"
               class="bar"
             />
-            <span
-              v-if="data.progress.total"
-              class="muted"
-            >{{ t('admin.tasks.progress', { done: data.progress.done.toLocaleString(), total: data.progress.total.toLocaleString() }) }}</span>
+            <span class="muted">{{ progress(data) }}</span>
           </template>
-          <span v-else-if="data.progress.total">{{ t('admin.tasks.progress', { done: data.progress.done.toLocaleString(), total: data.progress.total.toLocaleString() }) }}</span>
+          <span v-else>{{ progress(data) }}</span>
         </template>
       </Column>
       <Column :header="t('admin.tasks.columns.started')">

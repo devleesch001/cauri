@@ -296,17 +296,28 @@ export interface AdminConfig {
   unknown_env: string[] // CAURI_ variables no option reads
 }
 
+/** A third-party database the administration downloads (GET /api/admin/downloads). */
+export interface AdminDownload {
+  name: 'geoip' | 'asn'
+  path: string
+  urls: string[] // tried in order
+  loaded: GeoDatabase | null
+  size: number | null // of the file
+  modified: string | null
+}
+
 /** A background task of the administration (GET /api/admin/jobs/{id}). */
 export interface AdminJob {
   id: number
-  kind: 'purge-sessions' | 'purge-raw-events' | 'vacuum'
+  kind: 'purge-sessions' | 'purge-raw-events' | 'vacuum' | 'download-geoip' | 'download-asn'
   params: Record<string, unknown> | null
   status: 'running' | 'done' | 'failed' | 'canceled'
   cancelable: boolean
   started: string
   finished: string | null
   progress: { done: number; total: number }
-  result: Record<string, number> | null
+  /** Counts, sizes, or for a download the database fetched. */
+  result: Record<string, number> | GeoDatabase | null
   error?: string
 }
 

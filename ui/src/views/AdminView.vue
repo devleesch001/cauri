@@ -12,6 +12,7 @@ import type { AdminToken } from '@/api/types'
 import { adminKey, createAdmin } from '@/admin'
 import AdminConfig from '@/components/AdminConfig.vue'
 import AdminDatabase from '@/components/AdminDatabase.vue'
+import AdminDownloads from '@/components/AdminDownloads.vue'
 import AdminPurge from '@/components/AdminPurge.vue'
 import AdminTasks from '@/components/AdminTasks.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
@@ -266,6 +267,7 @@ async function revoke() {
       </section>
       <AdminTasks />
       <AdminDatabase />
+      <AdminDownloads />
       <AdminPurge />
       <AdminConfig />
     </div>
