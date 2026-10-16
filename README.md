@@ -418,6 +418,33 @@ cauri token verify --token-file <file>                 # is this token valid? (e
 
 With Docker: `docker compose exec api cauri token create --sensor hp-01`.
 
+### Deleting sessions
+
+`cauri purge` deletes the sessions matching every criterion given, with
+their events, raw lines, login attempts, commands, transfers, and the
+recordings no other session has (database rows and files). Without
+`--yes` it only counts what would go:
+
+```sh
+cauri purge --ip 203.0.113.7                          # dry run: what would go
+cauri purge --ip 203.0.113.7 --yes                    # delete
+cauri purge --username admin --password 1234 --yes
+cauri purge --command 'uname -a' --sensor hp-01 --to 2026-01-01 --yes
+```
+
+Criteria are exact values: `--ip`, `--session` (Cowrie's identifier),
+`--username`, `--password`, `--command`, `--hassh`, `--file` (SHA-256 of
+a transferred file), `--sensor`, `--from` and `--to` (a day, midnight
+UTC, or an RFC 3339 time; `--to` excluded). At least one is required.
+They and `--yes` are never read from the environment, so that a
+forgotten variable deletes nothing; the database options and `--tty-dir`
+are those of `cauri api`, environment included. It runs while the API
+runs: `docker compose exec api cauri purge --ip 203.0.113.7`.
+
+Cowrie keeps its own logs: if an ingestor sends lines again (a new
+ingestor started with `--start beginning`, a lost state file), the
+deleted sessions come back.
+
 ### Administration
 
 The administration page (`/admin` in the UI) creates, lists and revokes

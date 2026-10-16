@@ -24,7 +24,7 @@ harder.
 Do not break these without the user's explicit agreement.
 
 **One binary, one image.** Roles are subcommands of `cmd/cauri`: `api`,
-`api --ui`, `ui`, `ingestor`, `token`, `version`. A future all-in-one
+`api --ui`, `ui`, `ingestor`, `token`, `purge`, `version`. A future all-in-one
 binary is a build tag (`allinone`), not a fork.
 
 **The ingestor only decides which recording to send.** It sends each
@@ -65,7 +65,7 @@ PostgreSQL-only features, no SQLite-only functions in queries (use
 database; an event's SHA-256 is only a unique column, for deduplication.
 Times are integer microseconds (`store.Time`), durations milliseconds.
 Times are stored in UTC (SQLite compares them as text). The API is the
-only writer, except `cauri token`, accepted by the user.
+only writer, except `cauri token` and `cauri purge`, accepted by the user.
 
 **Foreign keys** are named `fk_<table>_<column>` and carry an explicit
 `ON DELETE` (`docs/db.md`): projections and events cascade from their
@@ -144,6 +144,7 @@ mandatory.
 | `internal/ingest/` | Ingestion service; Cowrie parsing in `cowrie.go`, projection in `batch.go` |
 | `internal/store/` | bun models, migrations, read queries, statistics (`stats.go`), raw-data retention; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
+| `internal/purge/` | Deletes the sessions a `store.SessionFilter` selects, rows by batches then orphaned recording files; `cauri purge` now, the admin API later |
 | `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model, v3 encoder and simulated replay |
 | `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |
 | `internal/verdict/` | Human/bot verdict: signals from the recording and the events, points, thresholds |
