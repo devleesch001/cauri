@@ -313,13 +313,13 @@ a {
 }
 
 /* The credentials a session tried, over its cell (CredentialsTried): one
-   pair per line, never wrapped, as wide as the screen allows; a longer
-   one is cut at its edge. The tooltip is outside the component. */
-.credentials-tip {
-  max-width: 90vw;
+   pair per line, never wrapped, the tooltip as wide as its longest. The
+   tooltip is outside the component; the theme caps its width with a rule
+   as specific as one class, which this one outweighs. */
+.p-tooltip.credentials-tip {
+  max-width: none;
 }
 
 .credentials-tip .p-tooltip-text {
-  overflow: hidden;
   white-space: pre;
 }
