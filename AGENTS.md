@@ -24,7 +24,7 @@ harder.
 Do not break these without the user's explicit agreement.
 
 **One binary, one image.** Roles are subcommands of `cmd/cauri`: `api`,
-`api --ui`, `ui`, `ingestor`, `token`, `purge`, `db-copy`, `version`. A future all-in-one
+`api --ui`, `ui`, `ingestor`, `token`, `purge`, `db-copy`, `download`, `version`. A future all-in-one
 binary is a build tag (`allinone`), not a fork.
 
 **The ingestor only decides which recording to send.** It sends each
@@ -180,7 +180,7 @@ mandatory.
 | `internal/dbcopy/` | Copies a database into an empty one, same engine or the other, ids included, in one transaction; `cauri db-copy` |
 | `internal/jobs/` | The administration's background tasks: one at a time, progress, cancel, the last 20 in memory |
 | `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model, v3 encoder and simulated replay |
-| `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |
+| `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change, empty while the file is missing; `Download` replaces it (checked, then renamed), only on request (`cauri download`, admin page), never on a schedule; `geoiptest/` writes test databases |
 | `internal/verdict/` | Human/bot verdict: signals from the recording and the events, points, thresholds |
 | `internal/auth/` | Ingestor tokens |
 | `internal/version/` | Tag, commit and build time of the binary, set by `-ldflags -X` (Makefile, Dockerfile, `.goreleaser.yaml`, CI build args); `cauri version`, start logs, `/api/about` |

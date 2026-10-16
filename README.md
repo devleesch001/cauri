@@ -239,24 +239,41 @@ and the UI shows the attribution each requires:
 | Obligations | Attribution, shown by the UI | Attribution; use each new version and delete older ones within 30 days |
 | Updates | Monthly | Twice a week |
 
-Download DB-IP City Lite (or `dbip-country-lite`, smaller, without
-cities), replacing the month:
+The API looks for the database at `--geoip-db` / `CAURI_GEOIP_DB`,
+`data/geoip.mmdb` by default (`/data/geoip.mmdb` in the image and the
+compose files, beside the SQLite database). Until the file exists, the
+API runs and locates nothing; an empty value turns GeoIP off. cauri
+**downloads DB-IP City Lite on request, never on its own**, from the
+administration page (*GeoIP databases*, *Download*) or the command line:
 
 ```sh
-curl -fL https://download.db-ip.com/free/dbip-city-lite-2026-10.mmdb.gz | gunzip > geoip.mmdb
+cauri download geoip
+docker compose exec api cauri download geoip   # with the compose files
 ```
 
-GeoLite2 is downloaded with MaxMind's `geoipupdate` and your licence key.
+The new file is written beside the old one, checked to be a location
+database, then put in its place: a failed download leaves the database
+in use untouched. The API loads it at once (from the page) or within a
+minute (from the command line), then locates the sessions stored without
+a location. Download again to update: DB-IP publishes a new database
+each month.
 
-Then give the file to the API, `--geoip-db` / `CAURI_GEOIP_DB`. With the
-compose files, copy it into the data volume and set
-`CAURI_GEOIP_DB=/data/geoip.mmdb`:
+It comes from `--geoip-db-url` / `CAURI_GEOIP_DB_URL`, by default
+`https://download.db-ip.com/free/dbip-city-lite-{year}-{month}.mmdb.gz`:
+`{year}` and `{month}` are the current month's, then the previous one's
+if DB-IP has not published it yet. Change it only if DB-IP's address
+changes, or for the country version (`dbip-country-lite`, smaller,
+without cities), or for a mirror of yours; the file may be gzipped or
+not, a password in the URL is masked in the administration page.
+
+GeoLite2 is downloaded with MaxMind's `geoipupdate` and your licence key,
+then copied to the database's path:
 
 ```sh
 docker compose cp geoip.mmdb api:/data/geoip.mmdb
 ```
 
-To update, copy the new file over the old one: the API reloads it within
+Copying a new file over the old one works too: the API reloads it within
 a minute, without restarting. The database is held in memory (about
 120 MiB for DB-IP City Lite, 8 MiB for the country version), so replacing
 the file in place is safe.
@@ -268,10 +285,13 @@ than the country, since most attacks come from a few hosting providers
 (same licence as above) or MaxMind GeoLite2-ASN, the same way:
 
 ```sh
-curl -fL https://download.db-ip.com/free/dbip-asn-lite-2026-10.mmdb.gz | gunzip > asn.mmdb
+cauri download asn
 ```
 
-then `--geoip-asn-db` / `CAURI_GEOIP_ASN_DB` (about 10 MiB in memory).
+at `--geoip-asn-db` / `CAURI_GEOIP_ASN_DB`, `data/asn.mmdb` by default
+(`/data/asn.mmdb` in the image), from `--geoip-asn-db-url` /
+`CAURI_GEOIP_ASN_DB_URL` (DB-IP ASN Lite by default, same rules), about
+10 MiB in memory.
 It works with or without the location database. Sessions stored before
 get their network when the API starts; the overview lists the busiest
 networks and each session shows its own.
@@ -428,8 +448,10 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_DB_DRIVER`    | `sqlite`                                  | `sqlite` or `postgres`                                                       |
 | `CAURI_DB_DSN`       | `data/cauri.db` (image: `/data/cauri.db`) | SQLite file path, or `postgres://user:password@host:5432/db?sslmode=disable` |
 | `CAURI_TTY_DIR`      | `data/tty` (image: `/data/tty`)           | Directory of the TTY recordings                                              |
-| `CAURI_GEOIP_DB` | (none) | MMDB GeoIP database (DB-IP Lite or GeoLite2) to locate sessions, see [GeoIP](#geoip) |
-| `CAURI_GEOIP_ASN_DB` | (none) | MMDB ASN database (DB-IP ASN Lite or GeoLite2-ASN) for the network of sessions, see [GeoIP](#geoip) |
+| `CAURI_GEOIP_DB` | `data/geoip.mmdb` (image: `/data/geoip.mmdb`) | MMDB GeoIP database (DB-IP Lite or GeoLite2) locating sessions once the file exists; empty: off. See [GeoIP](#geoip) |
+| `CAURI_GEOIP_DB_URL` | DB-IP City Lite of the month | Where `cauri download geoip` and the administration page fetch it; empty: the default |
+| `CAURI_GEOIP_ASN_DB` | `data/asn.mmdb` (image: `/data/asn.mmdb`) | MMDB ASN database (DB-IP ASN Lite or GeoLite2-ASN) giving the network of sessions once the file exists; empty: off |
+| `CAURI_GEOIP_ASN_DB_URL` | DB-IP ASN Lite of the month | Where `cauri download asn` fetches it; empty: the default |
 | `CAURI_MAX_TTY_SIZE` | `134217728` (128 MiB)                     | Largest recording accepted, in bytes                                         |
 | `CAURI_EVENT_RAW_DATA_RETENTION_DAYS` | `-1` (keep)              | Days the raw Cowrie lines are kept: `-1` for ever, `0` not stored, see [Raw data retention](#raw-data-retention) |
 | `CAURI_ADMIN_PASSWORD` | (generated) | Password of the administration page, see [Administration](#administration) |
@@ -438,7 +460,8 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_UI`           | `false`                                   | `true`: same as `api --ui`                                                   |
 | `CAURI_LOG_LEVEL`    | `info`                                    | `debug`, `info`, `warn`, `error` (also `cauri ui`)                           |
 
-`cauri token` uses `CAURI_DB_DRIVER` and `CAURI_DB_DSN` too.
+`cauri token` uses `CAURI_DB_DRIVER` and `CAURI_DB_DSN` too; `cauri
+download` the four `CAURI_GEOIP_*` variables.
 
 ### `cauri ingestor`
 
@@ -529,8 +552,8 @@ on). The client is then the address the proxy adds to
 `X-Forwarded-For`; addresses written by the client itself are ignored.
 Without it, the header is ignored. IPv6 clients are counted by /64.
 
-Purges and compaction are simulated first and run as background tasks,
-one at a time, which the page follows until they end:
+Purges and compaction are simulated first; they and downloads run as
+background tasks, one at a time, which the page follows until they end:
 
 | Route | |
 |---|---|
@@ -540,8 +563,10 @@ one at a time, which the page follows until they end:
 | `DELETE /api/admin/sessions?…` | Deletes them, as `cauri purge` does; the page asks to type `DELETE` first |
 | `GET` / `DELETE /api/admin/raw-events?older_than_days=N` | The same for the raw lines older than N days |
 | `POST /api/admin/database/vacuum` | Compacts the database: under SQLite, `VACUUM` rewrites the file to give its free space back and **holds writes meanwhile** (the ingestors retry, nothing is lost), with as much free disk as the file; under PostgreSQL, `VACUUM ANALYZE` |
+| `GET /api/admin/downloads` | The GeoIP databases: file, database loaded, where they are downloaded from |
+| `POST /api/admin/downloads/{geoip,asn}` | Downloads one over its file, then loads it, as `cauri download` does |
 | `GET /api/admin/jobs`, `GET /api/admin/jobs/{id}` | The tasks and their progress |
-| `POST /api/admin/jobs/{id}/cancel` | Stops a purge between two batches (what went stays gone) |
+| `POST /api/admin/jobs/{id}/cancel` | Stops a purge between two batches (what went stays gone), or a download (the database in place stays) |
 
 An action answers `202 Accepted` with the task and where to follow it,
 or `409 Conflict` while another runs. The API keeps the last 20 tasks in
