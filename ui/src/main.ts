@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import OpenVue from 'openvue/config'
+import ToastService from 'openvue/toastservice'
 import Tooltip from 'openvue/tooltip'
 import '@fontsource/ibm-plex-sans/400.css'
 import '@fontsource/ibm-plex-sans/500.css'
@@ -20,5 +21,6 @@ createApp(App)
   .use(router)
   .use(i18n)
   .use(OpenVue, { theme: { preset: Cauri, options: { darkModeSelector: '.app-dark' } } })
+  .use(ToastService)
   .directive('tooltip', Tooltip)
   .mount('#app')

@@ -4,9 +4,11 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from 'openvue/button'
 import Menu from 'openvue/menu'
+import Toast, { type ToastEvent } from 'openvue/toast'
+import { useToast } from 'openvue/usetoast'
 import WindowMaximizeIcon from '@openvue/icons/windowmaximize'
 import WindowMinimizeIcon from '@openvue/icons/windowminimize'
-import { api } from './api/client'
+import { api, onApiError } from './api/client'
 import type { About } from './api/types'
 import NavSearch from './components/NavSearch.vue'
 import ColorSchemeSelect from './components/ColorSchemeSelect.vue'
@@ -17,6 +19,18 @@ import { useSensors } from './stores/sensors'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+
+// Every failed call to the API is notified, once while shown: a page
+// polling a failing API keeps one notification, not one per poll.
+const toast = useToast()
+const notified = new Set<string>()
+onApiError((e) => {
+  if (notified.has(e.message)) return
+  notified.add(e.message)
+  toast.add({ id: e.message, severity: 'error', summary: t('apiErrors.title'), detail: e.message })
+})
+const forget = (e: ToastEvent) => notified.delete(String(e.message.id))
+const reloadPage = () => window.location.reload()
 
 // Statistics pages share one menu, which stands for the page shown. It
 // opens on hover or focus (CSS) and on click, for touch screens.
@@ -145,6 +159,26 @@ onMounted(() => {
   <main>
     <RouterView />
   </main>
+  <Toast
+    @close="forget"
+    @life-end="forget"
+  >
+    <template #message="{ message }">
+      <div class="p-toast-message-text">
+        <span class="p-toast-summary">{{ message.summary }}</span>
+        <div class="p-toast-detail">
+          {{ message.detail }}
+        </div>
+        <Button
+          :label="t('apiErrors.reload')"
+          severity="danger"
+          size="small"
+          class="toast-reload"
+          @click="reloadPage"
+        />
+      </div>
+    </template>
+  </Toast>
   <Button
     v-if="route.name !== 'overview'"
     class="width-toggle"
@@ -184,6 +218,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.toast-reload {
+  margin-top: var(--space-2);
+}
+
 .attribution {
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--c-rule);

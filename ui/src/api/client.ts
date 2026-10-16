@@ -41,6 +41,23 @@ export class ApiError extends Error {
   }
 }
 
+// Every failed call is told to the application, which notifies it (App.vue).
+let notify: (e: Error) => void = () => undefined
+export function onApiError(f: (e: Error) => void) {
+  notify = f
+}
+
+/** Runs a call; whatever makes it fail is notified, then thrown. */
+async function notified<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f()
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e))
+    notify(err)
+    throw err
+  }
+}
+
 export type Params = Record<string, string | number | boolean | undefined | null>
 
 /** The URL of an API path with its parameters; empty ones are left out. */
@@ -53,7 +70,11 @@ function url(path: string, params: Params = {}): string {
   return base + path + (qs ? '?' + qs : '')
 }
 
-async function get<T>(path: string, params: Params = {}): Promise<T> {
+function get<T>(path: string, params: Params = {}): Promise<T> {
+  return notified(() => getOnce<T>(path, params))
+}
+
+async function getOnce<T>(path: string, params: Params): Promise<T> {
   const res = await fetch(url(path, params), { headers: { Accept: 'application/json' } })
   if (!res.ok) {
     let message = res.statusText
@@ -71,7 +92,11 @@ async function get<T>(path: string, params: Params = {}): Promise<T> {
  * Sends a change to the administration routes: JSON in, JSON or nothing
  * out. The header proves the request comes from this UI (see the API).
  */
-async function send<T>(method: string, path: string, body?: unknown, params: Params = {}): Promise<T> {
+function send<T>(method: string, path: string, body?: unknown, params: Params = {}): Promise<T> {
+  return notified(() => sendOnce<T>(method, path, body, params))
+}
+
+async function sendOnce<T>(method: string, path: string, body: unknown, params: Params): Promise<T> {
   const res = await fetch(url(path, params), {
     method,
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Cauri-Admin': '1' },
@@ -141,6 +166,13 @@ export const api = {
     url(`/sessions/${encodeURIComponent(id)}/cast`, {
       idle_time_limit: realTime ? 0 : undefined,
       simulated: simulated ? 1 : undefined,
+    }),
+  /** A session's replay (asciicast), see castUrl. */
+  cast: (id: string, realTime: boolean, simulated = false) =>
+    notified(async () => {
+      const res = await fetch(api.castUrl(id, realTime, simulated))
+      if (!res.ok) throw new ApiError(res.status, res.statusText)
+      return res.text()
     }),
   loginAttempts: (params: Params) => get<Page<LoginAttemptRow>>('/login-attempts', params),
   /** CSV downloads of the lists, with the same filters (no page). */

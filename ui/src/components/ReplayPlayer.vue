@@ -55,9 +55,7 @@ let playing = false
 async function fetchCast() {
   failed.value = false
   try {
-    const res = await fetch(api.castUrl(props.sessionId, realTime.value, simulated.value && !props.locked))
-    if (!res.ok) throw new Error(res.statusText)
-    cast = await res.text()
+    cast = await api.cast(props.sessionId, realTime.value, simulated.value && !props.locked)
   } catch {
     failed.value = true
     cast = ''

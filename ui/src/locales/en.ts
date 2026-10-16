@@ -50,6 +50,11 @@ export default {
     clear: 'Clear filters',
   },
   apiError: 'The API did not answer: {error}. Check that "cauri api" is running and reachable under /api.',
+  // The notification of a failed call to the API (App.vue).
+  apiErrors: {
+    title: 'API error',
+    reload: 'Reload the page',
+  },
   stats: {
     sessions: 'Sessions',
     loggedIn: 'Logged in',
