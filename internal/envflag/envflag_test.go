@@ -47,3 +47,18 @@ func TestParseInvalidEnv(t *testing.T) {
 		t.Fatal("want error for invalid env value")
 	}
 }
+
+func TestParseOnly(t *testing.T) {
+	t.Setenv("CAURI_DB_DSN", "from-env")
+	t.Setenv("CAURI_IP", "203.0.113.1")
+
+	fs := New("test")
+	dsn := fs.String("db-dsn", "def", "")
+	ip := fs.String("ip", "", "")
+	if err := ParseOnly(fs, nil, "db-dsn"); err != nil {
+		t.Fatal(err)
+	}
+	if *dsn != "from-env" || *ip != "" {
+		t.Errorf("db-dsn = %q, ip = %q: want only db-dsn from env", *dsn, *ip)
+	}
+}

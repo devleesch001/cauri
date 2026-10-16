@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -31,6 +32,17 @@ func New(name string) *flag.FlagSet {
 // Parse parses args, then sets every flag absent from args from its
 // environment variable, if defined.
 func Parse(fs *flag.FlagSet, args []string) error {
+	return parse(fs, args, func(string) bool { return true })
+}
+
+// ParseOnly is Parse with environment variables for the named flags only,
+// for commands whose other flags must never come from a forgotten
+// variable, such as what to delete.
+func ParseOnly(fs *flag.FlagSet, args []string, names ...string) error {
+	return parse(fs, args, func(name string) bool { return slices.Contains(names, name) })
+}
+
+func parse(fs *flag.FlagSet, args []string, fromEnv func(string) bool) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -39,7 +51,7 @@ func Parse(fs *flag.FlagSet, args []string) error {
 
 	var errs []error
 	fs.VisitAll(func(f *flag.Flag) {
-		if explicit[f.Name] {
+		if explicit[f.Name] || !fromEnv(f.Name) {
 			return
 		}
 		env := EnvName(f.Name)
