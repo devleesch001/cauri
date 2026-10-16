@@ -98,17 +98,10 @@ func Migrate(ctx context.Context, db *bun.DB, log *slog.Logger) error {
 	}
 	log.Info("database", engineAttrs(ctx, db, engine)...)
 
-	fsys, err := fs.Sub(migrations, "migrations/"+engine)
+	found, err := migrationsOf(engine)
 	if err != nil {
 		return err
 	}
-	found := migrate.NewMigrations()
-	if err := found.Discover(fsys); err != nil {
-		return err
-	}
-	// The migrations written in Go, the same for both engines.
-	found.Add(projectRawEvents)
-	found.Add(geoSourceIDs)
 	// Each migration says when it starts and ends.
 	ms := migrate.NewMigrations()
 	for _, mig := range found.Sorted() {
@@ -168,6 +161,61 @@ func Migrate(ctx context.Context, db *bun.DB, log *slog.Logger) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	log.Info("database upgraded", "from", from, "to", to, "migrations", len(pending), "duration_ms", time.Since(start).Milliseconds())
+	return nil
+}
+
+// migrationsOf returns the migrations of an engine: its SQL files and the
+// migrations written in Go, the same for both engines.
+func migrationsOf(engine string) (*migrate.Migrations, error) {
+	fsys, err := fs.Sub(migrations, "migrations/"+engine)
+	if err != nil {
+		return nil, err
+	}
+	found := migrate.NewMigrations()
+	if err := found.Discover(fsys); err != nil {
+		return nil, err
+	}
+	found.Add(projectRawEvents)
+	found.Add(geoSourceIDs)
+	return found, nil
+}
+
+// ErrSchemaNotCurrent means the database misses migrations this version of
+// cauri has, or has some it does not know.
+var ErrSchemaNotCurrent = errors.New("database schema is not the one of this version of cauri")
+
+// CheckCurrent returns nil if every migration of this version, and only
+// those, is applied to db; it changes nothing, for commands that must only
+// read a database (see Migrate to bring it up to date).
+func CheckCurrent(ctx context.Context, db *bun.DB) error {
+	engine := engineOf(db)
+	if old, err := hasTable(ctx, db, engine, "goose_db_version"); err != nil {
+		return err
+	} else if old {
+		return ErrOldSchema
+	}
+	if ok, err := hasTable(ctx, db, engine, "bun_migrations"); err != nil {
+		return err
+	} else if !ok {
+		return fmt.Errorf("%w: no migration applied", ErrSchemaNotCurrent)
+	}
+	found, err := migrationsOf(engine)
+	if err != nil {
+		return err
+	}
+	m := migrate.NewMigrator(db, found)
+	if missing, err := m.MissingMigrations(ctx); err != nil {
+		return err
+	} else if len(missing) > 0 {
+		return fmt.Errorf("%w: it has migration %s, unknown to this version", ErrSchemaNotCurrent, label(missing[0]))
+	}
+	all, err := m.MigrationsWithStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if pending := all.Unapplied(); len(pending) > 0 {
+		return fmt.Errorf("%w: migration %s not applied", ErrSchemaNotCurrent, label(pending[0]))
+	}
 	return nil
 }
 
