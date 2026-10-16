@@ -316,9 +316,11 @@ func TestReadEndpoints(t *testing.T) {
 			t.Errorf("attempts = %+v", attempts)
 		}
 
-		for _, bad := range []string{"from=yesterday", "has_tty=maybe", "login=other", "limit=-1"} {
+		for _, bad := range []string{"from=yesterday", "has_tty=maybe", "login=other", "limit=-1", "sort=s.id", "order=up"} {
 			get(t, e, "/api/sessions?"+bad, http.StatusBadRequest, nil)
 		}
+		get(t, e, "/api/login-attempts?sort=ts", http.StatusBadRequest, nil)
+		get(t, e, "/api/attackers?sort=sessions&order=asc", http.StatusOK, nil)
 		get(t, e, "/api/nothing", http.StatusNotFound, nil)
 	})
 }

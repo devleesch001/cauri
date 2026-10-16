@@ -72,6 +72,7 @@ func sessionFilter(q *query) store.SessionFilter {
 		ASN:         int64(q.int("asn")),
 		Command:     q.str("command"),
 		HASSH:       q.str("hassh"),
+		Sort:        q.sort(store.SessionSorts()),
 		Page:        q.page(),
 	}
 }
@@ -126,6 +127,7 @@ func loginAttemptFilter(q *query) store.LoginAttemptFilter {
 		To:          q.time("to"),
 		Success:     q.bool("success"),
 		Interactive: q.bool("interactive"),
+		Sort:        q.sort(store.LoginAttemptSorts()),
 		Page:        q.page(),
 	}
 }
@@ -204,6 +206,12 @@ func (q *query) oneOf(name string, values ...string) string {
 	}
 	q.fail(name, fmt.Sprintf("one of %v", values))
 	return ""
+}
+
+// sort reads the column of a list (sort, one of names) and its direction
+// (order: asc, or desc by default).
+func (q *query) sort(names []string) store.Sort {
+	return store.Sort{By: q.oneOf("sort", names...), Asc: q.oneOf("order", "asc", "desc") == "asc"}
 }
 
 func (q *query) int(name string) int {
@@ -294,7 +302,7 @@ func (s *server) listAttackers(w http.ResponseWriter, r *http.Request) {
 		ASN:         int64(q.int("asn")),
 		IPPrefix:    q.str("ip_prefix"),
 		Shell:       q.bool("shell"),
-		Sort:        q.oneOf("sort", store.SortSessions, store.SortLastSeen, store.SortShells),
+		Sort:        q.sort(store.AttackerSorts()),
 		Page:        q.page(),
 	}
 	if q.err != nil {

@@ -25,7 +25,7 @@ type AttackerFilter struct {
 	ASN      int64
 	IPPrefix string // start of the address
 	Shell    *bool  // obtained a shell at least once, or never
-	Sort     string // SortSessions, SortLastSeen or SortShells
+	Sort     Sort   // by SortSessions (the default), SortLastSeen or SortShells
 	Page
 }
 
@@ -84,15 +84,7 @@ func ListAttackers(ctx context.Context, db bun.IDB, f AttackerFilter) ([]Attacke
 			q = q.Having("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) = 0")
 		}
 	}
-	switch f.Sort {
-	case SortLastSeen:
-		q = q.OrderExpr("last_ts DESC, s.src_ip")
-	case SortShells:
-		q = q.OrderExpr("shells DESC, n DESC, last_ts DESC, s.src_ip")
-	default:
-		q = q.OrderExpr("n DESC, last_ts DESC, s.src_ip")
-	}
-	total, err := f.Page.apply(q).ScanAndCount(ctx, &rows)
+	total, err := f.Page.apply(attackerSort.order(q, f.Sort)).ScanAndCount(ctx, &rows)
 	if err != nil {
 		return nil, 0, err
 	}

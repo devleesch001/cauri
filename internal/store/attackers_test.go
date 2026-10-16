@@ -66,8 +66,8 @@ func TestListAttackers(t *testing.T) {
 			f    store.AttackerFilter
 			want []string
 		}{
-			"last seen":   {store.AttackerFilter{Sort: store.SortLastSeen}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
-			"shells":      {store.AttackerFilter{Sort: store.SortShells}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
+			"last seen":   {store.AttackerFilter{Sort: store.Sort{By: store.SortLastSeen}}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
+			"shells":      {store.AttackerFilter{Sort: store.Sort{By: store.SortShells}}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
 			"got a shell": {store.AttackerFilter{Shell: ptr(true)}, []string{"203.0.113.1"}},
 			"never":       {store.AttackerFilter{Shell: ptr(false)}, []string{"203.0.113.3", "203.0.113.2"}},
 			"prefix":      {store.AttackerFilter{IPPrefix: "203.0.113.3"}, []string{"203.0.113.3"}},

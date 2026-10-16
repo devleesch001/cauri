@@ -71,6 +71,7 @@ type SessionFilter struct {
 	ASN         int64  // autonomous system of the source address
 	Command     string // a command line run in the session, exactly
 	HASSH       string // client fingerprint
+	Sort        Sort   // of the list only, by SessionSorts
 	Page
 }
 
@@ -107,7 +108,7 @@ func selectSessions(db bun.IDB, dst any) *bun.SelectQuery {
 // of sessions matching the filter.
 func ListSessions(ctx context.Context, db bun.IDB, f SessionFilter) ([]SessionSummary, int, error) {
 	var rows []Session
-	total, err := f.Page.apply(f.query(db, &rows)).OrderExpr("s.started_at DESC, s.id DESC").ScanAndCount(ctx)
+	total, err := f.Page.apply(sessionSort.order(f.query(db, &rows), f.Sort)).ScanAndCount(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -340,6 +341,7 @@ type LoginAttemptFilter struct {
 	// Interactive filters on whether the session obtained a shell, that is
 	// whether any login of the session succeeded.
 	Interactive *bool
+	Sort        Sort // of the list only, by LoginAttemptSorts
 	Page
 }
 
@@ -362,7 +364,7 @@ type LoginAttemptRow struct {
 // the number of attempts matching the filter.
 func ListLoginAttempts(ctx context.Context, db bun.IDB, f LoginAttemptFilter) ([]LoginAttemptRow, int, error) {
 	rows := []LoginAttemptRow{}
-	total, err := f.Page.apply(f.query(db)).OrderExpr("la.ts DESC, la.id DESC").ScanAndCount(ctx, &rows)
+	total, err := f.Page.apply(loginAttemptSort.order(f.query(db), f.Sort)).ScanAndCount(ctx, &rows)
 	return rows, int(total), err
 }
 

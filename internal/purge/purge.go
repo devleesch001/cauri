@@ -35,13 +35,13 @@ func New(db *bun.DB, tty *ttystore.Store) *Purger {
 	return &Purger{db: db, tty: tty}
 }
 
-// Sessions deletes the sessions f selects, its page ignored, and returns
-// what went; with apply false, it only counts what would. Running it again
-// changes nothing. A recording file that cannot be removed is reported in
+// Sessions deletes the sessions f selects, its page and sort ignored, and
+// returns what went; with apply false, it only counts what would. Running
+// it again changes nothing. A recording file that cannot be removed is reported in
 // the error, after everything else is deleted: its row is gone already,
 // and the file harms nothing.
 func (p *Purger) Sessions(ctx context.Context, f store.SessionFilter, apply bool) (store.PurgeCounts, error) {
-	f.Page = store.Page{}
+	f.Page, f.Sort = store.Page{}, store.Sort{}
 	if f == (store.SessionFilter{}) {
 		return store.PurgeCounts{}, ErrNoCriteria
 	}
