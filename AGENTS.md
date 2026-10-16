@@ -81,8 +81,8 @@ all (migration 00007 renamed the older ones).
 
 **Foreign keys** carry an explicit
 `ON DELETE` (`docs/db.md`): projections and events cascade from their
-session, a recording's or a GeoIP database's removal sets the session's
-reference to null, sensors are `RESTRICT`ed while they have sessions.
+session, a recording's, a GeoIP database's or a network's removal sets
+the session's reference to null, sensors are `RESTRICT`ed while they have sessions.
 Every foreign key also has `ON UPDATE CASCADE` (the user's rule): a
 parent whose id changes keeps its children. Code relies on them
 (`Service.ForgetTTY` only deletes the `tty_files` row): keep both engines

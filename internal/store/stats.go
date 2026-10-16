@@ -331,9 +331,10 @@ func GetOrigins(ctx context.Context, db bun.IDB, f StatsFilter) (*Origins, error
 	if err := f.apply(q).Scan(ctx, &o.Sources); err != nil {
 		return nil, err
 	}
-	q = db.NewSelect().Model((*Session)(nil)).Column("asn").
-		ColumnExpr("MIN(s.as_org) AS org, COUNT(*) AS n, COUNT(DISTINCT s.src_ip) AS sources").
-		Where("s.asn IS NOT NULL").GroupExpr("s.asn").OrderExpr("n DESC, s.asn").Limit(TopOrigins)
+	q = db.NewSelect().Model((*Session)(nil)).ColumnExpr("nw.asn").
+		ColumnExpr("MIN(nw.org) AS org, COUNT(*) AS n, COUNT(DISTINCT s.src_ip) AS sources").
+		Join("JOIN networks AS nw ON nw.id = s.network_id").
+		GroupExpr("nw.asn").OrderExpr("n DESC, nw.asn").Limit(TopOrigins)
 	if err := f.apply(q).Scan(ctx, &o.Networks); err != nil {
 		return nil, err
 	}

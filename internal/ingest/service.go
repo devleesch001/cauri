@@ -387,10 +387,11 @@ func (s *Service) NetworkSessions(ctx context.Context) (int, error) {
 	}
 	found := 0
 	var after int64
+	networks := map[uint32]int64{} // network ids, by ASN
 	for {
 		var rows []store.Session
 		err := s.db.NewSelect().Model(&rows).Column("id", "src_ip").
-			Where("asn IS NULL").Where("src_ip IS NOT NULL").Where("id > ?", after).
+			Where("network_id IS NULL").Where("src_ip IS NOT NULL").Where("id > ?", after).
 			OrderExpr("s.id").Limit(locateBatch).Scan(ctx)
 		if err != nil || len(rows) == 0 {
 			return found, err
@@ -402,9 +403,16 @@ func (s *Service) NetworkSessions(ctx context.Context) (int, error) {
 				if !ok {
 					continue
 				}
-				if _, err := tx.NewUpdate().Model((*store.Session)(nil)).
-					Set("asn = ?", int64(n.ASN)).Set("as_org = ?", nullable(n.Org)).
-					Where("id = ?", r.ID).Where("asn IS NULL").Exec(ctx); err != nil {
+				id, known := networks[n.ASN]
+				if !known {
+					var err error
+					if id, err = store.NetworkID(ctx, tx, int64(n.ASN), nullable(n.Org)); err != nil {
+						return err
+					}
+					networks[n.ASN] = id
+				}
+				if _, err := tx.NewUpdate().Model((*store.Session)(nil)).Set("network_id = ?", id).
+					Where("id = ?", r.ID).Where("network_id IS NULL").Exec(ctx); err != nil {
 					return err
 				}
 				found++

@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -92,5 +93,66 @@ func TestGeoSourceIDs(t *testing.T) {
 		if err := db.NewSelect().TableExpr("sessions AS s").ColumnExpr("s.geo_source").Scan(ctx, &gone); err == nil {
 			t.Error("sessions.geo_source is still there")
 		}
+	})
+}
+
+// Migration 00012 moves the networks of sessions to their own table, once
+// per ASN, and back.
+func TestNetworksMigration(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		seed(t, db)
+		ctx := context.Background()
+		engine := store.SQLite
+		if db.Dialect().Name().String() == "pg" {
+			engine = store.Postgres
+		}
+		run := func(file string) {
+			t.Helper()
+			qs, err := store.MigrationSQL(engine, file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+				for _, q := range qs {
+					if _, err := tx.ExecContext(ctx, q); err != nil {
+						return fmt.Errorf("%s: %w", q, err)
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		run("00012_networks.tx.down.sql")
+		for sess, asn := range map[string]int64{"1": 4134, "2": 4134, "3": 64500} {
+			if _, err := db.ExecContext(ctx, "UPDATE sessions SET asn = ?, as_org = ? WHERE cowrie_session = ?", asn, fmt.Sprint("AS", asn), sess); err != nil {
+				t.Fatal(err)
+			}
+		}
+		run("00012_networks.tx.up.sql")
+
+		var nets []store.Network
+		if err := db.NewSelect().Model(&nets).OrderExpr("asn").Scan(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if len(nets) != 2 || nets[0].ASN != 4134 || *nets[0].Org != "AS4134" || nets[1].ASN != 64500 {
+			t.Fatalf("networks = %+v", nets)
+		}
+		if _, got := sessions(t, db, store.SessionFilter{ASN: 4134}); got != "21" {
+			t.Errorf("sessions of AS4134 = %q", got)
+		}
+		s, err := store.GetSession(ctx, db, lookup(t, db, "hp-01", "1"))
+		if err != nil || *s.ASN != 4134 || *s.ASOrg != "AS4134" {
+			t.Errorf("session network = %v %v, %v", s.ASN, s.ASOrg, err)
+		}
+
+		run("00012_networks.tx.down.sql")
+		var asn []int64
+		if err := db.NewSelect().TableExpr("sessions AS s").ColumnExpr("s.asn").Where("s.asn IS NOT NULL").
+			OrderExpr("s.asn").Scan(ctx, &asn); err != nil || !slices.Equal(asn, []int64{4134, 4134, 64500}) {
+			t.Errorf("asn back in sessions = %v, %v", asn, err)
+		}
+		run("00012_networks.tx.up.sql")
 	})
 }

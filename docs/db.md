@@ -68,6 +68,7 @@ erDiagram
     tty_files |o--o{ sessions : "recording of"
     ssh_kex |o--o{ sessions : "offered by the client of"
     geo_sources |o--o{ sessions : "located"
+    networks |o--o{ sessions : "came from"
 
     sensors {
         integer id PK
@@ -107,6 +108,7 @@ erDiagram
         double geo_lat "centre of the city"
         double geo_lon
         integer geo_source_id FK
+        integer network_id FK
         text verdict
         integer verdict_score
         text verdict_version
@@ -149,6 +151,11 @@ erDiagram
         text filename
         text sha256
     }
+    networks {
+        integer id PK
+        bigint asn UK "autonomous system number"
+        text org "latest name given"
+    }
     geo_sources {
         integer id PK
         text type "UK with built"
@@ -188,6 +195,7 @@ erDiagram
 | `transfers` | Files downloaded (`wget`, `curl`) or uploaded (SFTP, SCP) | Rare |
 | `tty_files` | Recordings stored in the TTY volume, by digest of the file | One per distinct recording |
 | `geo_sources` | The GeoIP databases that located sessions, by type and build date: the session page names it, and its provider's attribution is due while a session uses it | One per database build |
+| `networks` | The autonomous systems sessions came from, with an ASN database: number and organisation, the latest name a database gave | One per network seen |
 | `ssh_kex` | What SSH clients offered in the key exchange (`cowrie.client.kex`), once per combination of lists | A few dozen (68 for 20,000 sessions) |
 
 ### Sessions and events
@@ -314,6 +322,7 @@ so that ids can be renumbered):
 | `fk_events_sensor_id` | `sensors` | `RESTRICT`, as above |
 | `fk_sessions_tty_file_id` | `tty_files` | `SET NULL`: removing a recording leaves its sessions, without it |
 | `fk_sessions_geo_source_id` | `geo_sources` | `SET NULL`: the sessions are located again, by the database loaded |
+| `fk_sessions_network_id` | `networks` | `SET NULL`: the sessions are found again by the ASN database loaded |
 | `fk_sessions_ssh_kex_id` | `ssh_kex` | `RESTRICT`: key exchanges are never removed |
 | `fk_events_session_id` | `sessions` | `CASCADE`: the events belong to the session |
 | `fk_event_data_event_id` | `events` | `CASCADE`: the raw line follows its event |
@@ -368,7 +377,8 @@ indexes too.
 | `ix_sessions_ssh_kex_id` | HASSH filter and counts, through `ssh_kex` (migration 00008) |
 | `uk_ssh_kex_digest` | Find a key exchange at ingestion |
 | `ix_ssh_kex_hassh` | HASSH filter |
-| `ix_sessions_asn` | Network filter (migration 00004) |
+| `ix_sessions_network_id` | Network filter and counts; sessions left to find; removing a network (migration 00012) |
+| `uk_networks_asn` | Find a network at ingestion and for the filter |
 | `ix_sessions_shell` | Interactive shell filter (migration 00006) |
 | `uk_events_hash` | Deduplication |
 | `ix_events_session_id_ts` | Events of a session page |

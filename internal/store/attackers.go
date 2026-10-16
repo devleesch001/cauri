@@ -55,11 +55,12 @@ func selectAttackers(db bun.IDB, f StatsFilter) *bun.SelectQuery {
 		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		ColumnExpr("MIN(s.started_at) AS first_ts, MAX(s.started_at) AS last_ts").
 		ColumnExpr("MAX(s.geo_country) AS country, MAX(s.geo_city) AS city").
-		ColumnExpr("MAX(s.asn) AS asn, MAX(s.as_org) AS as_org").
+		ColumnExpr("MAX(nw.asn) AS asn, MAX(nw.org) AS as_org").
 		ColumnExpr("SUM(CASE WHEN s.verdict = 'human' THEN 1 ELSE 0 END) AS humans").
 		ColumnExpr("SUM(CASE WHEN s.verdict = 'bot' THEN 1 ELSE 0 END) AS bots").
 		ColumnExpr("SUM(CASE WHEN s.verdict = 'uncertain' THEN 1 ELSE 0 END) AS uncertain").
 		ColumnExpr("SUM(CASE WHEN s.verdict = 'no_interaction' THEN 1 ELSE 0 END) AS no_interaction").
+		Join("LEFT JOIN networks AS nw ON nw.id = s.network_id").
 		Where("s.src_ip IS NOT NULL").GroupExpr("s.src_ip")
 	return f.apply(q)
 }
@@ -72,7 +73,7 @@ func ListAttackers(ctx context.Context, db bun.IDB, f AttackerFilter) ([]Attacke
 		q = q.Where("s.geo_country = ?", f.Country)
 	}
 	if f.ASN != 0 {
-		q = q.Where("s.asn = ?", f.ASN)
+		q = q.Where("s.network_id IN (?)", networkOf(db, f.ASN))
 	}
 	if f.IPPrefix != "" {
 		q = q.Where(`s.src_ip LIKE ? ESCAPE '\'`, likePrefix(f.IPPrefix))

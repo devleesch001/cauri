@@ -147,8 +147,19 @@ func TestOrigins(t *testing.T) {
 			t.Errorf("networks without an ASN database = %+v", o.Networks)
 		}
 		ctx := context.Background()
-		for sess, asn := range map[string]int64{"1": 4134, "2": 4134} {
-			if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("asn = ?", asn).Set("as_org = 'Chinanet'").
+		// A later database renames the network: the latest name stays,
+		// unless it gives none.
+		for _, org := range []*string{ptr("CHINANET-BACKBONE"), ptr("Chinanet"), nil} {
+			if _, err := store.NetworkID(ctx, db, 4134, org); err != nil {
+				t.Fatal(err)
+			}
+		}
+		id, err := store.NetworkID(ctx, db, 4134, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, sess := range []string{"1", "2"} {
+			if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("network_id = ?", id).
 				Where("id = ?", lookup(t, db, "hp-01", sess)).Exec(ctx); err != nil {
 				t.Fatal(err)
 			}

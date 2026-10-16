@@ -41,6 +41,16 @@ type GeoSource struct {
 	Built Time   `bun:"built"` // build date of the database
 }
 
+// Network is an autonomous system sessions came from, as an ASN database
+// names it: the latest name it gave.
+type Network struct {
+	bun.BaseModel `bun:"table:networks,alias:nw"`
+
+	ID  int64   `bun:"id,pk,autoincrement"`
+	ASN int64   `bun:"asn"`
+	Org *string `bun:"org"`
+}
+
 // SSHKex is a key exchange offer of SSH clients (cowrie.client.kex), once
 // per combination of lists (see cowrie.Kex).
 type SSHKex struct {
@@ -106,9 +116,10 @@ type Session struct {
 	GeoSourceBuilt *Time    `bun:"geo_source_built,scanonly" json:"geo_source_built"`
 	GeoLat         *float64 `bun:"geo_lat" json:"geo_lat"` // of the city, from the same database
 	GeoLon         *float64 `bun:"geo_lon" json:"geo_lon"`
-	ASN            *int64   `bun:"asn" json:"asn"`         // autonomous system, from the ASN database
-	ASOrg          *string  `bun:"as_org" json:"as_org"`   // its organisation
-	Verdict        *string  `bun:"verdict" json:"verdict"` // see package verdict; nil until judged
+	NetworkID      *int64   `bun:"network_id" json:"-"`
+	ASN            *int64   `bun:"asn,scanonly" json:"asn"`       // autonomous system, from the ASN database
+	ASOrg          *string  `bun:"as_org,scanonly" json:"as_org"` // its organisation
+	Verdict        *string  `bun:"verdict" json:"verdict"`        // see package verdict; nil until judged
 	VerdictScore   *int     `bun:"verdict_score" json:"verdict_score"`
 	VerdictVersion *string  `bun:"verdict_version" json:"-"`
 	Shell          *bool    `bun:"shell" json:"shell"` // typed in an interactive shell; nil without a recording read

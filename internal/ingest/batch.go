@@ -31,6 +31,7 @@ type batchWriter struct {
 	order     []string                  // Cowrie session ids, in order of appearance
 	kex       map[string]*cowrie.Kex    // the first key exchange of each session
 	geo       map[string]int64          // GeoIP database ids, by geoip.Info.Source
+	networks  map[uint32]int64          // network ids, by ASN
 	events    []pendingEvent
 	// sessionIDs are the sessions written, once write returned.
 	sessionIDs []int64
@@ -52,6 +53,7 @@ func newBatchWriter(sensor string, now time.Time, locator Locator, networker Net
 		sessions:  map[string]*store.Session{},
 		kex:       map[string]*cowrie.Kex{},
 		geo:       map[string]int64{},
+		networks:  map[uint32]int64{},
 	}
 }
 
@@ -242,12 +244,14 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 		if err := w.locate(ctx, tx, &rows[i]); err != nil {
 			return nil, fmt.Errorf("location: %w", err)
 		}
-		w.network(&rows[i])
+		if err := w.network(ctx, tx, &rows[i]); err != nil {
+			return nil, fmt.Errorf("network: %w", err)
+		}
 	}
 	q := tx.NewInsert().Model(&rows).On("CONFLICT (sensor_id, cowrie_session) DO UPDATE").
 		Set("started_at = CASE WHEN EXCLUDED.started_at < ?TableAlias.started_at THEN EXCLUDED.started_at ELSE ?TableAlias.started_at END").
 		Set("login_success = (?TableAlias.login_success OR EXCLUDED.login_success)")
-	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "ssh_kex_id", "asn", "as_org"} {
+	for _, col := range []string{"src_ip", "src_port", "dst_ip", "dst_port", "protocol", "client_version", "ssh_kex_id", "network_id"} {
 		q = q.Set(col + " = COALESCE(?TableAlias." + col + ", EXCLUDED." + col + ")")
 	}
 	for _, col := range []string{"ended_at", "duration_ms", "tty_log", "tty_duration_ms"} {
@@ -305,14 +309,24 @@ func (w *batchWriter) upsertKex(ctx context.Context, tx bun.Tx) (map[string]int6
 
 // network sets the autonomous system of a session row from its source
 // address.
-func (w *batchWriter) network(s *store.Session) {
+func (w *batchWriter) network(ctx context.Context, tx bun.Tx, s *store.Session) error {
 	if w.networker == nil || s.SrcIP == nil {
-		return
+		return nil
 	}
-	if n, ok := w.networker.Network(*s.SrcIP); ok {
-		asn := int64(n.ASN)
-		s.ASN, s.ASOrg = &asn, nullable(n.Org)
+	n, ok := w.networker.Network(*s.SrcIP)
+	if !ok {
+		return nil
 	}
+	id, known := w.networks[n.ASN]
+	if !known {
+		var err error
+		if id, err = store.NetworkID(ctx, tx, int64(n.ASN), nullable(n.Org)); err != nil {
+			return err
+		}
+		w.networks[n.ASN] = id
+	}
+	s.NetworkID = &id
+	return nil
 }
 
 // locate sets the location of a session row from its source address,

@@ -101,11 +101,12 @@ func selectSessions(db bun.IDB, dst any) *bun.SelectQuery {
 	return db.NewSelect().Model(dst).
 		ColumnExpr("s.*").
 		ColumnExpr("sn.name AS sensor, t.sha256 AS tty_sha256, t.size AS tty_size, k.hassh AS hassh").
-		ColumnExpr("g.type AS geo_source_type, g.built AS geo_source_built").
+		ColumnExpr("g.type AS geo_source_type, g.built AS geo_source_built, nw.asn AS asn, nw.org AS as_org").
 		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
 		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
 		Join("LEFT JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
-		Join("LEFT JOIN geo_sources AS g ON g.id = s.geo_source_id")
+		Join("LEFT JOIN geo_sources AS g ON g.id = s.geo_source_id").
+		Join("LEFT JOIN networks AS nw ON nw.id = s.network_id")
 }
 
 // ListSessions returns a page of sessions, latest first, and the number
@@ -217,7 +218,7 @@ func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 		q = q.Where("s.ssh_kex_id IN (?)", sub)
 	}
 	if f.ASN != 0 {
-		q = q.Where("s.asn = ?", f.ASN)
+		q = q.Where("s.network_id IN (?)", networkOf(db, f.ASN))
 	}
 	if f.File != "" {
 		sub := db.NewSelect().TableExpr("transfers AS fx").ColumnExpr("fx.session_id").Where("fx.sha256 = ?", f.File)
@@ -668,6 +669,24 @@ func ListGeoSources(ctx context.Context, db bun.IDB) ([]string, error) {
 	err := db.NewSelect().Model((*GeoSource)(nil)).Distinct().Column("type").
 		Where("EXISTS (?)", used).Order("type").Scan(ctx, &out)
 	return out, err
+}
+
+// networkOf selects the network of an autonomous system, for a filter.
+func networkOf(db bun.IDB, asn int64) *bun.SelectQuery {
+	return db.NewSelect().TableExpr("networks AS fnw").ColumnExpr("fnw.id").Where("fnw.asn = ?", asn)
+}
+
+// NetworkID returns the id of an autonomous system, stored on first use.
+// Its organisation is the latest name given, when one is.
+func NetworkID(ctx context.Context, db bun.IDB, asn int64, org *string) (int64, error) {
+	n := Network{ASN: asn, Org: org}
+	if _, err := db.NewInsert().Model(&n).On("CONFLICT (asn) DO UPDATE").
+		Set("org = COALESCE(EXCLUDED.org, ?TableAlias.org)").Returning("NULL").Exec(ctx); err != nil {
+		return 0, err
+	}
+	var id int64
+	err := db.NewSelect().Model((*Network)(nil)).Column("id").Where("asn = ?", asn).Scan(ctx, &id)
+	return id, err
 }
 
 // GeoSourceID returns the id of a GeoIP database, stored on first use.

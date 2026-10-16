@@ -71,10 +71,11 @@ func getSession(t *testing.T, db *bun.DB, sensorID, sess string) *store.Session 
 	t.Helper()
 	s := new(store.Session)
 	err := db.NewSelect().Model(s).ColumnExpr("s.*, t.sha256 AS tty_sha256, t.size AS tty_size, k.hassh AS hassh").
-		ColumnExpr("g.type AS geo_source_type, g.built AS geo_source_built").
+		ColumnExpr("g.type AS geo_source_type, g.built AS geo_source_built, nw.asn AS asn, nw.org AS as_org").
 		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
 		Join("LEFT JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
 		Join("LEFT JOIN geo_sources AS g ON g.id = s.geo_source_id").
+		Join("LEFT JOIN networks AS nw ON nw.id = s.network_id").
 		Where("s.id = ?", sessionID(t, db, sensorID, sess)).Scan(context.Background())
 	if err != nil {
 		t.Fatalf("session %s/%s: %v", sensorID, sess, err)

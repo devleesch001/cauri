@@ -47,7 +47,7 @@ func TestMigrateLogs(t *testing.T) {
 				`"msg":"database"`, `"engine":"` + engine + `"`, `"version":"`,
 				`"msg":"database schema"`, `"version":"none (empty database)"`,
 				`"msg":"database upgrade needed"`, `"msg":"applying migration","migration":"00001_init"`,
-				`"msg":"migration applied","migration":"00011_geo_source_ids"`, `"msg":"database upgraded"`,
+				`"msg":"migration applied","migration":"00012_networks"`, `"msg":"database upgraded"`,
 			} {
 				if !strings.Contains(first, want) {
 					t.Errorf("first run: no %s in\n%s", want, first)
@@ -62,7 +62,7 @@ func TestMigrateLogs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if second := out.String(); !strings.Contains(second, `"msg":"database schema is up to date"`) ||
-				!strings.Contains(second, `"version":"00011_geo_source_ids","latest":"00011_geo_source_ids","pending":0`) ||
+				!strings.Contains(second, `"version":"00012_networks","latest":"00012_networks","pending":0`) ||
 				strings.Contains(second, "applying migration") {
 				t.Errorf("second run:\n%s", second)
 			}
@@ -351,6 +351,7 @@ func TestForeignKeyNamesAndActions(t *testing.T) {
 		"fk fk_ingest_tokens_sensor_id: ingest_tokens(sensor_id) -> sensors(id) cascade, update cascade",
 		"fk fk_login_attempts_session_id: login_attempts(session_id) -> sessions(id) cascade, update cascade",
 		"fk fk_sessions_geo_source_id: sessions(geo_source_id) -> geo_sources(id) set null, update cascade",
+		"fk fk_sessions_network_id: sessions(network_id) -> networks(id) set null, update cascade",
 		"fk fk_sessions_sensor_id: sessions(sensor_id) -> sensors(id) restrict, update cascade",
 		"fk fk_sessions_ssh_kex_id: sessions(ssh_kex_id) -> ssh_kex(id) restrict, update cascade",
 		"fk fk_sessions_tty_file_id: sessions(tty_file_id) -> tty_files(id) set null, update cascade",
