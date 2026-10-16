@@ -302,10 +302,9 @@ export interface OfferedKey {
 }
 
 /** A key exchange, the algorithms an SSH tool offers, and what came with it (GET /api/attackers/kex). */
-export interface KexAttacker {
+export interface KexAttacker extends KexLists {
   id: number
   hassh: string | null
-  key_algs: string | null // what tells apart the combinations of one HASSH
   sessions: number
   sources: number // distinct source addresses
   logged_in: number
@@ -318,13 +317,18 @@ export interface KexAttacker {
   no_interaction: number
 }
 
-/** One key exchange, with its lists and what it links to (GET /api/attackers/kex/{id}). */
-export interface KexDetail extends KexAttacker {
+/** The algorithm lists a client offered, each joined by commas as SSH sends it. */
+export interface KexLists {
   kex_algs: string | null
   enc_algs: string | null
   mac_algs: string | null
   comp_algs: string | null
+  key_algs: string | null // host key algorithms: what tells apart the combinations of one HASSH
   lang_algs: string | null
+}
+
+/** One key exchange, with what it links to (GET /api/attackers/kex/{id}). */
+export interface KexDetail extends KexAttacker {
   sensors: string[]
   clients: { client: string; sessions: number }[]
   addresses: { ip: string; country: string | null; sessions: number; logged_in: number }[]

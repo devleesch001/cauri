@@ -41,9 +41,16 @@ type KexFilter struct {
 
 // KexAttacker is a key exchange and what came with it.
 type KexAttacker struct {
-	ID        int64   `bun:"id" json:"id"`
-	HASSH     *string `bun:"hassh" json:"hassh"`
-	KeyAlgs   *string `bun:"key_algs" json:"key_algs"` // what tells apart the combinations of one HASSH
+	ID    int64   `bun:"id" json:"id"`
+	HASSH *string `bun:"hassh" json:"hassh"`
+	// Its lists, as in SSHKex; the host key algorithms tell apart the
+	// combinations of one HASSH.
+	KexAlgs   *string `bun:"kex_algs" json:"kex_algs"`
+	EncAlgs   *string `bun:"enc_algs" json:"enc_algs"`
+	MacAlgs   *string `bun:"mac_algs" json:"mac_algs"`
+	CompAlgs  *string `bun:"comp_algs" json:"comp_algs"`
+	KeyAlgs   *string `bun:"key_algs" json:"key_algs"`
+	LangAlgs  *string `bun:"lang_algs" json:"lang_algs"`
 	Sessions  int     `bun:"n" json:"sessions"`
 	Sources   int     `bun:"sources" json:"sources"`     // distinct source addresses
 	LoggedIn  int     `bun:"logged_in" json:"logged_in"` // sessions that logged in
@@ -60,7 +67,8 @@ type KexAttacker struct {
 // selectKex groups the sessions f selects by key exchange. Grouping by its
 // primary key lets both engines select its other columns.
 func selectKex(db bun.IDB, f StatsFilter) *bun.SelectQuery {
-	q := db.NewSelect().Model((*Session)(nil)).ColumnExpr("k.id, k.hassh, k.key_algs").
+	q := db.NewSelect().Model((*Session)(nil)).
+		ColumnExpr("k.id, k.hassh, k.kex_algs, k.enc_algs, k.mac_algs, k.comp_algs, k.key_algs, k.lang_algs").
 		ColumnExpr("COUNT(*) AS n, COUNT(DISTINCT s.src_ip) AS sources").
 		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		ColumnExpr("MIN(s.started_at) AS first_ts, MAX(s.started_at) AS last_ts").
@@ -138,14 +146,9 @@ type KexVariant struct {
 	Sessions int     `bun:"n" json:"sessions"`
 }
 
-// KexDetail is a key exchange with its lists and what it links to.
+// KexDetail is a key exchange with what it links to.
 type KexDetail struct {
 	KexAttacker
-	KexAlgs   *string       `json:"kex_algs"`
-	EncAlgs   *string       `json:"enc_algs"`
-	MacAlgs   *string       `json:"mac_algs"`
-	CompAlgs  *string       `json:"comp_algs"`
-	LangAlgs  *string       `json:"lang_algs"`
 	Sensors   []string      `json:"sensors"`   // sensors it reached
 	Clients   []ClientCount `json:"clients"`   // SSH clients announced with it, most used first
 	Addresses []KexSource   `json:"addresses"` // that used it, most sessions first
@@ -170,13 +173,8 @@ func GetKex(ctx context.Context, db bun.IDB, id int64, f StatsFilter) (*KexDetai
 	if err := countKexLogins(ctx, db, f, rows); err != nil {
 		return nil, err
 	}
-	var k SSHKex
-	if err := db.NewSelect().Model(&k).Where("id = ?", id).Scan(ctx); err != nil {
-		return nil, err
-	}
 	d := &KexDetail{
-		KexAttacker: rows[0], KexAlgs: k.KexAlgs, EncAlgs: k.EncAlgs, MacAlgs: k.MacAlgs, CompAlgs: k.CompAlgs,
-		LangAlgs: k.LangAlgs, Sensors: []string{}, Clients: []ClientCount{}, Addresses: []KexSource{}, Variants: []KexVariant{},
+		KexAttacker: rows[0], Sensors: []string{}, Clients: []ClientCount{}, Addresses: []KexSource{}, Variants: []KexVariant{},
 	}
 	q := db.NewSelect().Model((*Session)(nil)).ColumnExpr("DISTINCT sn.name").
 		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").OrderExpr("sn.name")
@@ -196,10 +194,10 @@ func GetKex(ctx context.Context, db bun.IDB, id int64, f StatsFilter) (*KexDetai
 	if err := f.apply(q).Scan(ctx, &d.Addresses); err != nil {
 		return nil, err
 	}
-	if k.HASSH != nil {
+	if d.HASSH != nil {
 		if err := db.NewSelect().Model((*SSHKex)(nil)).ColumnExpr("k.id, k.key_algs, COUNT(s.id) AS n").
 			Join("LEFT JOIN sessions AS s ON s.ssh_kex_id = k.id").
-			Where("k.hassh = ?", *k.HASSH).Where("k.id <> ?", id).
+			Where("k.hassh = ?", *d.HASSH).Where("k.id <> ?", id).
 			GroupExpr("k.id").OrderExpr("n DESC, k.id").Scan(ctx, &d.Variants); err != nil {
 			return nil, err
 		}

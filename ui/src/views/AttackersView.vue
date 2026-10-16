@@ -10,11 +10,13 @@ import SelectButton from 'openvue/selectbutton'
 import ToggleSwitch from 'openvue/toggleswitch'
 import Button from 'openvue/button'
 import Chip from 'openvue/chip'
+import Popover from 'openvue/popover'
 import { api } from '@/api/client'
 import type { Attacker, CountryCount, KexAttacker } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
+import KexAlgorithms from '@/components/KexAlgorithms.vue'
 import { dayRange } from '@/dates'
 import { countryName, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
@@ -141,6 +143,16 @@ function mostly(a: Attacker | KexAttacker) {
   ]
   const [verdict, n] = counts.reduce((best, c) => (c[1] > best[1] ? c : best))
   return n > 0 ? verdict : null
+}
+// A key exchange's lists, over its row, on hover or focus of its host keys.
+const listsOverlay = ref<InstanceType<typeof Popover> | null>(null)
+const shownKex = ref<KexAttacker | null>(null)
+function showLists(e: Event, k: KexAttacker) {
+  shownKex.value = k
+  listsOverlay.value?.show(e, e.currentTarget)
+}
+function hideLists() {
+  listsOverlay.value?.hide()
 }
 function clearFilters() {
   void router.replace({ query: kept.value })
@@ -292,12 +304,18 @@ function clearFilters() {
             </RouterLink>
           </template>
         </Column>
-        <!-- What tells apart the combinations of one HASSH, cut; whole on hover. -->
+        <!-- What tells apart the combinations of one HASSH, cut; all the
+             lists on hover or focus. -->
         <Column :header="t('attackers.columns.keyAlgs')">
           <template #body="{ data }">
             <span
-              v-tooltip.top="data.key_algs"
               class="data algs"
+              tabindex="0"
+              :aria-label="t('attackers.listsLabel')"
+              @mouseenter="showLists($event, data)"
+              @mouseleave="hideLists"
+              @focus="showLists($event, data)"
+              @blur="hideLists"
             >{{ data.key_algs ?? '—' }}</span>
           </template>
         </Column>
@@ -412,6 +430,12 @@ function clearFilters() {
         </template>
       </Column>
     </DataTable>
+    <Popover ref="listsOverlay">
+      <KexAlgorithms
+        v-if="shownKex"
+        :kex="shownKex"
+      />
+    </Popover>
   </div>
 </template>
 

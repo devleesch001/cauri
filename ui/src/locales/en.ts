@@ -343,6 +343,7 @@ export default {
     title: 'Attackers',
     count: '{n} attacker | {n} attackers',
     countKex: '{n} key exchange | {n} key exchanges',
+    listsLabel: 'Host key algorithms: show every list of this key exchange',
     by: 'Attackers by',
     kinds: {
       ip: 'Addresses',

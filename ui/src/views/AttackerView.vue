@@ -10,6 +10,7 @@ import KpiCard from '@/components/KpiCard.vue'
 import SessionFilters from '@/components/SessionFilters.vue'
 import SessionTable from '@/components/SessionTable.vue'
 import { formatTime } from '@/format'
+import { kexLists } from '@/kex'
 import { useSessionFilterParams } from '@/sessionFilters'
 import { useStatsFilters } from '@/stats'
 
@@ -81,20 +82,8 @@ const mine = (extra: Record<string, string>) => link('sessions', { ...identity.v
 // of a key exchange (failed logins are not filtered by it).
 const tried = (username: string, password: string) =>
   props.kind === 'ip' ? link('login-attempts', { ip: props.id, username, password }) : mine({ username, password })
-// The six lists of a key exchange, in Cowrie's names, those the HASSH
-// hashes first.
-const lists = computed(() => {
-  const k = kex.value
-  if (!k) return []
-  return [
-    { name: 'kex', cowrie: 'kexAlgs', value: k.kex_algs, hassh: true },
-    { name: 'enc', cowrie: 'encCS', value: k.enc_algs, hassh: true },
-    { name: 'mac', cowrie: 'macCS', value: k.mac_algs, hassh: true },
-    { name: 'comp', cowrie: 'compCS', value: k.comp_algs, hassh: true },
-    { name: 'key', cowrie: 'keyAlgs', value: k.key_algs, hassh: false },
-    { name: 'lang', cowrie: 'langCS', value: k.lang_algs, hassh: false },
-  ]
-})
+// The six lists of a key exchange, those the HASSH hashes first.
+const lists = computed(() => (kex.value ? kexLists(kex.value) : []))
 const short = (hassh: string | null, id: number) => (hassh ? hassh.slice(0, 12) : `#${id}`)
 // Its sessions, listed and filtered as on the sessions page, but for the
 // identity the page sets; the export is theirs.
@@ -444,11 +433,11 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
               <span class="data muted cowrie">{{ l.cowrie }}<template v-if="l.hassh"> · {{ t('attacker.inHassh') }}</template></span>
             </h2>
             <ol
-              v-if="l.value"
+              v-if="l.algorithms.length"
               class="body algorithms data"
             >
               <li
-                v-for="(a, i) in l.value.split(',')"
+                v-for="(a, i) in l.algorithms"
                 :key="i"
               >
                 {{ a }}
