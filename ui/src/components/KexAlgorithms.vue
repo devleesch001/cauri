@@ -44,12 +44,16 @@ const lists = computed(() => kexLists(props.kex))
 </template>
 
 <style scoped>
-/* Three columns of two lists, as many as fit on narrow screens. */
+/* Three columns of two lists, as many as fit on narrow screens. Low
+   enough to fit above or below the row it opens from, rather than cover
+   it: long lists scroll. */
 .kex-lists {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: var(--space-3) var(--space-4);
   max-width: min(60rem, 90vw);
+  max-height: 40vh;
+  overflow-y: auto;
   font-size: 0.8125rem;
 }
 
@@ -64,9 +68,10 @@ h3 {
   font-weight: normal;
 }
 
+/* Room for two-digit numbers, which the scrolling box would clip. */
 ol {
   margin: 0;
-  padding-left: 2em;
+  padding-left: 2.5em;
 }
 
 li {

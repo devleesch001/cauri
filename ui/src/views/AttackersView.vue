@@ -167,7 +167,12 @@ function showLists(e: Event, k: KexAttacker) {
   shownKex.value = k
   listsOverlay.value?.show(e, e.currentTarget)
 }
-function hideLists() {
+// Without room above or below, the lists cover their row: going from one
+// to the other must not close them, or they would close and reopen under
+// the pointer, flickering. They close once it leaves both.
+function hideLists(e: Event) {
+  const to = e instanceof MouseEvent ? (e.relatedTarget as Element | null) : null
+  if (to?.closest('.p-popover, .algs')) return
   listsOverlay.value?.hide()
 }
 function clearFilters() {
@@ -455,7 +460,10 @@ function clearFilters() {
         </template>
       </Column>
     </DataTable>
-    <Popover ref="listsOverlay">
+    <Popover
+      ref="listsOverlay"
+      @mouseleave="hideLists"
+    >
       <KexAlgorithms
         v-if="shownKex"
         :kex="shownKex"
