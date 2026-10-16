@@ -327,9 +327,12 @@ async function revoke() {
 </template>
 
 <style scoped>
-/* The sections of a signed-in administrator, one below the other. */
+/* The sections of a signed-in administrator, one below the other. The
+   column may shrink below the width of their tables, which then scroll
+   within their section rather than widen the page. */
 .sections {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
 }
 
