@@ -18,6 +18,7 @@ import (
 	"github.com/devleesch001/cauri/internal/ingest"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/internal/version"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
@@ -43,7 +44,7 @@ type Config struct {
 	Tokens Tokens
 	Logger *slog.Logger
 	// Version is shown by GET /api/about.
-	Version string
+	Version version.Info
 	// GeoIP is the GeoIP database, nil without one: its provider sets the
 	// attribution the UI must show.
 	GeoIP interface{ Info() geoip.Info }

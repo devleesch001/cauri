@@ -32,6 +32,7 @@ import (
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/store/storetest"
 	"github.com/devleesch001/cauri/internal/ttystore"
+	"github.com/devleesch001/cauri/internal/version"
 	"github.com/devleesch001/cauri/pkg/client"
 	"github.com/devleesch001/cauri/pkg/protocol"
 )
@@ -641,7 +642,7 @@ func TestGeoIP(t *testing.T) {
 		e := setup(t, db, func(c *api.Config) {
 			c.Ingest.SetLocator(geo)
 			c.GeoIP = geo
-			c.Version = "1.2.3"
+			c.Version = version.Info{Tag: "v1.2.3", Commit: "abc", Date: "2026-10-16T20:45:00Z"}
 		})
 		if _, err := e.client.SendEvents(context.Background(), events("hp-01")); err != nil {
 			t.Fatal(err)
@@ -677,13 +678,13 @@ func TestGeoIP(t *testing.T) {
 		}
 
 		var a struct {
-			Version string `json:"version"`
+			Version version.Info `json:"version"`
 			GeoIP   *struct {
 				Type, Provider string
 			} `json:"geoip"`
 		}
 		get(t, e, "/api/about", http.StatusOK, &a)
-		if a.Version != "1.2.3" || a.GeoIP == nil || a.GeoIP.Provider != "db-ip" || a.GeoIP.Type != "DBIP-City-Lite" {
+		if a.Version.Tag != "v1.2.3" || a.Version.Commit != "abc" || a.GeoIP == nil || a.GeoIP.Provider != "db-ip" || a.GeoIP.Type != "DBIP-City-Lite" {
 			t.Errorf("about = %+v", a)
 		}
 	})

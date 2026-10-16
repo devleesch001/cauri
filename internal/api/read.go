@@ -17,6 +17,7 @@ import (
 
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/store"
+	"github.com/devleesch001/cauri/internal/version"
 )
 
 // list is the envelope of paginated responses.
@@ -390,9 +391,9 @@ func (s *server) getKex(w http.ResponseWriter, r *http.Request) {
 }
 
 type about struct {
-	Version string      `json:"version"`
-	GeoIP   *geoip.Info `json:"geoip"` // null without a GeoIP database
-	ASN     *geoip.Info `json:"asn"`   // null without an ASN database
+	Version version.Info `json:"version"`
+	GeoIP   *geoip.Info  `json:"geoip"` // null without a GeoIP database
+	ASN     *geoip.Info  `json:"asn"`   // null without an ASN database
 	// Providers are those whose data is shown, by loaded databases or
 	// stored locations: each requires its attribution.
 	Providers []string `json:"providers"`

@@ -1,5 +1,9 @@
+# Version, commit and build time of the binary (internal/version).
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -s -w -X main.version=$(VERSION)
+COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null)
+DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+VERSION_PKG := github.com/devleesch001/cauri/internal/version
+LDFLAGS := -s -w -X $(VERSION_PKG).Tag=$(VERSION) -X $(VERSION_PKG).Commit=$(COMMIT) -X $(VERSION_PKG).Date=$(DATE)
 
 .PHONY: all ui build test lint clean
 .PHONY: release release-forgejo release-snapshot release-build

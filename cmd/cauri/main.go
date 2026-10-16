@@ -10,12 +10,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
-)
 
-// version is set at build time with -ldflags "-X main.version=...".
-var version = "dev"
+	"github.com/devleesch001/cauri/internal/version"
+)
 
 type command struct {
 	name    string
@@ -31,7 +29,7 @@ func register(c command) { commands = append(commands, c) }
 
 func init() {
 	register(command{"version", "print the version", func(context.Context, []string) error {
-		fmt.Println(buildVersion())
+		fmt.Println("cauri " + version.Get().String())
 		return nil
 	}})
 }
@@ -70,16 +68,4 @@ func usage(w io.Writer) {
 		fmt.Fprintf(w, "  %-10s %s\n", c.name, c.summary)
 	}
 	fmt.Fprintln(w, "\nRun 'cauri <command> --help' for the options of a command.")
-}
-
-func buildVersion() string {
-	v := version
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, s := range info.Settings {
-			if s.Key == "vcs.revision" && len(s.Value) >= 12 {
-				v += " (" + s.Value[:12] + ")"
-			}
-		}
-	}
-	return v
 }

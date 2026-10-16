@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/devleesch001/cauri/internal/envflag"
+	"github.com/devleesch001/cauri/internal/version"
 	"github.com/devleesch001/cauri/internal/webui"
 )
 
@@ -31,6 +32,6 @@ func runUI(ctx context.Context, args []string) error {
 		WriteTimeout:      time.Minute,
 		IdleTimeout:       2 * time.Minute,
 	}
-	log.Info("starting ui", "version", buildVersion())
+	log.Info("starting ui", "version", version.Get().String())
 	return serve(ctx, srv, log)
 }

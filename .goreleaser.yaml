@@ -15,7 +15,9 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-      - -X main.version={{ .Version }}
+      - -X github.com/devleesch001/cauri/internal/version.Tag={{ .Tag }}
+      - -X github.com/devleesch001/cauri/internal/version.Commit={{ .FullCommit }}
+      - -X github.com/devleesch001/cauri/internal/version.Date={{ .Date }}
 
 nfpms:
   - file_name_template: "cauri-{{ .Tag }}.{{ .Arch }}"

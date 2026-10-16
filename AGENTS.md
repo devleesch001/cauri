@@ -174,6 +174,7 @@ mandatory.
 | `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |
 | `internal/verdict/` | Human/bot verdict: signals from the recording and the events, points, thresholds |
 | `internal/auth/` | Ingestor tokens |
+| `internal/version/` | Tag, commit and build time of the binary, set by `-ldflags -X` (Makefile, Dockerfile, `.goreleaser.yaml`, CI build args); `cauri version`, start logs, `/api/about` |
 | `internal/api/` | chi router, ingestion and read handlers, middlewares |
 | `internal/ingestor/` | Ingestor loop, TTY queue (one channel only), `Sink`; `tail/` follows the log files |
 | `internal/webui/` | Serves the UI embedded from `internal/webui/dist` |

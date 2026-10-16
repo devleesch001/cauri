@@ -21,6 +21,7 @@ import (
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/internal/verdict"
+	"github.com/devleesch001/cauri/internal/version"
 	"github.com/devleesch001/cauri/internal/webui"
 )
 
@@ -78,7 +79,7 @@ func runAPI(ctx context.Context, args []string) error {
 		Admin:          auth.NewAdmin(admin),
 		TrustedProxies: proxies,
 		Logger:         log,
-		Version:        buildVersion(),
+		Version:        version.Get(),
 	}
 	if *geoDB != "" {
 		geo, err := geoip.Open(*geoDB, log)
@@ -164,7 +165,7 @@ func runAPI(ctx context.Context, args []string) error {
 		WriteTimeout:      time.Minute,
 		IdleTimeout:       2 * time.Minute,
 	}
-	log.Info("starting api", "version", buildVersion(), "db", db.driver, "ui", *withUI)
+	log.Info("starting api", "version", version.Get().String(), "db", db.driver, "ui", *withUI)
 	return serve(ctx, srv, log)
 }
 

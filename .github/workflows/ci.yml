@@ -96,8 +96,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Version shown by "cauri version": the release (no v) or the commit.
-          build-args: VERSION=${{ github.ref_type == 'tag' && steps.meta.outputs.version || github.sha }}
+          # Shown by "cauri version" (internal/version): the release tag or
+          # dev, and the commit.
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+            COMMIT=${{ github.sha }}
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

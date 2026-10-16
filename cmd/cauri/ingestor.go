@@ -11,6 +11,7 @@ import (
 
 	"github.com/devleesch001/cauri/internal/envflag"
 	"github.com/devleesch001/cauri/internal/ingestor"
+	"github.com/devleesch001/cauri/internal/version"
 	"github.com/devleesch001/cauri/pkg/client"
 )
 
@@ -63,7 +64,7 @@ func runIngestor(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	log.Info("starting ingestor", "version", buildVersion(), "api", *apiURL)
+	log.Info("starting ingestor", "version", version.Get().String(), "api", *apiURL)
 	return ingestor.Run(ctx, ingestor.Config{
 		SensorID:      *sensor,
 		LogDir:        *logDir,

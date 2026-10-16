@@ -15,8 +15,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=ui /src/internal/webui/dist ./internal/webui/dist
+# Version and commit (internal/version): .git is not in the context, the
+# build passes them; the build time is the time of this step.
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/cauri ./cmd/cauri
+ARG COMMIT=
+RUN CGO_ENABLED=0 go build -trimpath \
+	-ldflags "-s -w -X github.com/devleesch001/cauri/internal/version.Tag=${VERSION} -X github.com/devleesch001/cauri/internal/version.Commit=${COMMIT} -X github.com/devleesch001/cauri/internal/version.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+	-o /out/cauri ./cmd/cauri
 
 # What scratch lacks for a static binary, taken from Alpine: CA certificates
 # (the ingestor calls the API over HTTPS), time zones (TZ), the nonroot user

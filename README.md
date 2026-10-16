@@ -16,7 +16,7 @@ One Go binary and one Docker image provide every role:
 | `cauri ui`       | Web UI only                                             |
 | `cauri ingestor` | Reads a Cowrie sensor's files and sends them to the API |
 | `cauri token`    | Creates, lists and revokes ingestor tokens              |
-| `cauri version`  | Prints the version                                      |
+| `cauri version`  | Prints the version: tag, commit and build time          |
 
 ## Architecture
 
