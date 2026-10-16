@@ -60,7 +60,6 @@ var sessionSort = sortable{
 	def: "started",
 	cols: map[string]column{
 		"started":  {"s.started_at", false},
-		"sensor":   {"sn.name", false},
 		"source":   {"s.src_ip", true},
 		"country":  {"s.geo_country", true},
 		"duration": {"s.duration_ms", true},
@@ -75,7 +74,6 @@ var loginAttemptSort = sortable{
 	def: "time",
 	cols: map[string]column{
 		"time":     {"la.ts", false},
-		"sensor":   {"sn.name", false},
 		"source":   {"s.src_ip", true},
 		"username": {"la.username", false},
 		"password": {"la.password", false},

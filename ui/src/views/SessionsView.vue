@@ -332,7 +332,6 @@ function clearFilters() {
       </Column>
       <Column
         field="sensor"
-        sortable
         :header="t('sessions.columns.sensor')"
       />
       <Column

@@ -22,7 +22,6 @@ func TestSortSessions(t *testing.T) {
 		}{
 			"default, latest first": {store.Sort{}, []string{"3", "2", "1"}},
 			"oldest first":          {store.Sort{Asc: true}, []string{"1", "2", "3"}},
-			"sensor, ties latest":   {store.Sort{By: "sensor", Asc: true}, []string{"2", "1", "3"}},
 			"source":                {store.Sort{By: "source", Asc: true}, []string{"1", "2", "3"}},
 			// Only A has a duration: the others last, both ways.
 			"longest first":   {store.Sort{By: "duration"}, []string{"1", "3", "2"}},

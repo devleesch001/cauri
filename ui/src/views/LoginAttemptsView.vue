@@ -186,7 +186,6 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       </Column>
       <Column
         field="sensor"
-        sortable
         :header="t('logins.columns.sensor')"
       />
       <Column
