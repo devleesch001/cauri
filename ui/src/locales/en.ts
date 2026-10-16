@@ -375,8 +375,8 @@ export default {
     worked: 'What let it in',
     commands: 'Commands run',
     payloads: 'Files',
-    sessions: 'Latest sessions',
-    allSessions: 'All its sessions',
+    sessions: 'Its sessions',
+    allSessions: 'Filter them in Sessions',
     none: 'None.',
   },
   logins: {

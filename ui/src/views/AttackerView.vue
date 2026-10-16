@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import DataTable, { type DataTableRowClickEvent } from 'openvue/datatable'
-import Column from 'openvue/column'
 import { ApiError, api } from '@/api/client'
-import type { Activity, AttackerDetail, Commands, Credentials, Payloads, SessionSummary, Summary } from '@/api/types'
+import type { Activity, AttackerDetail, Commands, Credentials, Payloads, Summary } from '@/api/types'
 import BarList from '@/components/BarList.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import KpiCard from '@/components/KpiCard.vue'
+import SessionTable from '@/components/SessionTable.vue'
 import StatsFilters from '@/components/StatsFilters.vue'
-import { formatMillis, formatTime } from '@/format'
+import { formatTime } from '@/format'
 import { useStatsFilters } from '@/stats'
 
 // One attacker, a source address: who it is and everything it did, the
@@ -19,7 +17,6 @@ import { useStatsFilters } from '@/stats'
 // apply to the whole page.
 const props = defineProps<{ ip: string }>()
 const { t } = useI18n()
-const router = useRouter()
 const { params, link } = useStatsFilters()
 
 const attacker = ref<AttackerDetail | null>(null)
@@ -28,7 +25,6 @@ const activity = ref<Activity | null>(null)
 const credentials = ref<Credentials | null>(null)
 const commands = ref<Commands | null>(null)
 const payloads = ref<Payloads | null>(null)
-const sessions = ref<SessionSummary[]>([])
 const sessionTotal = ref(0)
 const notFound = ref(false)
 const error = ref<string | null>(null)
@@ -43,9 +39,6 @@ watch(
       ;[summary.value, activity.value, credentials.value, commands.value, payloads.value] = await Promise.all([
         api.summary(withIP), api.activity(withIP), api.credentials(withIP), api.commands(withIP), api.payloads(withIP),
       ])
-      const list = await api.sessions({ ...withIP, limit: 10 })
-      sessions.value = list.items
-      sessionTotal.value = list.total
       error.value = null
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
@@ -67,10 +60,9 @@ const accepted = computed(() => {
 const days = computed(() => [...(activity.value?.days ?? [])].reverse())
 const shown = (v: string) => (v === '' ? t('session.logins.emptyPassword') : v)
 const mine = (extra: Record<string, string>) => link('sessions', { ip: props.ip, ...extra })
-
-function open(e: DataTableRowClickEvent<SessionSummary>) {
-  void router.push({ name: 'session', params: { id: String(e.data.id) } })
-}
+// Its sessions, listed as on the sessions page; the export is theirs too.
+const sessionParams = computed(() => ({ ...params.value, ip: props.ip }))
+const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
 </script>
 
 <template>
@@ -129,7 +121,7 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
         />
       </div>
 
-      <div class="panels">
+      <div class="panels even">
         <section class="card">
           <h2>{{ t('attacker.identity') }}</h2>
           <dl class="facts">
@@ -266,88 +258,45 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
           >
             {{ t('attacker.none') }}
           </p>
-        </section>
-
-        <section
-          v-if="payloads && payloads.items.length"
-          class="card"
-        >
-          <h2>{{ t('attacker.payloads') }}</h2>
-          <BarList
-            :items="payloads.items"
-            :value="(p) => p.transfers"
-            :item-key="(p) => p.sha256"
-            :to="(p) => mine({ file: p.sha256 })"
-          >
-            <template #label="{ item }">
-              <span class="data">{{ item.url ?? item.filename ?? item.sha256.slice(0, 12) }}</span>
-            </template>
-          </BarList>
+          <!-- What it did: the files it fetched or left, with its commands. -->
+          <template v-if="payloads && payloads.items.length">
+            <h2 class="next">
+              {{ t('attacker.payloads') }}
+            </h2>
+            <BarList
+              :items="payloads.items"
+              :value="(p) => p.transfers"
+              :item-key="(p) => p.sha256"
+              :to="(p) => mine({ file: p.sha256 })"
+            >
+              <template #label="{ item }">
+                <span class="data">{{ item.url ?? item.filename ?? item.sha256.slice(0, 12) }}</span>
+              </template>
+            </BarList>
+          </template>
         </section>
       </div>
 
       <section class="latest">
         <div class="page-head">
           <h2>{{ t('attacker.sessions') }}</h2>
-          <RouterLink :to="mine({})">
-            {{ t('attacker.allSessions') }} ({{ sessionTotal.toLocaleString() }})
-          </RouterLink>
+          <span class="muted">
+            {{ t('sessions.count', { n: sessionTotal.toLocaleString() }, sessionTotal) }}
+            <a
+              :href="csvUrl"
+              download
+              class="export"
+            >{{ t('export.csv') }}</a>
+            <RouterLink
+              :to="mine({})"
+              class="export"
+            >{{ t('attacker.allSessions') }}</RouterLink>
+          </span>
         </div>
-        <DataTable
-          :value="sessions"
-          data-key="id"
-          size="small"
-          striped-rows
-          scrollable
-          @row-click="open"
-        >
-          <Column :header="t('sessions.columns.started')">
-            <template #body="{ data }">
-              <RouterLink :to="{ name: 'session', params: { id: String(data.id) } }">
-                {{ formatTime(data.started_at) }}
-              </RouterLink>
-            </template>
-          </Column>
-          <Column
-            field="sensor"
-            :header="t('sessions.columns.sensor')"
-          />
-          <Column :header="t('sessions.columns.duration')">
-            <template #body="{ data }">
-              {{ formatMillis(data.duration_ms) }}
-            </template>
-          </Column>
-          <Column :header="t('sessions.columns.commands')">
-            <template #body="{ data }">
-              {{ data.commands || '—' }}
-            </template>
-          </Column>
-          <Column :header="t('sessions.columns.verdict')">
-            <template #body="{ data }">
-              <span
-                v-if="data.verdict"
-                class="badge"
-                :class="'badge-' + data.verdict"
-              >{{ t('session.verdict.' + data.verdict) }}</span>
-            </template>
-          </Column>
-          <Column :header="t('sessions.columns.outcome')">
-            <template #body="{ data }">
-              <span
-                v-if="data.login_success"
-                class="logged-in"
-              >{{ t('sessions.outcome.loggedIn') }}</span>
-              <span
-                v-else-if="data.login_attempts"
-                class="muted"
-              >{{ t('sessions.outcome.refused') }}</span>
-              <span
-                v-else
-                class="muted"
-              >{{ t('sessions.outcome.noLogin') }}</span>
-            </template>
-          </Column>
-        </DataTable>
+        <SessionTable
+          v-model:total="sessionTotal"
+          :params="sessionParams"
+        />
       </section>
     </template>
   </div>
@@ -372,6 +321,11 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
 
 .line {
   display: block;
+}
+
+/* A second list in a card, below the first. */
+.card > .next {
+  margin-top: var(--space-4);
 }
 
 .latest {

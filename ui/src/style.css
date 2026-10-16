@@ -212,6 +212,11 @@ a {
   align-items: start;
 }
 
+/* Panels of a row as tall as the tallest: their edges line up. */
+.panels.even {
+  align-items: stretch;
+}
+
 .page-head {
   display: flex;
   flex-wrap: wrap;
