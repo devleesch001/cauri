@@ -44,7 +44,9 @@ COPY --from=build /out/cauri /usr/local/bin/cauri
 WORKDIR /data
 ENV CAURI_DB_DSN=/data/cauri.db \
     CAURI_TTY_DIR=/data/tty \
-    CAURI_STATE_DIR=/data/ingestor
+    CAURI_STATE_DIR=/data/ingestor \
+    CAURI_GEOIP_DB=/data/geoip.mmdb \
+    CAURI_GEOIP_ASN_DB=/data/asn.mmdb
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/cauri"]

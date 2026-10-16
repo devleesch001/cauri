@@ -17,8 +17,11 @@ services:
       CAURI_DB_DRIVER: ${CAURI_DB_DRIVER:-sqlite}
       CAURI_DB_DSN: ${CAURI_DB_DSN:-/data/cauri.db}
       # Optional GeoIP database, in the cauri-data volume (README: GeoIP).
-      CAURI_GEOIP_DB: ${CAURI_GEOIP_DB:-}
-      CAURI_GEOIP_ASN_DB: ${CAURI_GEOIP_ASN_DB:-}
+      # Unset: the default file; set empty: off.
+      CAURI_GEOIP_DB: ${CAURI_GEOIP_DB-/data/geoip.mmdb}
+      CAURI_GEOIP_ASN_DB: ${CAURI_GEOIP_ASN_DB-/data/asn.mmdb}
+      CAURI_GEOIP_DB_URL: ${CAURI_GEOIP_DB_URL:-}
+      CAURI_GEOIP_ASN_DB_URL: ${CAURI_GEOIP_ASN_DB_URL:-}
       # Administration page password; empty: generated, see the API's log.
       CAURI_ADMIN_PASSWORD: ${CAURI_ADMIN_PASSWORD:-}
       CAURI_TRUSTED_PROXIES: ${CAURI_TRUSTED_PROXIES:-}
