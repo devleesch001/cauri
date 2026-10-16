@@ -253,15 +253,16 @@ function open(country: string, city?: string) {
 
 .docks {
   position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
+  top: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  width: 15.5rem;
+  width: 18rem;
   max-height: calc(100% - 2 * var(--space-3) - 3.5rem);
   overflow-y: auto;
   transition: width 0.18s ease;
+  padding: var(--space-3);
 }
 
 .docks.wide {
