@@ -93,7 +93,9 @@ func runAPI(ctx context.Context, args []string) error {
 		Version:        version.Get(),
 		Jobs:           tasks,
 		Options:        maskSecrets(envflag.Describe(fs)),
-		UnknownEnv:     envflag.Unknown(fs),
+		// One image runs every role: its environment holds the
+		// ingestor's variables too (CAURI_STATE_DIR).
+		UnknownEnv: envflag.Unknown(fs, ingestorFlagSet()),
 	}
 	if geo.db != "" {
 		loc, err := geoip.Open(geo.db, log)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/devleesch001/cauri/internal/envflag"
@@ -26,5 +27,18 @@ func TestMaskSecrets(t *testing.T) {
 	})
 	if opts[0].Value != "****" || opts[1].Value != "/run/secrets/admin" || opts[2].Value != ":8080" {
 		t.Errorf("options = %+v", opts)
+	}
+}
+
+// One image runs every role: the API does not report the variables the
+// ingestor reads, which the image sets for it.
+func TestUnknownEnvOfTheImage(t *testing.T) {
+	t.Setenv("CAURI_STATE_DIR", "/data/ingestor")
+	t.Setenv("CAURI_LISTN", ":9090")
+	fs := envflag.New("api")
+	fs.String("listen", ":8080", "")
+	u := envflag.Unknown(fs, ingestorFlagSet())
+	if slices.Contains(u, "CAURI_STATE_DIR") || !slices.Contains(u, "CAURI_LISTN") {
+		t.Errorf("unknown = %v", u)
 	}
 }

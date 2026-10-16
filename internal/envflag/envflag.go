@@ -119,10 +119,14 @@ func Describe(fs *flag.FlagSet) []Option {
 }
 
 // Unknown returns the environment variables named with Prefix that are no
-// flag of fs, such as a misspelt one, which would be silently ignored.
-func Unknown(fs *flag.FlagSet) []string {
+// flag of fs, nor of others, such as a misspelt one, which would be
+// silently ignored. others are the flag sets of commands sharing the
+// environment, such as those of one image.
+func Unknown(fs *flag.FlagSet, others ...*flag.FlagSet) []string {
 	known := map[string]bool{}
-	fs.VisitAll(func(f *flag.Flag) { known[EnvName(f.Name)] = true })
+	for _, set := range append([]*flag.FlagSet{fs}, others...) {
+		set.VisitAll(func(f *flag.Flag) { known[EnvName(f.Name)] = true })
+	}
 	var out []string
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")
