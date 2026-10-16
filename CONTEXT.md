@@ -95,6 +95,7 @@ module path is `github.com/devleesch001/cauri`.
 | Attackers by key exchange (2026-10-16) | Two groupings: by address (`/attackers/ip`, `/attackers/ip/{ip}`) and by key exchange (`/attackers/kex`, `/attackers/kex/{id}`), linked to each other; the profile shows the six algorithm lists, the list shows them over each row in a popover. Routes renamed without compatibility. | User asked to see every `ssh_kex` and the sessions behind it; actors (linking identities, public keys as identity) left for later. Renaming accepted: "backward compatibility does not matter". |
 | Administration (2026-10-16) | Page `/admin`: the database (engine, schema, size, free space, tables), purges of sessions and raw lines, compaction, the configuration (source of each value, secrets masked, unknown `CAURI_*` variables reported). Reads are `GET`, a simulation is the `GET` of what `DELETE` does; long work runs as background tasks (`internal/jobs`: one at a time, progress, cancel, the last 20 in memory), followed every second by the UI. A session purge is confirmed by typing `DELETE`. | User asked for the database's management, its weight, purges and configuration, purges simulated first and tasks to follow. The typed word was the user's choice. |
 | Version (2026-10-16) | `internal/version`: tag, commit and build time set by `-ldflags -X` in the Makefile, the Dockerfile, GoReleaser and the CI; `cauri version`, start logs, `/api/about`. | User. |
+| No compression of raw lines (2026-10-17) | Raw lines stay plain JSON. Their weight is handled by the retention (`CAURI_EVENT_RAW_DATA_RETENTION_DAYS`) and the administration's purge; an operator who needs more can compress the database's volume at the file system level (btrfs, ZFS), which needs no code and keeps the database readable by any tool. | Discussed at length: `compress/flate` with a dictionary (the standard library first; zstd needs `klauspost/compress`), optional, mixing plain and compressed lines, reversible by a command and the administration. A dictionary kept in the database could be lost with a table, making every line it compressed unreadable; dictionaries versioned in the code (a `compression` column, frozen files guarded by their SHA-256) removed that risk but added generated files, frozen artefacts and a new failure mode to the build. The user judged it too dangerous and complex for about 55 MB saved (109,206 lines, 67 MB) on data nothing needs. That design is the starting point if the question comes back. |
 
 ## What real Cowrie data changed
 
@@ -167,9 +168,6 @@ Checked against the official image v3.1.2:
   exchanges, public keys, credentials or payloads. An attacker is a source
   address or a key exchange so far.
 - **Places**: city coordinates are still copied on each session.
-- **Compression of raw lines** (discussed 2026-10-16, not decided):
-  optional, with a dictionary, mixing compressed and plain lines,
-  reversible by a command and the administration.
 
 ## Original brief (verbatim, from the user)
 
