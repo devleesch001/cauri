@@ -310,31 +310,33 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
           </div>
         </section>
 
+        <!-- Its algorithm lists, one card each, in the order offered. -->
         <section
-          v-if="kex"
+          v-for="l in lists"
+          :key="l.name"
           class="card"
         >
           <h2 v-tooltip.top="t('attacker.kexHint')">
-            {{ t('attacker.algorithms') }}
+            {{ t('attacker.lists.' + l.name) }}
+            <span class="data muted cowrie">{{ l.cowrie }}<template v-if="l.hassh"> · {{ t('attacker.inHassh') }}</template></span>
           </h2>
-          <dl class="facts body">
-            <template
-              v-for="l in lists"
-              :key="l.name"
+          <ol
+            v-if="l.value"
+            class="body algorithms data"
+          >
+            <li
+              v-for="(a, i) in l.value.split(',')"
+              :key="i"
             >
-              <dt>
-                {{ t('attacker.lists.' + l.name) }}
-                <span class="data muted cowrie">{{ l.cowrie }}</span>
-                <span
-                  v-if="l.hassh"
-                  class="muted cowrie"
-                >{{ t('attacker.inHassh') }}</span>
-              </dt>
-              <dd class="data list">
-                {{ l.value ? l.value.replaceAll(',', ', ') : '—' }}
-              </dd>
-            </template>
-          </dl>
+              {{ a }}
+            </li>
+          </ol>
+          <p
+            v-else
+            class="muted"
+          >
+            {{ t('attacker.none') }}
+          </p>
         </section>
 
         <section class="card">
@@ -515,9 +517,20 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
   font-weight: normal;
 }
 
-/* An algorithm list: long, broken at its commas. */
-.list {
+/* An algorithm list, one per line, numbered: the order is the client's
+   preference. A row is as tall as a BarList one, for the same cap. */
+.algorithms {
+  margin: 0;
+  padding-left: 2.5em;
+}
+
+.algorithms li {
+  padding: var(--space-1) 0;
   overflow-wrap: anywhere;
+}
+
+.algorithms li::marker {
+  color: var(--c-muted);
 }
 
 /* At most ten rows of a list in a card, the rest scrolled: a row is a
