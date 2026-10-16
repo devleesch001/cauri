@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/devleesch001/cauri/internal/envflag"
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/jobs"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/internal/verdict"
@@ -71,6 +74,10 @@ func runAPI(ctx context.Context, args []string) error {
 	}
 
 	svc := ingest.New(conn, tty, *maxTTY)
+	// The administration's tasks stop with the process, between two batches
+	// of a purge; the database closes after them.
+	tasks := jobs.New(ctx)
+	defer tasks.Wait()
 	cfg := api.Config{
 		DB:             conn,
 		Ingest:         svc,
@@ -80,6 +87,9 @@ func runAPI(ctx context.Context, args []string) error {
 		TrustedProxies: proxies,
 		Logger:         log,
 		Version:        version.Get(),
+		Jobs:           tasks,
+		Options:        maskSecrets(envflag.Describe(fs)),
+		UnknownEnv:     envflag.Unknown(fs),
 	}
 	if *geoDB != "" {
 		geo, err := geoip.Open(*geoDB, log)
@@ -168,6 +178,39 @@ func runAPI(ctx context.Context, args []string) error {
 	log.Info("starting api", "version", version.Get().String(), "db", db.driver, "ui", *withUI)
 	return serve(ctx, srv, log)
 }
+
+// maskSecrets hides what the administration page must not show: the
+// administration password, and the password in a database URL. The path
+// of a password file stays: it is no secret, its content is.
+func maskSecrets(opts []envflag.Option) []envflag.Option {
+	for i, o := range opts {
+		switch o.Name {
+		case "admin-password":
+			if o.Value != "" {
+				opts[i].Value = "****"
+			}
+		case "db-dsn":
+			opts[i].Value = maskDSN(o.Value)
+		}
+	}
+	return opts
+}
+
+// maskDSN hides the password of a database URL (postgres://u:p@h/db) or of
+// key=value settings (password=p).
+func maskDSN(dsn string) string {
+	if u, err := url.Parse(dsn); err == nil && u.User != nil {
+		if _, ok := u.User.Password(); ok {
+			u.User = url.UserPassword(u.User.Username(), "****")
+			return strings.Replace(u.String(), "%2A%2A%2A%2A", "****", 1)
+		}
+		return dsn
+	}
+	return passwordSetting.ReplaceAllString(dsn, "${1}****")
+}
+
+// passwordSetting is the password of key=value database settings.
+var passwordSetting = regexp.MustCompile(`(?i)(\bpassword\s*=\s*)('[^']*'|\S+)`)
 
 // purgeRaw deletes, at start then every hour until ctx is done, the raw
 // Cowrie lines older than keep.

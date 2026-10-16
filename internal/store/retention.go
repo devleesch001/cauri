@@ -17,8 +17,18 @@ const purgeBatch = 5000
 // hold is in events.data, so only the raw view of old events and their
 // reprocessing are lost.
 func PurgeRawEvents(ctx context.Context, db bun.IDB, before time.Time) (int, error) {
+	return PurgeRawEventsProgress(ctx, db, before, nil)
+}
+
+// PurgeRawEventsProgress is PurgeRawEvents telling progress, if not nil,
+// the lines deleted so far after each batch. It stops between two batches
+// once ctx is canceled, returning what it deleted.
+func PurgeRawEventsProgress(ctx context.Context, db bun.IDB, before time.Time, progress func(deleted int)) (int, error) {
 	total := 0
 	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
 		old := db.NewSelect().TableExpr("events AS pe").ColumnExpr("pe.id").
 			Join("JOIN event_data AS ped ON ped.event_id = pe.id").
 			Where("pe.ts < ?", Micro(before)).
@@ -32,6 +42,9 @@ func PurgeRawEvents(ctx context.Context, db bun.IDB, before time.Time) (int, err
 			return total, err
 		}
 		total += int(n)
+		if progress != nil {
+			progress(total)
+		}
 		if n < purgeBatch {
 			return total, nil
 		}

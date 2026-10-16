@@ -41,6 +41,13 @@ func New(db *bun.DB, tty *ttystore.Store) *Purger {
 // the error, after everything else is deleted: its row is gone already,
 // and the file harms nothing.
 func (p *Purger) Sessions(ctx context.Context, f store.SessionFilter, apply bool) (store.PurgeCounts, error) {
+	return p.SessionsProgress(ctx, f, apply, nil)
+}
+
+// SessionsProgress is Sessions telling progress, if not nil, what went so
+// far after each batch. It stops between two batches once ctx is
+// canceled, returning what went: each batch is whole.
+func (p *Purger) SessionsProgress(ctx context.Context, f store.SessionFilter, apply bool, progress func(store.PurgeCounts)) (store.PurgeCounts, error) {
 	f.Page, f.Sort = store.Page{}, store.Sort{}
 	if f == (store.SessionFilter{}) {
 		return store.PurgeCounts{}, ErrNoCriteria
@@ -51,6 +58,9 @@ func (p *Purger) Sessions(ctx context.Context, f store.SessionFilter, apply bool
 	var total store.PurgeCounts
 	var errs []error
 	for {
+		if err := ctx.Err(); err != nil {
+			return total, errors.Join(append(errs, err)...)
+		}
 		c, shas, err := store.DeleteSessionBatch(ctx, p.db, f, batch)
 		if err != nil {
 			return total, errors.Join(append(errs, err)...)
@@ -59,6 +69,9 @@ func (p *Purger) Sessions(ctx context.Context, f store.SessionFilter, apply bool
 			return total, errors.Join(errs...)
 		}
 		total.Add(c)
+		if progress != nil {
+			progress(total)
+		}
 		for _, sha := range shas {
 			if err := p.tty.Remove(sha); err != nil {
 				errs = append(errs, fmt.Errorf("recording %s: %w", sha, err))

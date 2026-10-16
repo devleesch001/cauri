@@ -1,6 +1,7 @@
 package envflag
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -60,5 +61,34 @@ func TestParseOnly(t *testing.T) {
 	}
 	if *dsn != "from-env" || *ip != "" {
 		t.Errorf("db-dsn = %q, ip = %q: want only db-dsn from env", *dsn, *ip)
+	}
+}
+
+// Describe tells each value's source; Unknown names variables no flag reads.
+func TestDescribe(t *testing.T) {
+	t.Setenv("CAURI_LISTEN", ":9090")
+	t.Setenv("CAURI_LISTN", ":1") // a typo
+	fs := New("api")
+	fs.String("listen", ":8080", "address")
+	fs.String("db-dsn", "data/cauri.db", "database")
+	fs.Int("max", 3, "limit")
+	if err := Parse(fs, []string{"--db-dsn", "x.db"}); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Option{}
+	for _, o := range Describe(fs) {
+		got[o.Name] = o
+	}
+	for name, want := range map[string]Option{
+		"listen": {Name: "listen", Env: "CAURI_LISTEN", Default: ":8080", Value: ":9090", Source: FromEnv, Usage: "address"},
+		"db-dsn": {Name: "db-dsn", Env: "CAURI_DB_DSN", Default: "data/cauri.db", Value: "x.db", Source: FromFlag, Usage: "database"},
+		"max":    {Name: "max", Env: "CAURI_MAX", Default: "3", Value: "3", Source: FromDefault, Usage: "limit"},
+	} {
+		if got[name] != want {
+			t.Errorf("%s = %+v, want %+v", name, got[name], want)
+		}
+	}
+	if u := Unknown(fs); !slices.Contains(u, "CAURI_LISTN") || slices.Contains(u, "CAURI_LISTEN") {
+		t.Errorf("unknown = %v", u)
 	}
 }

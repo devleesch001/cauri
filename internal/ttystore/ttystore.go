@@ -105,3 +105,37 @@ func (s *Store) Available() bool {
 	fi, err := os.Stat(filepath.Join(s.dir, "tmp"))
 	return err == nil && fi.IsDir()
 }
+
+// Usage is what the recordings take on the volume.
+type Usage struct {
+	Files int   `json:"files"`
+	Bytes int64 `json:"bytes"`
+}
+
+// Usage counts the recordings and their size, for the administration;
+// files being written (tmp) are left out.
+func (s *Store) Usage() (Usage, error) {
+	var u Usage
+	err := filepath.WalkDir(s.dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path == filepath.Join(s.dir, "tmp") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+		u.Files++
+		u.Bytes += fi.Size()
+		return nil
+	})
+	return u, err
+}

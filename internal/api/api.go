@@ -14,8 +14,10 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/devleesch001/cauri/internal/auth"
+	"github.com/devleesch001/cauri/internal/envflag"
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/jobs"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
 	"github.com/devleesch001/cauri/internal/version"
@@ -62,6 +64,13 @@ type Config struct {
 	ReadAuth func(http.Handler) http.Handler
 	// UI, if set, serves every path outside /api.
 	UI http.Handler
+	// Jobs runs the administration's long tasks; nil makes New create one
+	// that lives as long as the process.
+	Jobs *jobs.Manager
+	// Options and UnknownEnv are this API's configuration, its secrets
+	// masked, shown to the administrator (see envflag.Describe).
+	Options    []envflag.Option
+	UnknownEnv []string
 }
 
 // New returns the HTTP handler of the API.
@@ -71,6 +80,9 @@ func New(c Config) http.Handler {
 	}
 	if c.ReadAuth == nil {
 		c.ReadAuth = func(next http.Handler) http.Handler { return next }
+	}
+	if c.Jobs == nil {
+		c.Jobs = jobs.New(context.Background())
 	}
 	s := &server{Config: c}
 
@@ -128,6 +140,17 @@ func New(c Config) http.Handler {
 					r.Get("/tokens", s.listTokens)
 					r.Post("/tokens", s.createToken)
 					r.Post("/tokens/{id}/revoke", s.revokeToken)
+					r.Get("/database", s.getDatabase)
+					r.Post("/database/vacuum", s.vacuum)
+					r.Get("/config", s.getConfig)
+					// GET simulates what DELETE, with the same query, does.
+					r.Get("/sessions", s.countPurgeSessions)
+					r.Delete("/sessions", s.purgeSessions)
+					r.Get("/raw-events", s.countPurgeRaw)
+					r.Delete("/raw-events", s.purgeRaw)
+					r.Get("/jobs", s.listJobs)
+					r.Get("/jobs/{id}", s.getJob)
+					r.Post("/jobs/{id}/cancel", s.cancelJob)
 				})
 			})
 		}
