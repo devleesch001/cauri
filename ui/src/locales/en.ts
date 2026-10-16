@@ -202,6 +202,7 @@ export default {
       verdict: 'Verdict',
     },
     moreCredentials: '+{n} more',
+    credentialsLabel: '{n} credential tried: show them | {n} credentials tried: show them',
     outcome: {
       loggedIn: 'Logged in',
       refused: 'Refused',

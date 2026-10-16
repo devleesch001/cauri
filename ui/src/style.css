@@ -311,15 +311,3 @@ a {
   --term-color-14: var(--p-cyan-300);
   --term-color-15: var(--p-surface-0);
 }
-
-/* The credentials a session tried, over its cell (CredentialsTried): one
-   pair per line, never wrapped, the tooltip as wide as its longest. The
-   tooltip is outside the component; the theme caps its width with a rule
-   as specific as one class, which this one outweighs. */
-.p-tooltip.credentials-tip {
-  max-width: none;
-}
-
-.credentials-tip .p-tooltip-text {
-  white-space: pre;
-}
