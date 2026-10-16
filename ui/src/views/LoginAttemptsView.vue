@@ -20,6 +20,8 @@ import { notFilters, pageSizes, useTablePage, useTableSort } from '@/sort'
 // Failed logins. By default only those of sessions that never logged
 // in: the credential spraying that leaves no other trace.
 const { t } = useI18n()
+// Characters of a username or password shown; longer ones are cut, whole on hover.
+const clip = 20
 const route = useRoute()
 const router = useRouter()
 const q = (k: string) => queryValue(route.query, k)
@@ -211,7 +213,10 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
         sortable
       >
         <template #body="{ data }">
-          <span class="data">{{ data.username }}</span>
+          <span
+            v-tooltip.top="data.username.length > clip ? data.username : null"
+            class="data clip"
+          >{{ data.username }}</span>
         </template>
       </Column>
       <Column
@@ -220,7 +225,10 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
         sortable
       >
         <template #body="{ data }">
-          <span class="data">{{ data.password }}</span>
+          <span
+            v-tooltip.top="data.password.length > clip ? data.password : null"
+            class="data clip"
+          >{{ data.password }}</span>
         </template>
       </Column>
       <Column
@@ -253,6 +261,16 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
 </template>
 
 <style scoped>
+/* Attackers' credentials can be long: cut at clip characters. */
+.clip {
+  display: inline-block;
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .toggle {
   display: inline-flex;
   align-items: center;

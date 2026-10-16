@@ -7,6 +7,7 @@ import Column from 'openvue/column'
 import { api, type Params } from '@/api/client'
 import type { SessionSummary } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
+import CredentialsTried from '@/components/CredentialsTried.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { endpoint, formatMillis, formatTime } from '@/format'
 import { pageSizes, useTablePage, useTableSort } from '@/sort'
@@ -57,10 +58,6 @@ watch(
 
 function open(e: DataTableRowClickEvent<SessionSummary>) {
   void router.push({ name: 'session', params: { id: String(e.data.id) } })
-}
-// The credentials that logged in come first: they are what matters.
-function shown(s: SessionSummary) {
-  return [...s.credentials].sort((a, b) => Number(b.success) - Number(a.success)).slice(0, 3)
 }
 </script>
 
@@ -141,16 +138,10 @@ function shown(s: SessionSummary) {
     </Column>
     <Column :header="t('sessions.columns.credentials')">
       <template #body="{ data }">
-        <span
-          v-for="(c, i) in shown(data)"
-          :key="i"
-          class="data cred"
-          :class="{ 'logged-in': c.success }"
-        >{{ c.username }} / {{ c.password }}</span>
-        <span
-          v-if="data.login_attempts > 3"
-          class="muted"
-        >{{ t('sessions.moreCredentials', { n: data.login_attempts - 3 }) }}</span>
+        <CredentialsTried
+          :credentials="data.credentials"
+          :attempts="data.login_attempts"
+        />
       </template>
     </Column>
     <Column
@@ -246,12 +237,6 @@ function shown(s: SessionSummary) {
 
 .time:hover {
   text-decoration: underline;
-}
-
-.cred {
-  display: inline-block;
-  margin-right: var(--space-3);
-  white-space: nowrap;
 }
 
 /* Room for "SSH-2.0-libssh" (clientShown characters), then cut. */
