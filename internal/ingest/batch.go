@@ -285,12 +285,13 @@ func (w *batchWriter) upsertKex(ctx context.Context, tx bun.Tx) (map[string]int6
 	}
 	var rows []store.SSHKex
 	var digests [][]byte
+	listed := map[string]bool{}
 	for _, cs := range w.order {
 		k, ok := w.kex[cs]
-		if !ok || ids[string(k.Digest)] != 0 {
+		if !ok || listed[string(k.Digest)] {
 			continue
 		}
-		ids[string(k.Digest)] = -1 // listed once
+		listed[string(k.Digest)] = true
 		rows = append(rows, store.NewSSHKex(*k))
 		digests = append(digests, k.Digest)
 	}
