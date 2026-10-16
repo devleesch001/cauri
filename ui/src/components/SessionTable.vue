@@ -202,14 +202,17 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
         <span
           v-if="data.login_success"
           class="logged-in"
+          style="white-space: nowrap;"
         >{{ t('sessions.outcome.loggedIn') }}</span>
         <span
           v-else-if="data.login_attempts"
           class="muted"
+          style="white-space: nowrap;"
         >{{ t('sessions.outcome.refused') }}</span>
         <span
           v-else
           class="muted"
+          style="white-space: nowrap;"
         >{{ t('sessions.outcome.noLogin') }}</span>
       </template>
     </Column>
