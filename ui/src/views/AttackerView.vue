@@ -9,14 +9,14 @@ import ErrorNotice from '@/components/ErrorNotice.vue'
 import KpiCard from '@/components/KpiCard.vue'
 import SessionFilters from '@/components/SessionFilters.vue'
 import SessionTable from '@/components/SessionTable.vue'
-import StatsFilters from '@/components/StatsFilters.vue'
 import { formatTime } from '@/format'
 import { useSessionFilterParams } from '@/sessionFilters'
 import { useStatsFilters } from '@/stats'
 
 // One attacker, a source address: who it is and everything it did, the
-// statistics narrowed to its sessions. The period and verdict filters
-// apply to the whole page.
+// statistics narrowed to its sessions. One filter bar, as on the sessions
+// page: the period, verdict and outcome narrow the whole page, the others
+// only its sessions (the statistics do not take them).
 const props = defineProps<{ ip: string }>()
 const { t } = useI18n()
 const { params, link } = useStatsFilters()
@@ -63,7 +63,7 @@ const days = computed(() => [...(activity.value?.days ?? [])].reverse())
 const shown = (v: string) => (v === '' ? t('session.logins.emptyPassword') : v)
 const mine = (extra: Record<string, string>) => link('sessions', { ip: props.ip, ...extra })
 // Its sessions, listed and filtered as on the sessions page, but for the
-// address, country, period and verdict the page sets; the export is theirs.
+// address and country the page sets; the export is theirs.
 const sessionFilters = useSessionFilterParams()
 const sessionParams = computed(() => ({ ...sessionFilters.value, ip: props.ip }))
 const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
@@ -95,7 +95,7 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
       >{{ formatTime(attacker.first_seen) }} – {{ formatTime(attacker.last_seen) }}</span>
     </div>
 
-    <StatsFilters />
+    <SessionFilters :hide="['ip', 'country']" />
     <ErrorNotice :error="error" />
 
     <template v-if="notFound">
@@ -128,7 +128,7 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
       <div class="panels even">
         <section class="card">
           <h2>{{ t('attacker.identity') }}</h2>
-          <dl class="facts">
+          <dl class="facts body">
             <dt>{{ t('attacker.firstSeen') }}</dt>
             <dd>{{ formatTime(attacker.first_seen) }}</dd>
             <dt>{{ t('attacker.lastSeen') }}</dt>
@@ -195,6 +195,7 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
         <section class="card">
           <h2>{{ t('attacker.days') }}</h2>
           <BarList
+            class="body"
             :items="days"
             :value="(d) => d.sessions"
             :item-key="(d) => d.day"
@@ -220,6 +221,7 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
           <h2>{{ t('attacker.credentials') }}</h2>
           <BarList
             v-if="credentials.top_pairs.length"
+            class="body"
             :items="credentials.top_pairs"
             :value="(p) => p.count"
             :item-key="(p) => p.username + '\u0000' + p.password"
@@ -245,39 +247,41 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
           class="card"
         >
           <h2>{{ t('attacker.commands') }}</h2>
-          <BarList
-            v-if="commands.top.length"
-            :items="commands.top"
-            :value="(c) => c.count"
-            :item-key="(c) => c.input"
-            :to="(c) => mine({ command: c.input })"
-          >
-            <template #label="{ item }">
-              <span class="data">{{ item.input }}</span>
-            </template>
-          </BarList>
-          <p
-            v-else
-            class="muted"
-          >
-            {{ t('attacker.none') }}
-          </p>
-          <!-- What it did: the files it fetched or left, with its commands. -->
-          <template v-if="payloads && payloads.items.length">
-            <h2 class="next">
-              {{ t('attacker.payloads') }}
-            </h2>
+          <div class="body">
             <BarList
-              :items="payloads.items"
-              :value="(p) => p.transfers"
-              :item-key="(p) => p.sha256"
-              :to="(p) => mine({ file: p.sha256 })"
+              v-if="commands.top.length"
+              :items="commands.top"
+              :value="(c) => c.count"
+              :item-key="(c) => c.input"
+              :to="(c) => mine({ command: c.input })"
             >
               <template #label="{ item }">
-                <span class="data">{{ item.url ?? item.filename ?? item.sha256.slice(0, 12) }}</span>
+                <span class="data">{{ item.input }}</span>
               </template>
             </BarList>
-          </template>
+            <p
+              v-else
+              class="muted"
+            >
+              {{ t('attacker.none') }}
+            </p>
+            <!-- What it did: the files it fetched or left, with its commands. -->
+            <template v-if="payloads && payloads.items.length">
+              <h2 class="next">
+                {{ t('attacker.payloads') }}
+              </h2>
+              <BarList
+                :items="payloads.items"
+                :value="(p) => p.transfers"
+                :item-key="(p) => p.sha256"
+                :to="(p) => mine({ file: p.sha256 })"
+              >
+                <template #label="{ item }">
+                  <span class="data">{{ item.url ?? item.filename ?? item.sha256.slice(0, 12) }}</span>
+                </template>
+              </BarList>
+            </template>
+          </div>
         </section>
       </div>
 
@@ -297,7 +301,6 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
             >{{ t('attacker.allSessions') }}</RouterLink>
           </span>
         </div>
-        <SessionFilters :hide="['ip', 'country', 'dates', 'verdict']" />
         <SessionTable
           v-model:total="sessionTotal"
           :params="sessionParams"
@@ -329,9 +332,17 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
   display: block;
 }
 
+/* At most ten rows of a list in a card, the rest scrolled: a row is a
+   line, its padding and its bar (BarList). */
+.body {
+  max-height: calc(10 * (1lh + 2 * var(--space-1) + 5px));
+  overflow-y: auto;
+}
+
 /* A second list in a card, below the first. */
-.card > .next {
-  margin-top: var(--space-4);
+.body > .next {
+  margin: var(--space-4) 0 var(--space-3);
+  font-size: 1rem;
 }
 
 .latest {
