@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import DataTable, { type DataTableRowClickEvent } from 'openvue/datatable'
@@ -114,6 +114,7 @@ watch(
         const res = await api.attackers({ ...common, country: q('country'), asn: q('asn'), ip_prefix: q('ip_prefix') })
         items.value = res.items
         total.value = res.total
+        void measureNetworks()
       }
       error.value = null
     } catch (e) {
@@ -124,6 +125,21 @@ watch(
   },
   { immediate: true },
 )
+
+// A network longer than its column is cut, whole in a tooltip. The text is
+// proportional: which ones are cut is measured once the rows are drawn
+// (and the fonts loaded), not guessed from their length.
+const root = ref<HTMLElement | null>(null)
+const cutNetworks = ref(new Set<string>())
+async function measureNetworks() {
+  await nextTick()
+  await document.fonts.ready
+  const cut = new Set<string>()
+  root.value?.querySelectorAll<HTMLElement>('.network[data-ip]').forEach((el) => {
+    if (el.scrollWidth > el.clientWidth) cut.add(el.dataset.ip!)
+  })
+  cutNetworks.value = cut
+}
 
 function open(e: DataTableRowClickEvent<Attacker | KexAttacker>) {
   const query: Record<string, string> = {}
@@ -160,7 +176,10 @@ function clearFilters() {
 </script>
 
 <template>
-  <div class="page">
+  <div
+    ref="root"
+    class="page"
+  >
     <div class="page-head">
       <h1>{{ t('attackers.title') }}</h1>
       <span class="muted">{{ t(kind === 'kex' ? 'attackers.countKex' : 'attackers.count', { n: total.toLocaleString() }, total) }}</span>
@@ -358,7 +377,9 @@ function clearFilters() {
           <template #body="{ data }">
             <span
               v-if="data.asn"
+              v-tooltip.top="cutNetworks.has(data.ip) ? `AS${data.asn} ${data.as_org ?? ''}` : null"
               class="network"
+              :data-ip="data.ip"
             >AS{{ data.asn }} <span class="muted">{{ data.as_org }}</span></span>
             <span
               v-else
@@ -449,8 +470,14 @@ function clearFilters() {
   padding-left: var(--space-3);
 }
 
+/* Room for most networks ("AS197170 TechTies Inc."), then cut. */
 .network {
+  display: inline-block;
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .kinds {
