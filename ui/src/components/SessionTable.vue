@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent } from 'openvue/datatable'
+import DataTable, { type DataTableRowClickEvent } from 'openvue/datatable'
 import Column from 'openvue/column'
 import { api, type Params } from '@/api/client'
 import type { SessionSummary } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { endpoint, formatMillis, formatTime } from '@/format'
-import { patchQuery, queryValue } from '@/router'
-import { useTableSort } from '@/sort'
+import { pageSizes, useTablePage, useTableSort } from '@/sort'
 
 // The list of sessions: the sessions page, and an attacker's profile with
 // the address. The filters are the caller's; the page and the sort are in
@@ -24,15 +23,13 @@ const props = defineProps<{
 /** The number of sessions matching, for the caller's heading. */
 const total = defineModel<number>('total', { default: 0 })
 const { t } = useI18n()
-const route = useRoute()
 const router = useRouter()
-const rows = 50
 
 // Characters of the SSH client shown in the table ("SSH-2.0-libssh"); a
 // longer one is cut, whole in a tooltip. Matches the column's CSS width.
 const clientShown = 14
 
-const page = computed(() => Math.max(Number(queryValue(route.query, 'page')) || 1, 1))
+const { rows, page, params: pageParams, onPage } = useTablePage(50)
 const { params: sortParams, field: sortField, direction, onSort } = useTableSort('started')
 
 const items = ref<SessionSummary[]>([])
@@ -40,7 +37,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 
 watch(
-  () => ({ ...props.params, ...sortParams.value, limit: rows, offset: (page.value - 1) * rows }),
+  () => ({ ...props.params, ...sortParams.value, ...pageParams.value }),
   async (params, previous) => {
     if (previous && JSON.stringify(params) === JSON.stringify(previous)) return
     loading.value = true
@@ -58,9 +55,6 @@ watch(
   { immediate: true },
 )
 
-function onPage(e: DataTablePageEvent) {
-  void patchQuery({ page: e.page > 0 ? String(e.page + 1) : undefined }, true)
-}
 function open(e: DataTableRowClickEvent<SessionSummary>) {
   void router.push({ name: 'session', params: { id: String(e.data.id) } })
 }
@@ -79,6 +73,7 @@ function shown(s: SessionSummary) {
     lazy
     paginator
     :rows="rows"
+    :rows-per-page-options="pageSizes"
     :first="(page - 1) * rows"
     :total-records="total"
     data-key="id"

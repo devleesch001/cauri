@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent } from 'openvue/datatable'
+import DataTable, { type DataTableRowClickEvent } from 'openvue/datatable'
 import Column from 'openvue/column'
 import InputText from 'openvue/inputtext'
 import ToggleSwitch from 'openvue/toggleswitch'
@@ -15,14 +15,13 @@ import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
 import { formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
-import { notFilters, useTableSort } from '@/sort'
+import { notFilters, pageSizes, useTablePage, useTableSort } from '@/sort'
 
 // Failed logins. By default only those of sessions that never logged
 // in: the credential spraying that leaves no other trace.
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const rows = 100
 const q = (k: string) => queryValue(route.query, k)
 
 const text = ref({ ip: '', username: '', password: '' })
@@ -41,7 +40,7 @@ const withLoggedIn = computed({
 })
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
-const page = computed(() => Math.max(Number(q('page')) || 1, 1))
+const { rows, page, params: pageParams, onPage } = useTablePage(100)
 const filtered = computed(() => Object.keys(route.query).some((k) => !notFilters.includes(k)))
 const { params: sortParams, kept, field: sortField, direction, onSort } = useTableSort('time')
 
@@ -63,7 +62,7 @@ watch(
   async () => {
     loading.value = true
     try {
-      const res = await api.loginAttempts({ ...filters.value, ...sortParams.value, limit: rows, offset: (page.value - 1) * rows })
+      const res = await api.loginAttempts({ ...filters.value, ...sortParams.value, ...pageParams.value })
       items.value = res.items
       total.value = res.total
       error.value = null
@@ -76,9 +75,6 @@ watch(
   { immediate: true },
 )
 
-function onPage(e: DataTablePageEvent) {
-  void patchQuery({ page: e.page > 0 ? String(e.page + 1) : undefined }, true)
-}
 function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
   void router.push({ name: 'session', params: { id: String(e.data.session_id) } })
 }
@@ -152,6 +148,7 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       lazy
       paginator
       :rows="rows"
+      :rows-per-page-options="pageSizes"
       :first="(page - 1) * rows"
       :total-records="total"
       data-key="id"

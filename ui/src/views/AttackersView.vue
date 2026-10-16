@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent } from 'openvue/datatable'
+import DataTable, { type DataTableRowClickEvent } from 'openvue/datatable'
 import Column from 'openvue/column'
 import InputText from 'openvue/inputtext'
 import Select from 'openvue/select'
@@ -18,14 +18,13 @@ import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
 import { countryName, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
-import { notFilters, useTableSort } from '@/sort'
+import { notFilters, pageSizes, useTablePage, useTableSort } from '@/sort'
 
 // Attackers: the source addresses sessions came from, with what came from
 // each. A row opens the attacker's profile, with the same period and verdict.
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const rows = 50
 const q = (k: string) => queryValue(route.query, k)
 
 // The address prefix is edited locally and applied on Enter or leaving the field.
@@ -70,7 +69,7 @@ const loggedIn = computed({
 })
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
-const page = computed(() => Math.max(Number(q('page')) || 1, 1))
+const { rows, page, params: pageParams, onPage } = useTablePage(50)
 const filtered = computed(() => Object.keys(route.query).some((k) => !notFilters.includes(k)))
 const { params: sortParams, kept, field: sortField, direction, onSort } = useTableSort('sessions')
 
@@ -88,7 +87,7 @@ watch(
         sensor: q('sensor'), verdict: q('verdict'), country: q('country'), asn: q('asn'),
         ip_prefix: q('ip_prefix'), logged_in: q('logged_in'), ...sortParams.value,
         ...dayRange(q('from'), q('to')),
-        limit: rows, offset: (page.value - 1) * rows,
+        ...pageParams.value,
       })
       items.value = res.items
       total.value = res.total
@@ -102,9 +101,6 @@ watch(
   { immediate: true },
 )
 
-function onPage(e: DataTablePageEvent) {
-  void patchQuery({ page: e.page > 0 ? String(e.page + 1) : undefined }, true)
-}
 function open(e: DataTableRowClickEvent<Attacker>) {
   const query: Record<string, string> = {}
   for (const k of ['sensor', 'from', 'to', 'verdict']) {
@@ -210,6 +206,7 @@ function clearFilters() {
       lazy
       paginator
       :rows="rows"
+      :rows-per-page-options="pageSizes"
       :first="(page - 1) * rows"
       :total-records="total"
       :sort-field="sortField"
