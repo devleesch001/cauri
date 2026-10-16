@@ -492,7 +492,12 @@ deleted sessions come back.
 ### Administration
 
 The administration page (`/admin` in the UI) creates, lists and revokes
-the same tokens. It asks for one password: `CAURI_ADMIN_PASSWORD`, or
+the same tokens, and manages the database: what it holds and where its
+space goes (each table's rows and size, the raw lines, the recordings
+volume), purging raw lines or sessions, compacting the file, and this
+API's configuration (each option's variable, value, default and where
+it came from, secrets masked, and the `CAURI_` variables no option
+reads). It asks for one password: `CAURI_ADMIN_PASSWORD`, or
 `CAURI_ADMIN_PASSWORD_FILE` for a file such as a container secret.
 Without either, the API generates a password of 64 letters and digits at
 each start and writes it in its log (`administration password
@@ -511,6 +516,25 @@ compose files, the range of the Docker network Traefik reaches the API
 on). The client is then the address the proxy adds to
 `X-Forwarded-For`; addresses written by the client itself are ignored.
 Without it, the header is ignored. IPv6 clients are counted by /64.
+
+Purges and compaction are simulated first and run as background tasks,
+one at a time, which the page follows until they end:
+
+| Route | |
+|---|---|
+| `GET /api/admin/database` | The database and the recordings volume |
+| `GET /api/admin/config` | The API's options |
+| `GET /api/admin/sessions?…` | What deleting the sessions would remove (the filters of `/api/sessions`, at least one): a simulation, nothing changes |
+| `DELETE /api/admin/sessions?…` | Deletes them, as `cauri purge` does; the page asks to type `DELETE` first |
+| `GET` / `DELETE /api/admin/raw-events?older_than_days=N` | The same for the raw lines older than N days |
+| `POST /api/admin/database/vacuum` | Compacts the database: under SQLite, `VACUUM` rewrites the file to give its free space back and **holds writes meanwhile** (the ingestors retry, nothing is lost), with as much free disk as the file; under PostgreSQL, `VACUUM ANALYZE` |
+| `GET /api/admin/jobs`, `GET /api/admin/jobs/{id}` | The tasks and their progress |
+| `POST /api/admin/jobs/{id}/cancel` | Stops a purge between two batches (what went stays gone) |
+
+An action answers `202 Accepted` with the task and where to follow it,
+or `409 Conflict` while another runs. The API keeps the last 20 tasks in
+memory; a restart forgets them and stops the running one between two
+batches. Each task's start and end are logged with who asked.
 
 ## Deployment
 

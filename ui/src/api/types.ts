@@ -249,6 +249,67 @@ export interface Origins {
 }
 
 /** An ingestor token, as the administration pages show it. */
+/** What deleting sessions removes, or would (GET/DELETE /api/admin/sessions). */
+export interface PurgeCounts {
+  sessions: number
+  events: number
+  login_attempts: number
+  commands: number
+  transfers: number
+  recordings: number
+  key_exchanges: number
+  networks: number
+  geo_sources: number
+}
+
+/** Raw Cowrie lines: how many, how large, the oldest one's time. */
+export interface RawLines {
+  lines: number
+  bytes: number
+  oldest: string | null
+}
+
+/** The database, what it holds and where its space goes (GET /api/admin/database). */
+export interface AdminDatabase {
+  engine: 'sqlite' | 'postgres'
+  version: string
+  schema: string
+  size: number
+  free: number // space a compaction gives back, 0 if unknown
+  tables: { name: string; rows: number; bytes: number }[]
+  raw: RawLines
+  recordings: { files: number; bytes: number } | null
+}
+
+/** An option of the API, where its value came from (GET /api/admin/config). */
+export interface ConfigOption {
+  name: string
+  env: string
+  default: string
+  value: string
+  source: 'flag' | 'env' | 'default'
+  usage: string
+}
+
+export interface AdminConfig {
+  options: ConfigOption[]
+  unknown_env: string[] // CAURI_ variables no option reads
+}
+
+/** A background task of the administration (GET /api/admin/jobs/{id}). */
+export interface AdminJob {
+  id: number
+  kind: 'purge-sessions' | 'purge-raw-events' | 'vacuum'
+  params: Record<string, unknown> | null
+  status: 'running' | 'done' | 'failed' | 'canceled'
+  cancelable: boolean
+  started: string
+  finished: string | null
+  progress: { done: number; total: number }
+  result: Record<string, number> | null
+  error?: string
+}
+
 export interface AdminToken {
   id: number
   sensor: string

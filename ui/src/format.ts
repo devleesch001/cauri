@@ -36,7 +36,8 @@ export function formatBytes(n: number | null | undefined): string {
   if (n === null || n === undefined) return '—'
   if (n < 1024) return t('units.bytes', { n })
   if (n < 1024 * 1024) return t('units.kilobytes', { n: (n / 1024).toFixed(1) })
-  return t('units.megabytes', { n: (n / 1024 / 1024).toFixed(1) })
+  if (n < 1024 * 1024 * 1024) return t('units.megabytes', { n: (n / 1024 / 1024).toFixed(1) })
+  return t('units.gigabytes', { n: (n / 1024 / 1024 / 1024).toFixed(2) })
 }
 
 export function endpoint(ip: string | null, port: number | null): string {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, provide, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'openvue/button'
 import Column from 'openvue/column'
@@ -9,11 +9,17 @@ import InputText from 'openvue/inputtext'
 import Password from 'openvue/password'
 import { ApiError, admin } from '@/api/client'
 import type { AdminToken } from '@/api/types'
+import { adminKey, createAdmin } from '@/admin'
+import AdminConfig from '@/components/AdminConfig.vue'
+import AdminDatabase from '@/components/AdminDatabase.vue'
+import AdminPurge from '@/components/AdminPurge.vue'
+import AdminTasks from '@/components/AdminTasks.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import { formatTime } from '@/format'
 
 // Administration: one password (CAURI_ADMIN_PASSWORD, or generated and
-// logged by the API) opens a session that manages the ingestor tokens.
+// logged by the API) opens a session that manages the ingestor tokens and
+// the database, and shows the configuration.
 const { t } = useI18n()
 
 const signedIn = ref<boolean | null>(null) // null while checking
@@ -50,6 +56,9 @@ async function call<T>(f: () => Promise<T>): Promise<T | undefined> {
     return undefined
   }
 }
+
+// The sections share the calls and the background tasks.
+provide(adminKey, createAdmin(call))
 
 async function load() {
   loading.value = true
@@ -168,7 +177,10 @@ async function revoke() {
       />
     </form>
 
-    <template v-else-if="signedIn">
+    <div
+      v-else-if="signedIn"
+      class="sections"
+    >
       <section class="card">
         <h2>{{ t('admin.tokens.title') }}</h2>
         <p class="muted">
@@ -252,7 +264,11 @@ async function revoke() {
           </Column>
         </DataTable>
       </section>
-    </template>
+      <AdminTasks />
+      <AdminDatabase />
+      <AdminPurge />
+      <AdminConfig />
+    </div>
 
     <Dialog
       :visible="!!created"
@@ -309,6 +325,12 @@ async function revoke() {
 </template>
 
 <style scoped>
+/* The sections of a signed-in administrator, one below the other. */
+.sections {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .sign-in {
   display: flex;
   flex-direction: column;

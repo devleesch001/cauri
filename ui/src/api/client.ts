@@ -5,7 +5,12 @@ import type {
   AttackerDetail,
   KexAttacker,
   KexDetail,
+  AdminConfig,
+  AdminDatabase,
+  AdminJob,
   AdminToken,
+  PurgeCounts,
+  RawLines,
   Chapters,
   CityCount,
   Commands,
@@ -65,8 +70,8 @@ async function get<T>(path: string, params: Params = {}): Promise<T> {
  * Sends a change to the administration routes: JSON in, JSON or nothing
  * out. The header proves the request comes from this UI (see the API).
  */
-async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(base + path, {
+async function send<T>(method: string, path: string, body?: unknown, params: Params = {}): Promise<T> {
+  const res = await fetch(url(path, params), {
     method,
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Cauri-Admin': '1' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -93,6 +98,18 @@ export const admin = {
   createToken: (sensor: string, name: string) =>
     send<{ token: AdminToken; secret: string }>('POST', '/admin/tokens', { sensor, name }),
   revokeToken: (id: number) => send<void>('POST', `/admin/tokens/${id}/revoke`),
+  database: () => get<AdminDatabase>('/admin/database'),
+  config: () => get<AdminConfig>('/admin/config'),
+  /** What deleting the sessions the filters select would remove; nothing changes. */
+  simulateSessions: (filters: Params) => get<PurgeCounts>('/admin/sessions', filters),
+  /** Starts deleting them: the same filters as the simulation. */
+  purgeSessions: (filters: Params) => send<AdminJob>('DELETE', '/admin/sessions', undefined, filters),
+  simulateRaw: (days: number) => get<RawLines>('/admin/raw-events', { older_than_days: days }),
+  purgeRaw: (days: number) => send<AdminJob>('DELETE', '/admin/raw-events', undefined, { older_than_days: days }),
+  vacuum: () => send<AdminJob>('POST', '/admin/database/vacuum'),
+  jobs: () => get<AdminJob[]>('/admin/jobs'),
+  job: (id: number) => get<AdminJob>(`/admin/jobs/${id}`),
+  cancelJob: (id: number) => send<AdminJob>('POST', `/admin/jobs/${id}/cancel`),
 }
 
 export const api = {
