@@ -170,6 +170,11 @@ Checked against the official image v3.1.2:
   exchanges, public keys, credentials or payloads. An attacker is a source
   address or a key exchange so far.
 - **Places**: city coordinates are still copied on each session.
+- **Utility CSS classes** (set aside 2026-10-17): OpenVue has none
+  (PrimeFlex was abandoned by PrimeVue, which recommends Tailwind CSS with
+  `tailwindcss-primeui`, untested with OpenVue). cauri keeps its own
+  spacing variables and shared classes in `ui/src/style.css` meanwhile;
+  adopting Tailwind would be a migration of the whole UI, planned first.
 
 ## Original brief (verbatim, from the user)
 
