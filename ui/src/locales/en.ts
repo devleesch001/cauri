@@ -383,6 +383,7 @@ export default {
     kexTitle: 'SSH key exchange',
     kex: 'SSH key exchanges',
     kexHint: 'The algorithm lists its SSH tool offered: the same tool gives the same lists from any address.',
+    algorithms: 'Algorithms offered',
     inHassh: 'in the HASSH',
     lists: {
       kex: 'Key exchange',

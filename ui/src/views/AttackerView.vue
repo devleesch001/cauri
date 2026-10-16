@@ -310,34 +310,6 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
           </div>
         </section>
 
-        <!-- Its algorithm lists, one card each, in the order offered. -->
-        <section
-          v-for="l in lists"
-          :key="l.name"
-          class="card"
-        >
-          <h2 v-tooltip.top="t('attacker.kexHint')">
-            {{ t('attacker.lists.' + l.name) }}
-            <span class="data muted cowrie">{{ l.cowrie }}<template v-if="l.hassh"> · {{ t('attacker.inHassh') }}</template></span>
-          </h2>
-          <ol
-            v-if="l.value"
-            class="body algorithms data"
-          >
-            <li
-              v-for="(a, i) in l.value.split(',')"
-              :key="i"
-            >
-              {{ a }}
-            </li>
-          </ol>
-          <p
-            v-else
-            class="muted"
-          >
-            {{ t('attacker.none') }}
-          </p>
-        </section>
 
         <section class="card">
           <h2>{{ t('attacker.days') }}</h2>
@@ -453,6 +425,45 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
         </section>
       </div>
 
+      <!-- Its algorithm lists, one card each, in the order offered. -->
+      <section
+        v-if="kex"
+        class="group"
+      >
+        <h2 v-tooltip.top="t('attacker.kexHint')">
+          {{ t('attacker.algorithms') }}
+        </h2>
+        <div class="panels even">
+          <section
+            v-for="l in lists"
+            :key="l.name"
+            class="card"
+          >
+            <h2>
+              {{ t('attacker.lists.' + l.name) }}
+              <span class="data muted cowrie">{{ l.cowrie }}<template v-if="l.hassh"> · {{ t('attacker.inHassh') }}</template></span>
+            </h2>
+            <ol
+              v-if="l.value"
+              class="body algorithms data"
+            >
+              <li
+                v-for="(a, i) in l.value.split(',')"
+                :key="i"
+              >
+                {{ a }}
+              </li>
+            </ol>
+            <p
+              v-else
+              class="muted"
+            >
+              {{ t('attacker.none') }}
+            </p>
+          </section>
+        </div>
+      </section>
+
       <section class="latest">
         <div class="page-head">
           <h2>{{ t('attacker.sessions') }}</h2>
@@ -547,6 +558,15 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
 .body > .next {
   margin: var(--space-4) 0 var(--space-3);
   font-size: 1rem;
+}
+
+/* The algorithm lists of a key exchange, together below the profile. */
+.group {
+  margin-top: var(--space-4);
+}
+
+.group > h2 {
+  margin: 0 0 var(--space-3);
 }
 
 .latest {
