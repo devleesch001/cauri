@@ -71,11 +71,16 @@ const list = computed(() => {
 </template>
 
 <style scoped>
+/* The whole cell: the badge against its right edge, aligned row to row. */
 .credentials {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
   white-space: nowrap;
+}
+
+.credentials > :deep(.p-badge) {
+  margin-left: auto;
 }
 
 /* Attackers' passwords can be long: cut at a width, whole on hover. */
