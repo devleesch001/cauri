@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent, type DataTableSortEvent } from 'openvue/datatable'
+import DataTable, { type DataTablePageEvent, type DataTableRowClickEvent } from 'openvue/datatable'
 import Column from 'openvue/column'
 import InputText from 'openvue/inputtext'
 import Select from 'openvue/select'
@@ -18,6 +18,7 @@ import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
 import { countryName, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
+import { notFilters, useTableSort } from '@/sort'
 
 // Attackers: the source addresses sessions came from, with what came from
 // each. A row opens the attacker's profile, with the same period and verdict.
@@ -69,9 +70,9 @@ const shell = computed({
 })
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
-const sort = computed(() => q('sort') || 'sessions')
 const page = computed(() => Math.max(Number(q('page')) || 1, 1))
-const filtered = computed(() => Object.keys(route.query).some((k) => k !== 'page' && k !== 'sort'))
+const filtered = computed(() => Object.keys(route.query).some((k) => !notFilters.includes(k)))
+const { params: sortParams, kept, field: sortField, direction, onSort } = useTableSort('sessions')
 
 const items = ref<Attacker[]>([])
 const total = ref(0)
@@ -85,7 +86,7 @@ watch(
     try {
       const res = await api.attackers({
         sensor: q('sensor'), verdict: q('verdict'), country: q('country'), asn: q('asn'),
-        ip_prefix: q('ip_prefix'), shell: q('shell'), sort: q('sort'),
+        ip_prefix: q('ip_prefix'), shell: q('shell'), ...sortParams.value,
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
       })
@@ -104,11 +105,6 @@ watch(
 function onPage(e: DataTablePageEvent) {
   void patchQuery({ page: e.page > 0 ? String(e.page + 1) : undefined }, true)
 }
-// Sorts are always descending: the most of something first.
-function onSort(e: DataTableSortEvent) {
-  const field = typeof e.sortField === 'string' ? e.sortField : 'sessions'
-  void patchQuery({ sort: field === 'sessions' ? undefined : field })
-}
 function open(e: DataTableRowClickEvent<Attacker>) {
   const query: Record<string, string> = {}
   for (const k of ['sensor', 'from', 'to', 'verdict']) {
@@ -125,7 +121,7 @@ function mostly(a: Attacker) {
   return n > 0 ? verdict : null
 }
 function clearFilters() {
-  void router.replace({ query: {} })
+  void router.replace({ query: kept.value })
 }
 </script>
 
@@ -216,8 +212,8 @@ function clearFilters() {
       :rows="rows"
       :first="(page - 1) * rows"
       :total-records="total"
-      :sort-field="sort"
-      :sort-order="-1"
+      :sort-field="sortField"
+      :sort-order="direction"
       data-key="ip"
       size="small"
       striped-rows

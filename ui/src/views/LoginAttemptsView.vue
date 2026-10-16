@@ -15,6 +15,7 @@ import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
 import { formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
+import { notFilters, useTableSort } from '@/sort'
 
 // Failed logins. By default only those of sessions that never obtained a
 // shell: the credential spraying that leaves no other trace.
@@ -41,7 +42,8 @@ const withShells = computed({
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
 const page = computed(() => Math.max(Number(q('page')) || 1, 1))
-const filtered = computed(() => Object.keys(route.query).some((k) => k !== 'page'))
+const filtered = computed(() => Object.keys(route.query).some((k) => !notFilters.includes(k)))
+const { params: sortParams, kept, field: sortField, direction, onSort } = useTableSort('time')
 
 // The API parameters of the filters, shared by the list and its export.
 const filters = computed(() => ({
@@ -61,7 +63,7 @@ watch(
   async () => {
     loading.value = true
     try {
-      const res = await api.loginAttempts({ ...filters.value, limit: rows, offset: (page.value - 1) * rows })
+      const res = await api.loginAttempts({ ...filters.value, ...sortParams.value, limit: rows, offset: (page.value - 1) * rows })
       items.value = res.items
       total.value = res.total
       error.value = null
@@ -137,7 +139,7 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
           :label="t('filters.clear')"
           severity="secondary"
           text
-          @click="router.replace({ query: {} })"
+          @click="router.replace({ query: kept })"
         />
       </div>
     </div>
@@ -156,7 +158,10 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       size="small"
       striped-rows
       scrollable
+      :sort-field="sortField"
+      :sort-order="direction"
       @page="onPage"
+      @sort="onSort"
       @row-click="open"
     >
       <template #empty>
@@ -164,7 +169,11 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
           {{ filtered ? t('logins.empty.filtered') : t('logins.empty.none') }}
         </p>
       </template>
-      <Column :header="t('logins.columns.time')">
+      <Column
+        field="time"
+        :header="t('logins.columns.time')"
+        sortable
+      >
         <template #body="{ data }">
           <RouterLink
             :to="{ name: 'session', params: { id: String(data.session_id) } }"
@@ -177,9 +186,14 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       </Column>
       <Column
         field="sensor"
+        sortable
         :header="t('logins.columns.sensor')"
       />
-      <Column :header="t('logins.columns.sourceIp')">
+      <Column
+        field="source"
+        :header="t('logins.columns.sourceIp')"
+        sortable
+      >
         <template #body="{ data }">
           <RouterLink
             v-if="data.src_ip"
@@ -195,17 +209,29 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
           >—</span>
         </template>
       </Column>
-      <Column :header="t('logins.columns.username')">
+      <Column
+        field="username"
+        :header="t('logins.columns.username')"
+        sortable
+      >
         <template #body="{ data }">
           <span class="data">{{ data.username }}</span>
         </template>
       </Column>
-      <Column :header="t('logins.columns.password')">
+      <Column
+        field="password"
+        :header="t('logins.columns.password')"
+        sortable
+      >
         <template #body="{ data }">
           <span class="data">{{ data.password }}</span>
         </template>
       </Column>
-      <Column :header="t('logins.columns.country')">
+      <Column
+        field="country"
+        :header="t('logins.columns.country')"
+        sortable
+      >
         <template #body="{ data }">
           <CountryFlag
             v-if="data.geo_country"
@@ -217,7 +243,11 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
           >—</span>
         </template>
       </Column>
-      <Column :header="t('logins.columns.client')">
+      <Column
+        field="client"
+        :header="t('logins.columns.client')"
+        sortable
+      >
         <template #body="{ data }">
           <span class="data">{{ data.client_version ?? '—' }}</span>
         </template>

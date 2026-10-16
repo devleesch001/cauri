@@ -18,6 +18,7 @@ import ErrorNotice from '@/components/ErrorNotice.vue'
 import { dayRange } from '@/dates'
 import { countryName, endpoint, formatMillis, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
+import { notFilters, useTableSort } from '@/sort'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -88,7 +89,8 @@ const withCommands = computed({
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
 const page = computed(() => Math.max(Number(q('page')) || 1, 1))
-const filtered = computed(() => Object.keys(route.query).some((k) => k !== 'page'))
+const filtered = computed(() => Object.keys(route.query).some((k) => !notFilters.includes(k)))
+const { params: sortParams, kept, field: sortField, direction, onSort } = useTableSort('started')
 
 // The API parameters of the filters, shared by the list and its export.
 const filters = computed(() => ({
@@ -110,7 +112,7 @@ watch(
   async () => {
     loading.value = true
     try {
-      const res = await api.sessions({ ...filters.value, limit: rows, offset: (page.value - 1) * rows })
+      const res = await api.sessions({ ...filters.value, ...sortParams.value, limit: rows, offset: (page.value - 1) * rows })
       items.value = res.items
       total.value = res.total
       error.value = null
@@ -134,7 +136,7 @@ function shown(s: SessionSummary) {
   return [...s.credentials].sort((a, b) => Number(b.success) - Number(a.success)).slice(0, 3)
 }
 function clearFilters() {
-  void router.replace({ query: {} })
+  void router.replace({ query: kept.value })
 }
 </script>
 
@@ -293,7 +295,10 @@ function clearFilters() {
       size="small"
       striped-rows
       scrollable
+      :sort-field="sortField"
+      :sort-order="direction"
       @page="onPage"
+      @sort="onSort"
       @row-click="open"
     >
       <template #empty>
@@ -310,7 +315,11 @@ function clearFilters() {
           {{ t('sessions.empty.none') }}
         </p>
       </template>
-      <Column :header="t('sessions.columns.started')">
+      <Column
+        field="started"
+        :header="t('sessions.columns.started')"
+        sortable
+      >
         <template #body="{ data }">
           <RouterLink
             :to="{ name: 'session', params: { id: String(data.id) } }"
@@ -323,9 +332,14 @@ function clearFilters() {
       </Column>
       <Column
         field="sensor"
+        sortable
         :header="t('sessions.columns.sensor')"
       />
-      <Column :header="t('sessions.columns.source')">
+      <Column
+        field="source"
+        :header="t('sessions.columns.source')"
+        sortable
+      >
         <template #body="{ data }">
           <RouterLink
             v-if="data.src_ip"
@@ -355,7 +369,11 @@ function clearFilters() {
           >{{ t('sessions.moreCredentials', { n: data.login_attempts - 3 }) }}</span>
         </template>
       </Column>
-      <Column :header="t('sessions.columns.country')">
+      <Column
+        field="country"
+        :header="t('sessions.columns.country')"
+        sortable
+      >
         <template #body="{ data }">
           <CountryFlag
             v-if="data.geo_country"
@@ -368,20 +386,30 @@ function clearFilters() {
           >—</span>
         </template>
       </Column>
-      <Column :header="t('sessions.columns.duration')">
+      <Column
+        field="duration"
+        :header="t('sessions.columns.duration')"
+        sortable
+      >
         <template #body="{ data }">
           {{ formatMillis(data.duration_ms) }}
         </template>
       </Column>
       <Column
+        field="commands"
         :header="t('sessions.columns.commands')"
+        sortable
         class="num"
       >
         <template #body="{ data }">
           {{ data.commands || '—' }}
         </template>
       </Column>
-      <Column :header="t('sessions.columns.verdict')">
+      <Column
+        field="verdict"
+        :header="t('sessions.columns.verdict')"
+        sortable
+      >
         <template #body="{ data }">
           <span
             v-if="data.verdict"
@@ -411,7 +439,11 @@ function clearFilters() {
         </template>
       </Column>
       <!-- Last: a detail, cut after "SSH-2.0-libssh", whole on hover. -->
-      <Column :header="t('sessions.columns.client')">
+      <Column
+        field="client"
+        :header="t('sessions.columns.client')"
+        sortable
+      >
         <template #body="{ data }">
           <span
             v-tooltip.top="(data.client_version?.length ?? 0) > clientShown ? data.client_version : null"
