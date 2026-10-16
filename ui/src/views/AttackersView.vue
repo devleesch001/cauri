@@ -45,15 +45,15 @@ const kind = computed({
   },
 })
 
-// The address prefix is edited locally and applied on Enter or leaving the field.
+// The address is edited locally and applied on Enter or leaving the field.
 const prefix = ref('')
 watch(
   () => route.query,
-  () => (prefix.value = q('ip_prefix')),
+  () => (prefix.value = q('ip')),
   { immediate: true },
 )
 function applyPrefix() {
-  void patchQuery({ ip_prefix: prefix.value.trim() || undefined })
+  void patchQuery({ ip: prefix.value.trim() || undefined })
 }
 
 const countries = ref<CountryCount[]>([])
@@ -111,7 +111,7 @@ watch(
         kexItems.value = res.items
         total.value = res.total
       } else {
-        const res = await api.attackers({ ...common, country: q('country'), asn: q('asn'), ip_prefix: q('ip_prefix') })
+        const res = await api.attackers({ ...common, country: q('country'), asn: q('asn'), ip: q('ip') })
         items.value = res.items
         total.value = res.total
         void measureNetworks()
@@ -210,8 +210,8 @@ function clearFilters() {
         <InputText
           v-model="prefix"
           class="data"
-          :placeholder="t('attackers.filters.ipPrefix')"
-          :aria-label="t('attackers.filters.ipPrefix')"
+          :placeholder="t('attackers.filters.address')"
+          :aria-label="t('attackers.filters.address')"
           @keyup.enter="applyPrefix"
           @blur="applyPrefix"
         />

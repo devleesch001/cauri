@@ -357,7 +357,7 @@ export default {
       kex: 'SSH key exchanges',
     },
     filters: {
-      ipPrefix: 'Address starts with',
+      address: 'Address',
       loggedIn: 'Logged in',
       hasshChip: 'HASSH {hassh}',
       hassh: 'HASSH {hassh}: remove this filter',

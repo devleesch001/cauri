@@ -8,6 +8,12 @@ import { queryValue } from '@/router'
 // succeeded.
 const keys = ['sensor', 'from', 'to', 'verdict', 'login'] as const
 
+// Filters typed by hand match a start by default (see the API's match): a
+// link names one value, quoted to match it exactly.
+const typed = new Set(['ip', 'session', 'username', 'password', 'client', 'city', 'file', 'command', 'hassh'])
+const exactly = (extra: Record<string, string>) =>
+  Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, typed.has(k) ? `"${v}"` : v]))
+
 export function useStatsFilters() {
   const route = useRoute()
   const q = (k: string) => queryValue(route.query, k)
@@ -19,7 +25,7 @@ export function useStatsFilters() {
     for (const k of keys) {
       if (q(k)) query[k] = q(k)
     }
-    return { name, params, query: { ...query, ...extra } }
+    return { name, params, query: { ...query, ...exactly(extra) } }
   }
   return { params, link, q }
 }
