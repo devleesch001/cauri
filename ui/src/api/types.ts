@@ -47,6 +47,7 @@ export interface Session {
   as_org: string | null
   verdict: Verdict['verdict'] | null // stored; null until judged
   verdict_score: number | null
+  shell: boolean | null // typed in an interactive shell; null without a recording read
 }
 
 export interface SessionSummary extends Session {

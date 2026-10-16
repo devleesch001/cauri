@@ -85,6 +85,11 @@ const withCommands = computed({
   get: () => q('has_commands') === 'true',
   set: (v: boolean) => void patchQuery({ has_commands: v ? 'true' : undefined }),
 })
+// Typed in an interactive shell, as its recording tells: not exec commands.
+const shell = computed({
+  get: () => q('shell') === 'true',
+  set: (v: boolean) => void patchQuery({ shell: v ? 'true' : undefined }),
+})
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
 // The keys this bar shows, which Clear removes.
@@ -217,6 +222,10 @@ function clearFilters() {
       <label class="toggle">
         <ToggleSwitch v-model="withCommands" />
         {{ t('sessions.filters.typedCommands') }}
+      </label>
+      <label class="toggle">
+        <ToggleSwitch v-model="shell" />
+        {{ t('sessions.filters.shell') }}
       </label>
       <Button
         v-if="filtered"

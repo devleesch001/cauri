@@ -170,6 +170,7 @@ export default {
       loginSuccess: 'Login Success',
       loginFailed: 'Login failed',
       typedCommands: 'Typed commands',
+      shell: 'Interactive shell',
       verdict: 'Human or bot',
       city: 'City {city}: remove this filter',
       fileChip: 'File {sha}',
