@@ -45,7 +45,6 @@ func runAPI(ctx context.Context, args []string) error {
 	geo.register(fs)
 	retention := keepForever
 	fs.Var(&retention, "event-raw-data-retention-days", "days the raw Cowrie lines of events are kept, sessions and their details staying: -1 for ever, 0 none (not even stored), empty or null for ever")
-	oldRetention := fs.Int("raw-retention-days", 0, "deprecated, see --event-raw-data-retention-days, which it sets unless that one is given; 0 keeps the raw lines for ever")
 	adminPassword := fs.String("admin-password", "", "password of the administration pages; a random one is generated and logged at each start if neither it nor --admin-password-file is set")
 	adminPasswordFile := fs.String("admin-password-file", "", "file holding the password of the administration pages, such as a container secret")
 	trustedProxies := fs.String("trusted-proxies", "", "comma-separated addresses or CIDR ranges of reverse proxies whose X-Forwarded-For names the client, to limit password guesses per client; empty ignores the header")
@@ -133,23 +132,6 @@ func runAPI(ctx context.Context, args []string) error {
 			go locate()
 		}
 		go loc.Watch(ctx, time.Minute)
-	}
-	// The former option keeps its meaning (0 for ever) unless the new one
-	// is given: a configuration written for it loses nothing.
-	sources := map[string]string{}
-	for _, o := range envflag.Describe(fs) {
-		sources[o.Name] = o.Source
-	}
-	if sources["raw-retention-days"] != envflag.FromDefault {
-		log.Warn("--raw-retention-days (CAURI_RAW_RETENTION_DAYS) is deprecated: use --event-raw-data-retention-days (CAURI_EVENT_RAW_DATA_RETENTION_DAYS), where 0 keeps nothing and -1 everything")
-		if sources["event-raw-data-retention-days"] == envflag.FromDefault {
-			switch {
-			case *oldRetention < 0:
-				return fmt.Errorf("--raw-retention-days: want 0 or more days")
-			case *oldRetention > 0:
-				retention = retentionDays(*oldRetention)
-			}
-		}
 	}
 	switch retention {
 	case keepForever:

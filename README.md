@@ -383,10 +383,6 @@ event's data instead of its line. Purging every line took that database
 to 27 MB. With SQLite, freed space is reused by new data; the file only
 shrinks after a `VACUUM` (the administration page compacts it).
 
-`CAURI_RAW_RETENTION_DAYS`, its former name, is still read, with its
-former meaning (`0` kept everything), unless the new one is set; the
-API warns at start that it is deprecated.
-
 ### Human or bot
 
 `GET /api/sessions/{id}/verdict` tells whether a session looks typed by a
