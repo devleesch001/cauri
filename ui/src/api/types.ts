@@ -155,7 +155,8 @@ export interface CountryCount {
 
 /** GET /api/about. */
 export interface About {
-  version: string
+  /** Of the running API: a release tag or "dev", and how it was built. */
+  version: { tag: string; commit: string; dirty: boolean; date: string }
   geoip: GeoDatabase | null
   asn: GeoDatabase | null
   /** Providers whose data is shown, loaded or stored: each requires its attribution. */

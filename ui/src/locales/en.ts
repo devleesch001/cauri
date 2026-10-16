@@ -626,6 +626,15 @@ export default {
       unknown: 'These variables are set but no option reads them; a misspelt name is ignored:',
     },
   },
+  version: {
+    label: 'cauri {tag}',
+    show: 'Version of cauri',
+    tag: 'Version',
+    commit: 'Commit',
+    modified: 'built from modified sources',
+    built: 'Built',
+    unknown: 'unknown',
+  },
   attribution: {
     dbip: 'IP geolocation by DB-IP',
     maxmind: 'This product includes GeoLite Data created by MaxMind, available from',

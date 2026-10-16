@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from 'openvue/button'
 import Menu from 'openvue/menu'
+import Popover from 'openvue/popover'
 import Toast, { type ToastEvent } from 'openvue/toast'
 import { useToast } from 'openvue/usetoast'
 import WindowMaximizeIcon from '@openvue/icons/windowmaximize'
@@ -11,6 +12,7 @@ import WindowMinimizeIcon from '@openvue/icons/windowminimize'
 import { api, onApiError } from './api/client'
 import type { About } from './api/types'
 import NavSearch from './components/NavSearch.vue'
+import { formatTime } from './format'
 import ColorSchemeSelect from './components/ColorSchemeSelect.vue'
 import SensorSelect from './components/SensorSelect.vue'
 import { primaryPages, statsPages, trailingPages } from './nav'
@@ -56,6 +58,8 @@ const about = ref<About | null>(null)
 // Each provider whose data is shown, by the loaded databases or the stored
 // locations, has its attribution shown once.
 const providers = computed(() => new Set<string>(about.value?.providers ?? []))
+// The version of the API, in the footer; how it was built in a popover.
+const versionPanel = ref<InstanceType<typeof Popover> | null>(null)
 
 // Pages are capped in width (style.css); this lifts the cap, remembered
 // per browser. Storage can be unavailable: then it lasts for the visit.
@@ -203,7 +207,7 @@ onMounted(() => {
     </template>
   </Button>
   <footer
-    v-if="providers.size"
+    v-if="about"
     class="attribution muted"
   >
     <a
@@ -214,6 +218,33 @@ onMounted(() => {
       {{ t('attribution.maxmind') }}
       <a href="https://www.maxmind.com">https://www.maxmind.com</a>
     </span>
+    <Button
+      class="version"
+      :label="t('version.label', { tag: about.version.tag })"
+      :aria-label="t('version.show')"
+      severity="secondary"
+      text
+      size="small"
+      @click="versionPanel?.toggle($event)"
+    />
+    <Popover ref="versionPanel">
+      <dl class="facts">
+        <dt>{{ t('version.tag') }}</dt>
+        <dd class="data">
+          {{ about.version.tag }}
+        </dd>
+        <dt>{{ t('version.commit') }}</dt>
+        <dd>
+          <span class="data">{{ about.version.commit || t('version.unknown') }}</span>
+          <span
+            v-if="about.version.dirty"
+            class="muted"
+          > ({{ t('version.modified') }})</span>
+        </dd>
+        <dt>{{ t('version.built') }}</dt>
+        <dd>{{ about.version.date ? formatTime(about.version.date) : t('version.unknown') }}</dd>
+      </dl>
+    </Popover>
   </footer>
 </template>
 
@@ -223,9 +254,17 @@ onMounted(() => {
 }
 
 .attribution {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--c-rule);
   font-size: 0.85em;
+}
+
+.version {
+  margin-left: auto;
 }
 
 .width-toggle {
