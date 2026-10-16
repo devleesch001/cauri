@@ -337,6 +337,9 @@ const csvUrl = computed(() => api.sessionsCsvUrl(sessionParams.value))
 .body {
   max-height: calc(10 * (1lh + 2 * var(--space-1) + 5px));
   overflow-y: auto;
+  /* A discreet scrollbar: thin, the colour of the card's border. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-rule) transparent;
 }
 
 /* A second list in a card, below the first. */
