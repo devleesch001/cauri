@@ -47,7 +47,7 @@ func TestMigrateLogs(t *testing.T) {
 				`"msg":"database"`, `"engine":"` + engine + `"`, `"version":"`,
 				`"msg":"database schema"`, `"version":"none (empty database)"`,
 				`"msg":"database upgrade needed"`, `"msg":"applying migration","migration":"00001_init"`,
-				`"msg":"migration applied","migration":"00006_session_shell"`, `"msg":"database upgraded"`,
+				`"msg":"migration applied","migration":"00007_named_keys"`, `"msg":"database upgraded"`,
 			} {
 				if !strings.Contains(first, want) {
 					t.Errorf("first run: no %s in\n%s", want, first)
@@ -62,7 +62,7 @@ func TestMigrateLogs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if second := out.String(); !strings.Contains(second, `"msg":"database schema is up to date"`) ||
-				!strings.Contains(second, `"version":"00006_session_shell","latest":"00006_session_shell","pending":0`) ||
+				!strings.Contains(second, `"version":"00007_named_keys","latest":"00007_named_keys","pending":0`) ||
 				strings.Contains(second, "applying migration") {
 				t.Errorf("second run:\n%s", second)
 			}
@@ -198,9 +198,9 @@ func TestSchemasMatch(t *testing.T) {
 	}
 }
 
-// schema lists "table.column null|not null", "index table(columns) [unique]"
-// and "fk name: table(column) -> table(column) action" lines, sorted, without
-// bun's own tables.
+// schema lists "table.column null|not null", "pk name: table(column)",
+// "index name: table(columns) [unique]" and "fk name: table(column) ->
+// table(column) action" lines, sorted, without bun's own tables.
 func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []string {
 	t.Helper()
 	var lines []string
@@ -210,7 +210,7 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 			t.Fatalf("%s: %v", engine, err)
 		}
 		for _, r := range rows {
-			if !strings.HasPrefix(r, "bun_") && !strings.HasPrefix(r, "index bun_") {
+			if !strings.HasPrefix(r, "bun_") && !strings.Contains(r, ": bun_") {
 				lines = append(lines, r)
 			}
 		}
@@ -220,7 +220,7 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 			FROM sqlite_master AS m, pragma_table_info(m.name) AS c
 			WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'`)
 		// Named indexes, and the unique constraints SQLite indexes itself.
-		add(`SELECT 'index ' || m.name || '(' || (SELECT group_concat(name, ',') FROM (SELECT ii.name FROM pragma_index_info(il.name) AS ii ORDER BY ii.seqno)) || ')' ||
+		add(`SELECT 'index ' || il.name || ': ' || m.name || '(' || (SELECT group_concat(name, ',') FROM (SELECT ii.name FROM pragma_index_info(il.name) AS ii ORDER BY ii.seqno)) || ')' ||
 				CASE WHEN il."unique" = 1 THEN ' unique' ELSE '' END
 			FROM sqlite_master AS m, pragma_index_list(m.name) AS il
 			WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND il.origin != 'pk'`)
@@ -232,7 +232,15 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 		}
 		fk := regexp.MustCompile(`CONSTRAINT (\w+) FOREIGN KEY \((\w+)\) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?`)
 		unnamed := regexp.MustCompile(`REFERENCES `)
+		pk := regexp.MustCompile(`CONSTRAINT (\w+) PRIMARY KEY \((\w+)\)`)
 		for _, d := range defs {
+			keys := pk.FindAllStringSubmatch(d.SQL, -1)
+			for _, m := range keys {
+				lines = append(lines, fmt.Sprintf("pk %s: %s(%s)", m[1], d.Name, m[2]))
+			}
+			if n := strings.Count(d.SQL, "PRIMARY KEY"); n != len(keys) {
+				t.Errorf("%s: %d primary keys, %d named", d.Name, n, len(keys))
+			}
 			named := fk.FindAllStringSubmatch(d.SQL, -1)
 			for _, m := range named {
 				action := strings.ToLower(m[5])
@@ -248,15 +256,22 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 	} else {
 		add(`SELECT table_name || '.' || column_name || CASE WHEN is_nullable = 'NO' THEN ' not null' ELSE ' null' END
 			FROM information_schema.columns WHERE table_schema = current_schema()`)
-		add(`SELECT 'index ' || t.relname || '(' || string_agg(a.attname, ',' ORDER BY k.n) || ')' ||
+		add(`SELECT 'index ' || i.relname || ': ' || t.relname || '(' || string_agg(a.attname, ',' ORDER BY k.n) || ')' ||
 				CASE WHEN ix.indisunique THEN ' unique' ELSE '' END
 			FROM pg_index AS ix
+			JOIN pg_class AS i ON i.oid = ix.indexrelid
 			JOIN pg_class AS t ON t.oid = ix.indrelid
 			JOIN pg_namespace AS ns ON ns.oid = t.relnamespace
 			CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, n)
 			JOIN pg_attribute AS a ON a.attrelid = t.oid AND a.attnum = k.attnum
 			WHERE ns.nspname = current_schema() AND NOT ix.indisprimary
-			GROUP BY t.relname, ix.indexrelid, ix.indisunique`)
+			GROUP BY i.relname, t.relname, ix.indexrelid, ix.indisunique`)
+		add(`SELECT 'pk ' || c.conname || ': ' || t.relname || '(' || a.attname || ')'
+			FROM pg_constraint AS c
+			JOIN pg_class AS t ON t.oid = c.conrelid
+			JOIN pg_namespace AS ns ON ns.oid = t.relnamespace
+			JOIN pg_attribute AS a ON a.attrelid = t.oid AND a.attnum = c.conkey[1]
+			WHERE c.contype = 'p' AND ns.nspname = current_schema()`)
 		add(`SELECT 'fk ' || c.conname || ': ' || t.relname || '(' || a.attname || ') -> ' || r.relname || '(' || ra.attname || ') ' ||
 				CASE c.confdeltype WHEN 'c' THEN 'cascade' WHEN 'r' THEN 'restrict' WHEN 'n' THEN 'set null' WHEN 'd' THEN 'set default' ELSE 'no action' END
 			FROM pg_constraint AS c
@@ -269,6 +284,50 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 	}
 	slices.Sort(lines)
 	return lines
+}
+
+// Every key and index is named after its table and columns (AGENTS.md),
+// never by the engine: pk_<table>, uk_ or ix_<table>_<columns>,
+// fk_<table>_<column>; every table has a primary key.
+func TestKeyNames(t *testing.T) {
+	line := regexp.MustCompile(`^(pk|index|fk) (\w+): (\w+)\(([\w,]+)\)( unique)?`)
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		engine := store.SQLite
+		if db.Dialect().Name().String() == "pg" {
+			engine = store.Postgres
+		}
+		tables, keyed := map[string]bool{}, map[string]bool{}
+		for _, l := range schema(t, context.Background(), db, engine) {
+			if table, _, ok := strings.Cut(l, "."); ok && !strings.Contains(table, " ") {
+				tables[table] = true
+				continue
+			}
+			m := line.FindStringSubmatch(l)
+			if m == nil {
+				t.Errorf("unread schema line: %s", l)
+				continue
+			}
+			kind, name, table, cols := m[1], m[2], m[3], strings.ReplaceAll(m[4], ",", "_")
+			want := "fk_" + table + "_" + cols
+			switch {
+			case kind == "pk":
+				want = "pk_" + table
+				keyed[table] = true
+			case kind == "index" && m[5] != "":
+				want = "uk_" + table + "_" + cols
+			case kind == "index":
+				want = "ix_" + table + "_" + cols
+			}
+			if name != want {
+				t.Errorf("%s: named %s, want %s", l, name, want)
+			}
+		}
+		for table := range tables {
+			if !keyed[table] {
+				t.Errorf("%s: no named primary key", table)
+			}
+		}
+	})
 }
 
 // Every foreign key is named fk_<table>_<column> and has the action its

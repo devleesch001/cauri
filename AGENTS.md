@@ -76,8 +76,8 @@ PRIMARY KEY (id)`: in SQLite an `INTEGER` key stays the rowid). A unique
 key is a named constraint in PostgreSQL, which names its index after it,
 and a `CREATE UNIQUE INDEX uk_…` in SQLite, whose inline unique
 constraints get `sqlite_autoindex_…` indexes: both engines then show the
-same name. Never leave a name to the engine. Names from before this rule
-are renamed by a dedicated migration.
+same name. Never leave a name to the engine: `TestKeyNames` checks them
+all (migration 00007 renamed the older ones).
 
 **Foreign keys** carry an explicit
 `ON DELETE` (`docs/db.md`): projections and events cascade from their

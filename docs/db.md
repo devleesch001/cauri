@@ -222,11 +222,31 @@ One feature still reads raw lines: replays take the terminal sizes from
 (`store.RawKept`); projecting them into their own table would remove the
 exception.
 
+## Names
+
+Every key and index is named after its table and columns, the same in both
+engines (migration 00007; `TestKeyNames` checks every one, so a name left
+to the engine fails the tests):
+
+| Kind | Name | Example |
+|---|---|---|
+| Primary key | `pk_<table>` | `pk_sessions` |
+| Unique key | `uk_<table>_<columns>` | `uk_sessions_sensor_id_cowrie_session` |
+| Foreign key | `fk_<table>_<column>` | `fk_events_session_id` |
+| Other index | `ix_<table>_<columns>` | `ix_sessions_started_at` |
+
+Primary and foreign keys are named table constraints. A unique key is a
+named constraint in PostgreSQL, whose index takes its name, and a named
+unique index in SQLite, which gives inline unique constraints automatic
+index names (`sqlite_autoindex_…`). SQLite renames neither constraints nor
+indexes: migration 00007 rebuilt every table, which leaves the old pages
+free in the file (about its size again) until new data reuses them or a
+`VACUUM` gives them back.
+
 ## Foreign keys
 
-Every foreign key is named `fk_<table>_<column>`, the same in both engines
-(`TestForeignKeyNamesAndActions` reads them back), and says what removing
-its parent does (migration 00005):
+Every foreign key says what removing its parent does (migration 00005;
+`TestForeignKeyNamesAndActions` reads them back):
 
 | Constraint | Parent | When the parent is deleted |
 |---|---|---|
@@ -269,32 +289,33 @@ rows, `foreign_key_check` empty.
 
 ## Indexes
 
-Each index, with the query it serves. Primary keys and `UNIQUE`
-constraints are indexes too.
+Each index, with the query it serves. Primary keys and unique keys are
+indexes too.
 
 | Index | Query |
 |---|---|
-| `sensors (name)` unique | Find the sensor of a token or a batch |
-| `ingest_tokens (token_hash)` unique | Authenticate an ingestor |
-| `sessions (sensor_id, cowrie_session)` unique | Upsert a session at ingestion |
-| `sessions (started_at)` | Session list, latest first |
-| `sessions (sensor_id, started_at)` | Session list of one sensor |
-| `sessions (src_ip)` | Filter by source address |
-| `sessions (geo_country, geo_city)` | Country and city filters, country counts (migration 00002) |
-| `sessions (verdict)` | Human/bot filter |
-| `sessions (shell)` | Interactive shell filter (migration 00006) |
-| `events (hash)` unique | Deduplication |
-| `events (session_id, ts)` | Events of a session page |
-| `login_attempts (session_id)` | Logins of a session; credentials in the list |
-| `login_attempts (ts)` | Failed logins list, latest first |
-| `login_attempts (username, session_id)` | Username filter, without the quadratic plan |
-| `commands (session_id)` | Commands of a session |
-| `transfers (session_id)` | Transfers of a session |
-| `transfers (sha256)` | Payloads by digest, sessions that transferred a file (migration 00003) |
-| `tty_files (sha256)` unique | Find a recording by digest at upload |
-| `sessions (tty_file_id)` | Sessions of a recording; deleting a recording (migration 00005) |
-| `events (sensor_id)` | Deleting a sensor checks its events (migration 00005) |
-| `ingest_tokens (sensor_id)` | Tokens of a sensor; deleting a sensor (migration 00005) |
+| `uk_sensors_name` | Find the sensor of a token or a batch |
+| `uk_ingest_tokens_token_hash` | Authenticate an ingestor |
+| `uk_sessions_sensor_id_cowrie_session` | Upsert a session at ingestion |
+| `ix_sessions_started_at` | Session list, latest first |
+| `ix_sessions_sensor_id_started_at` | Session list of one sensor |
+| `ix_sessions_src_ip` | Filter by source address |
+| `ix_sessions_geo_country_geo_city` | Country and city filters, country counts (migration 00002) |
+| `ix_sessions_verdict` | Human/bot filter |
+| `ix_sessions_asn` | Network filter (migration 00004) |
+| `ix_sessions_shell` | Interactive shell filter (migration 00006) |
+| `uk_events_hash` | Deduplication |
+| `ix_events_session_id_ts` | Events of a session page |
+| `ix_login_attempts_session_id` | Logins of a session; credentials in the list |
+| `ix_login_attempts_ts` | Failed logins list, latest first |
+| `ix_login_attempts_username_session_id` | Username filter, without the quadratic plan |
+| `ix_commands_session_id` | Commands of a session |
+| `ix_transfers_session_id` | Transfers of a session |
+| `ix_transfers_sha256` | Payloads by digest, sessions that transferred a file (migration 00003) |
+| `uk_tty_files_sha256` | Find a recording by digest at upload |
+| `ix_sessions_tty_file_id` | Sessions of a recording; deleting a recording (migration 00005) |
+| `ix_events_sensor_id` | Deleting a sensor checks its events (migration 00005) |
+| `ix_ingest_tokens_sensor_id` | Tokens of a sensor; deleting a sensor (migration 00005) |
 
 Dropped from the first schema: `raw_events (eventid, ts)` (no query) and
 `sessions (tty_sha256)` (no query found; to add back when a feature
