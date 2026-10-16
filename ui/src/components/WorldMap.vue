@@ -292,9 +292,9 @@ function select(a2?: string) {
         </CountryFlag>
         <span>{{ t('overview.sessions', { n: hover.sessions.toLocaleString() }, hover.sessions) }}</span>
         <span
-          v-if="hover.shells"
-          class="shell"
-        >{{ t('overview.loggedIn', { n: hover.shells.toLocaleString() }, hover.shells) }}</span>
+          v-if="hover.logged_in"
+          class="logged-in"
+        >{{ t('overview.loggedIn', { n: hover.logged_in.toLocaleString() }, hover.logged_in) }}</span>
       </template>
     </div>
     <div class="legend muted">
@@ -381,7 +381,7 @@ path.hovered {
   stroke-width: 1.2;
 }
 
-/* Dark on the coloured countries, never red: red means a shell. */
+/* Dark on the coloured countries, never red: red means a login. */
 circle {
   fill: var(--c-ink);
   fill-opacity: 0.4;

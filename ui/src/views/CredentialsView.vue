@@ -117,7 +117,7 @@ const shown = (v: string) => (v === '' ? t('session.logins.emptyPassword') : v)
             :to="(p) => link('sessions', { username: p.username, password: p.password, login: 'success' })"
           >
             <template #label="{ item }">
-              <span class="data shell">{{ shown(item.username) }} / {{ shown(item.password) }}</span>
+              <span class="data logged-in">{{ shown(item.username) }} / {{ shown(item.password) }}</span>
             </template>
           </BarList>
           <p

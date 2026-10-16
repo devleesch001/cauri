@@ -338,10 +338,10 @@ type LoginAttemptFilter struct {
 	Country  string     // of the session's source address
 	From, To *time.Time // on ts, To exclusive
 	Success  *bool
-	// Interactive filters on whether the session obtained a shell, that is
+	// LoggedIn filters on whether the session logged in, that is
 	// whether any login of the session succeeded.
-	Interactive *bool
-	Sort        Sort // of the list only, by LoginAttemptSorts
+	LoggedIn *bool
+	Sort     Sort // of the list only, by LoginAttemptSorts
 	Page
 }
 
@@ -424,8 +424,8 @@ func (f LoginAttemptFilter) query(db bun.IDB) *bun.SelectQuery {
 	if f.Success != nil {
 		q = q.Where("la.success = ?", *f.Success)
 	}
-	if f.Interactive != nil {
-		q = q.Where("s.login_success = ?", *f.Interactive)
+	if f.LoggedIn != nil {
+		q = q.Where("s.login_success = ?", *f.LoggedIn)
 	}
 	return q
 }
@@ -564,7 +564,7 @@ func GetSessionFacts(ctx context.Context, db bun.IDB, id int64) (*SessionFacts, 
 type CountryCount struct {
 	Country  string `bun:"geo_country" json:"country"`
 	Sessions int    `bun:"n" json:"sessions"`
-	Shells   int    `bun:"shells" json:"shells"` // sessions that obtained a shell
+	LoggedIn int    `bun:"logged_in" json:"logged_in"` // sessions that logged in
 }
 
 // StatsFilter selects the sessions statistics count: by place, time,
@@ -582,7 +582,7 @@ type StatsFilter struct {
 func ListCountries(ctx context.Context, db bun.IDB, f StatsFilter) ([]CountryCount, error) {
 	out := []CountryCount{}
 	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country").ColumnExpr("COUNT(*) AS n").
-		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		Where("s.geo_country IS NOT NULL")
 	q = f.apply(q).GroupExpr("s.geo_country").OrderExpr("n DESC, s.geo_country")
 	err := q.Scan(ctx, &out)
@@ -618,7 +618,7 @@ type CityCount struct {
 	Lat      float64 `bun:"lat" json:"lat"`
 	Lon      float64 `bun:"lon" json:"lon"`
 	Sessions int     `bun:"n" json:"sessions"`
-	Shells   int     `bun:"shells" json:"shells"`
+	LoggedIn int     `bun:"logged_in" json:"logged_in"`
 }
 
 // MaxCities bounds the cities returned, the most active first: enough for
@@ -632,7 +632,7 @@ func ListCities(ctx context.Context, db bun.IDB, f StatsFilter) ([]CityCount, er
 	out := []CityCount{}
 	q := db.NewSelect().Model((*Session)(nil)).Column("geo_country", "geo_city").
 		ColumnExpr("AVG(s.geo_lat) AS lat, AVG(s.geo_lon) AS lon, COUNT(*) AS n").
-		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		Where("s.geo_city IS NOT NULL").Where("s.geo_lat IS NOT NULL")
 	q = f.apply(q).GroupExpr("s.geo_country, s.geo_city").
 		OrderExpr("n DESC, s.geo_country, s.geo_city").Limit(MaxCities)

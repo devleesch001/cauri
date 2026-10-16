@@ -131,7 +131,7 @@ function onPage(e: DataTablePageEvent) {
 function open(e: DataTableRowClickEvent<SessionSummary>) {
   void router.push({ name: 'session', params: { id: String(e.data.id) } })
 }
-// The credentials that opened a shell come first: they are what matters.
+// The credentials that logged in come first: they are what matters.
 function shown(s: SessionSummary) {
   return [...s.credentials].sort((a, b) => Number(b.success) - Number(a.success)).slice(0, 3)
 }
@@ -360,7 +360,7 @@ function clearFilters() {
             v-for="(c, i) in shown(data)"
             :key="i"
             class="data cred"
-            :class="{ shell: c.success }"
+            :class="{ 'logged-in': c.success }"
           >{{ c.username }} / {{ c.password }}</span>
           <span
             v-if="data.login_attempts > 3"
@@ -425,7 +425,7 @@ function clearFilters() {
         <template #body="{ data }">
           <span
             v-if="data.login_success"
-            class="shell"
+            class="logged-in"
           >{{ t('sessions.outcome.loggedIn') }}</span>
           <span
             v-else-if="data.login_attempts"

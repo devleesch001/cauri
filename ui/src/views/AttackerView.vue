@@ -118,8 +118,8 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
         />
         <KpiCard
           :label="t('stats.loggedIn')"
-          :value="summary.shells"
-          :previous="summary.previous?.shells"
+          :value="summary.logged_in"
+          :previous="summary.previous?.logged_in"
         />
         <KpiCard
           :label="t('stats.logins')"
@@ -210,9 +210,9 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
             <template #value="{ item }">
               {{ item.sessions.toLocaleString() }}
               <span
-                v-if="item.shells"
-                class="shell"
-              > · {{ item.shells.toLocaleString() }}</span>
+                v-if="item.logged_in"
+                class="logged-in"
+              > · {{ item.logged_in.toLocaleString() }}</span>
             </template>
           </BarList>
         </section>
@@ -232,7 +232,7 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
             <template #label="{ item }">
               <span
                 class="data"
-                :class="{ shell: item.accepted }"
+                :class="{ 'logged-in': item.accepted }"
               >{{ shown(item.username) }} / {{ shown(item.password) }}</span>
             </template>
           </BarList>
@@ -335,7 +335,7 @@ function open(e: DataTableRowClickEvent<SessionSummary>) {
             <template #body="{ data }">
               <span
                 v-if="data.login_success"
-                class="shell"
+                class="logged-in"
               >{{ t('sessions.outcome.loggedIn') }}</span>
               <span
                 v-else-if="data.login_attempts"

@@ -14,7 +14,7 @@ import (
 const (
 	SortSessions = "sessions" // most sessions first, the default
 	SortLastSeen = "last_seen"
-	SortShells   = "shells"
+	SortLoggedIn = "logged_in"
 )
 
 // AttackerFilter selects attackers. The statistics filter applies to their
@@ -24,8 +24,8 @@ type AttackerFilter struct {
 	Country  string // ISO 3166-1 alpha-2 code
 	ASN      int64
 	IPPrefix string // start of the address
-	Shell    *bool  // obtained a shell at least once, or never
-	Sort     Sort   // by SortSessions (the default), SortLastSeen or SortShells
+	LoggedIn *bool  // logged in at least once, or never
+	Sort     Sort   // by SortSessions (the default), SortLastSeen or SortLoggedIn
 	Page
 }
 
@@ -33,8 +33,8 @@ type AttackerFilter struct {
 type Attacker struct {
 	IP        string  `bun:"src_ip" json:"ip"`
 	Sessions  int     `bun:"n" json:"sessions"`
-	Shells    int     `bun:"shells" json:"shells"` // sessions that obtained a shell
-	Logins    int     `bun:"-" json:"logins"`      // login attempts
+	LoggedIn  int     `bun:"logged_in" json:"logged_in"` // sessions that logged in
+	Logins    int     `bun:"-" json:"logins"`            // login attempts
 	FirstSeen Time    `bun:"first_ts" json:"first_seen"`
 	LastSeen  Time    `bun:"last_ts" json:"last_seen"`
 	Country   *string `bun:"country" json:"country"` // an address has one location, its last
@@ -52,7 +52,7 @@ type Attacker struct {
 func selectAttackers(db bun.IDB, f StatsFilter) *bun.SelectQuery {
 	q := db.NewSelect().Model((*Session)(nil)).Column("src_ip").
 		ColumnExpr("COUNT(*) AS n").
-		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		ColumnExpr("MIN(s.started_at) AS first_ts, MAX(s.started_at) AS last_ts").
 		ColumnExpr("MAX(s.geo_country) AS country, MAX(s.geo_city) AS city").
 		ColumnExpr("MAX(s.asn) AS asn, MAX(s.as_org) AS as_org").
@@ -77,8 +77,8 @@ func ListAttackers(ctx context.Context, db bun.IDB, f AttackerFilter) ([]Attacke
 	if f.IPPrefix != "" {
 		q = q.Where(`s.src_ip LIKE ? ESCAPE '\'`, likePrefix(f.IPPrefix))
 	}
-	if f.Shell != nil {
-		if *f.Shell {
+	if f.LoggedIn != nil {
+		if *f.LoggedIn {
 			q = q.Having("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) > 0")
 		} else {
 			q = q.Having("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) = 0")

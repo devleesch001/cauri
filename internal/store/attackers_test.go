@@ -58,7 +58,7 @@ func TestListAttackers(t *testing.T) {
 			t.Fatalf("attackers = %v, total %d", ips, total)
 		}
 		a := rows[0]
-		if a.Sessions != 2 || a.Shells != 1 || a.Logins != 3 || !a.FirstSeen.Equal(t0) || !a.LastSeen.Equal(t0.Add(3*time.Hour)) {
+		if a.Sessions != 2 || a.LoggedIn != 1 || a.Logins != 3 || !a.FirstSeen.Equal(t0) || !a.LastSeen.Equal(t0.Add(3*time.Hour)) {
 			t.Errorf("203.0.113.1 = %+v", a)
 		}
 
@@ -66,12 +66,12 @@ func TestListAttackers(t *testing.T) {
 			f    store.AttackerFilter
 			want []string
 		}{
-			"last seen":   {store.AttackerFilter{Sort: store.Sort{By: store.SortLastSeen}}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
-			"shells":      {store.AttackerFilter{Sort: store.Sort{By: store.SortShells}}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
-			"got a shell": {store.AttackerFilter{Shell: ptr(true)}, []string{"203.0.113.1"}},
-			"never":       {store.AttackerFilter{Shell: ptr(false)}, []string{"203.0.113.3", "203.0.113.2"}},
-			"prefix":      {store.AttackerFilter{IPPrefix: "203.0.113.3"}, []string{"203.0.113.3"}},
-			"wildcards":   {store.AttackerFilter{IPPrefix: "203_0%"}, []string{}},
+			"last seen":             {store.AttackerFilter{Sort: store.Sort{By: store.SortLastSeen}}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
+			"logged in, most first": {store.AttackerFilter{Sort: store.Sort{By: store.SortLoggedIn}}, []string{"203.0.113.1", "203.0.113.3", "203.0.113.2"}},
+			"logged in":             {store.AttackerFilter{LoggedIn: ptr(true)}, []string{"203.0.113.1"}},
+			"never":                 {store.AttackerFilter{LoggedIn: ptr(false)}, []string{"203.0.113.3", "203.0.113.2"}},
+			"prefix":                {store.AttackerFilter{IPPrefix: "203.0.113.3"}, []string{"203.0.113.3"}},
+			"wildcards":             {store.AttackerFilter{IPPrefix: "203_0%"}, []string{}},
 			// The statistics filter applies to sessions: from hp-02, the
 			// first attacker has one session, one login.
 			"sensor": {store.AttackerFilter{StatsFilter: store.StatsFilter{Sensor: "hp-02"}}, []string{"203.0.113.1", "203.0.113.3"}},

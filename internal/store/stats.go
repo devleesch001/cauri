@@ -19,7 +19,7 @@ const (
 // Summary are the headline numbers of a set of sessions.
 type Summary struct {
 	Sessions  int `bun:"sessions" json:"sessions"`
-	Shells    int `bun:"shells" json:"shells"`         // sessions that obtained a shell
+	LoggedIn  int `bun:"logged_in" json:"logged_in"`   // sessions that logged in
 	SourceIPs int `bun:"source_ips" json:"source_ips"` // distinct source addresses
 	Countries int `bun:"countries" json:"countries"`   // distinct countries located
 	Logins    int `bun:"logins" json:"logins"`         // login attempts
@@ -47,7 +47,7 @@ func summarize1(ctx context.Context, db bun.IDB, f StatsFilter) (*Summary, error
 	sum := new(Summary)
 	q := db.NewSelect().Model((*Session)(nil)).
 		ColumnExpr("COUNT(*) AS sessions").
-		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		ColumnExpr("COUNT(DISTINCT s.src_ip) AS source_ips").
 		ColumnExpr("COUNT(DISTINCT s.geo_country) AS countries")
 	if err := f.apply(q).Scan(ctx, sum); err != nil {
@@ -75,7 +75,7 @@ type DayCount struct {
 	Day      string `bun:"-" json:"day"` // YYYY-MM-DD
 	Index    int64  `bun:"day" json:"-"` // days since 1970-01-01
 	Sessions int    `bun:"n" json:"sessions"`
-	Shells   int    `bun:"shells" json:"shells"`
+	LoggedIn int    `bun:"logged_in" json:"logged_in"`
 }
 
 // Activity is when sessions happen, in UTC.
@@ -99,7 +99,7 @@ func GetActivity(ctx context.Context, db bun.IDB, f StatsFilter) (*Activity, err
 	q = db.NewSelect().Model((*Session)(nil)).
 		ColumnExpr("s.started_at / ? AS day", microsPerDay).
 		ColumnExpr("COUNT(*) AS n").
-		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		GroupExpr("1").OrderExpr("1")
 	if err := f.apply(q).Scan(ctx, &a.Days); err != nil {
 		return nil, err
@@ -291,7 +291,7 @@ type SourceCount struct {
 	IP       string  `bun:"src_ip" json:"ip"`
 	Country  *string `bun:"country" json:"country"`
 	Sessions int     `bun:"n" json:"sessions"`
-	Shells   int     `bun:"shells" json:"shells"`
+	LoggedIn int     `bun:"logged_in" json:"logged_in"`
 	Last     Time    `bun:"last_ts" json:"last"`
 }
 
@@ -326,7 +326,7 @@ func GetOrigins(ctx context.Context, db bun.IDB, f StatsFilter) (*Origins, error
 	o := &Origins{Sources: []SourceCount{}, Networks: []NetworkCount{}, Clients: []ClientCount{}}
 	q := db.NewSelect().Model((*Session)(nil)).Column("src_ip").
 		ColumnExpr("MIN(s.geo_country) AS country, COUNT(*) AS n, MAX(s.started_at) AS last_ts").
-		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS shells").
+		ColumnExpr("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) AS logged_in").
 		Where("s.src_ip IS NOT NULL").GroupExpr("s.src_ip").OrderExpr("n DESC, s.src_ip").Limit(TopOrigins)
 	if err := f.apply(q).Scan(ctx, &o.Sources); err != nil {
 		return nil, err

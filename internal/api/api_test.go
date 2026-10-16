@@ -657,12 +657,12 @@ func TestGeoIP(t *testing.T) {
 
 		var countries []store.CountryCount
 		get(t, e, "/api/countries", http.StatusOK, &countries)
-		if len(countries) != 1 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 1, Shells: 1}) {
+		if len(countries) != 1 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 1, LoggedIn: 1}) {
 			t.Errorf("countries = %+v", countries)
 		}
 		var cities []store.CityCount
 		get(t, e, "/api/cities?verdict=bot", http.StatusOK, &cities)
-		if len(cities) != 1 || cities[0] != (store.CityCount{Country: "IR", City: "Tehran", Lat: 35.6944, Lon: 51.4215, Sessions: 1, Shells: 1}) {
+		if len(cities) != 1 || cities[0] != (store.CityCount{Country: "IR", City: "Tehran", Lat: 35.6944, Lon: 51.4215, Sessions: 1, LoggedIn: 1}) {
 			t.Errorf("cities = %+v", cities)
 		}
 		get(t, e, "/api/cities?verdict=robot", http.StatusBadRequest, nil)
@@ -768,7 +768,7 @@ func TestStats(t *testing.T) {
 
 		var sum store.Summary
 		get(t, e, "/api/stats/summary", http.StatusOK, &sum)
-		if sum.Sessions != 4 || sum.Shells != 2 || sum.SourceIPs != 1 || sum.Logins != 4 || sum.Accepted != 2 || sum.Previous != nil {
+		if sum.Sessions != 4 || sum.LoggedIn != 2 || sum.SourceIPs != 1 || sum.Logins != 4 || sum.Accepted != 2 || sum.Previous != nil {
 			t.Errorf("summary = %+v", sum)
 		}
 		get(t, e, "/api/stats/summary?from=2026-10-14T00:00:00Z&to=2026-10-15T00:00:00Z", http.StatusOK, &sum)
@@ -1037,10 +1037,10 @@ func TestAttackers(t *testing.T) {
 			Total int              `json:"total"`
 		}
 		get(t, e, "/api/attackers", http.StatusOK, &list)
-		if list.Total != 2 || list.Items[0].IP != "203.0.113.9" || list.Items[0].Sessions != 2 || list.Items[0].Shells != 1 {
+		if list.Total != 2 || list.Items[0].IP != "203.0.113.9" || list.Items[0].Sessions != 2 || list.Items[0].LoggedIn != 1 {
 			t.Fatalf("attackers = %+v", list)
 		}
-		get(t, e, "/api/attackers?shell=true", http.StatusOK, &list)
+		get(t, e, "/api/attackers?logged_in=true", http.StatusOK, &list)
 		if list.Total != 1 {
 			t.Errorf("with a shell = %+v", list)
 		}
@@ -1049,7 +1049,7 @@ func TestAttackers(t *testing.T) {
 			t.Errorf("by prefix = %+v", list)
 		}
 		get(t, e, "/api/attackers?sort=name", http.StatusBadRequest, nil)
-		get(t, e, "/api/attackers?shell=maybe", http.StatusBadRequest, nil)
+		get(t, e, "/api/attackers?logged_in=maybe", http.StatusBadRequest, nil)
 
 		var d store.AttackerDetail
 		get(t, e, "/api/attackers/203.0.113.9", http.StatusOK, &d)

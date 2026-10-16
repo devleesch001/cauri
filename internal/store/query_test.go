@@ -205,13 +205,13 @@ func TestListLoginAttempts(t *testing.T) {
 			}
 			return b.String()
 		}
-		if got := get(store.LoginAttemptFilter{Success: ptr(false), Interactive: ptr(false)}); got != "test/test@hp-02 admin/admin@hp-01 " {
+		if got := get(store.LoginAttemptFilter{Success: ptr(false), LoggedIn: ptr(false)}); got != "test/test@hp-02 admin/admin@hp-01 " {
 			t.Errorf("failed, no shell: %q", got)
 		}
 		if got := get(store.LoginAttemptFilter{Sensor: "hp-01", Username: "root"}); got != "root/123456@hp-01 root/admin@hp-01 " {
 			t.Errorf("root on hp-01: %q", got)
 		}
-		if got := get(store.LoginAttemptFilter{Interactive: ptr(true), Success: ptr(false)}); got != "root/admin@hp-01 " {
+		if got := get(store.LoginAttemptFilter{LoggedIn: ptr(true), Success: ptr(false)}); got != "root/admin@hp-01 " {
 			t.Errorf("failed before a shell: %q", got)
 		}
 	})
@@ -244,9 +244,9 @@ func TestCountries(t *testing.T) {
 		if _, got := sessions(t, db, store.SessionFilter{Country: "IR"}); got != "31" {
 			t.Errorf("sessions from IR = %q", got)
 		}
-		// Session 1 (IR) obtained a shell.
+		// Session 1 (IR) logged in.
 		countries, err := store.ListCountries(ctx, db, store.StatsFilter{})
-		if err != nil || len(countries) != 2 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 2, Shells: 1}) ||
+		if err != nil || len(countries) != 2 || countries[0] != (store.CountryCount{Country: "IR", Sessions: 2, LoggedIn: 1}) ||
 			countries[1] != (store.CountryCount{Country: "FR", Sessions: 1}) {
 			t.Errorf("countries = %+v, %v", countries, err)
 		}
@@ -277,7 +277,7 @@ func TestCountries(t *testing.T) {
 		if err != nil || len(cities) != 1 {
 			t.Fatalf("cities = %+v, %v", cities, err)
 		}
-		if c := cities[0]; c.Country != "IR" || c.City != "Tehran" || c.Sessions != 2 || c.Shells != 1 ||
+		if c := cities[0]; c.Country != "IR" || c.City != "Tehran" || c.Sessions != 2 || c.LoggedIn != 1 ||
 			math.Abs(c.Lat-35.7) > 1e-9 || math.Abs(c.Lon-51.5) > 1e-9 {
 			t.Errorf("Tehran = %+v, want the average position", c)
 		}

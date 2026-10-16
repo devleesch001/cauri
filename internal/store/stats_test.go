@@ -24,7 +24,7 @@ func TestSummarize(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := store.Summary{Sessions: 3, Shells: 1, SourceIPs: 3, Logins: 4, Accepted: 1}
+		want := store.Summary{Sessions: 3, LoggedIn: 1, SourceIPs: 3, Logins: 4, Accepted: 1}
 		if *sum != want {
 			t.Errorf("summary = %+v, want %+v", *sum, want)
 		}
@@ -33,9 +33,9 @@ func TestSummarize(t *testing.T) {
 		if err != nil || sum.Sessions != 2 || sum.Logins != 2 || sum.Previous == nil || sum.Previous.Sessions != 1 || sum.Previous.Accepted != 1 {
 			t.Errorf("period = %+v (previous %+v), %v", sum, sum.Previous, err)
 		}
-		// Only the sessions that got a shell: A, its two attempts.
+		// Only the sessions that logged in: A, its two attempts.
 		sum, err = store.Summarize(ctx, db, store.StatsFilter{Login: store.LoginSuccess})
-		if err != nil || sum.Sessions != 1 || sum.Shells != 1 || sum.Logins != 2 || sum.Accepted != 1 {
+		if err != nil || sum.Sessions != 1 || sum.LoggedIn != 1 || sum.Logins != 2 || sum.Accepted != 1 {
 			t.Errorf("shells only = %+v, %v", sum, err)
 		}
 		// Empty: zeros, not errors.
@@ -57,7 +57,7 @@ func TestActivity(t *testing.T) {
 		if !slices.Equal(a.Hours, want) {
 			t.Errorf("hours = %+v", a.Hours)
 		}
-		if len(a.Days) != 1 || a.Days[0].Day != "2026-10-14" || a.Days[0].Sessions != 3 || a.Days[0].Shells != 1 {
+		if len(a.Days) != 1 || a.Days[0].Day != "2026-10-14" || a.Days[0].Sessions != 3 || a.Days[0].LoggedIn != 1 {
 			t.Errorf("days = %+v", a.Days)
 		}
 	})
@@ -140,7 +140,7 @@ func TestOrigins(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(o.Sources) != 3 || o.Sources[0].Sessions != 1 || o.Sources[0].IP != "203.0.113.1" || o.Sources[0].Shells != 1 {
+		if len(o.Sources) != 3 || o.Sources[0].Sessions != 1 || o.Sources[0].IP != "203.0.113.1" || o.Sources[0].LoggedIn != 1 {
 			t.Errorf("sources = %+v", o.Sources)
 		}
 		if len(o.Networks) != 0 {

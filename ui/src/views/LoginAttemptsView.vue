@@ -17,8 +17,8 @@ import { formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
 import { notFilters, useTableSort } from '@/sort'
 
-// Failed logins. By default only those of sessions that never obtained a
-// shell: the credential spraying that leaves no other trace.
+// Failed logins. By default only those of sessions that never logged
+// in: the credential spraying that leaves no other trace.
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -35,9 +35,9 @@ function applyText() {
   void patchQuery({ ...text.value })
 }
 
-const withShells = computed({
-  get: () => q('with_shells') === 'true',
-  set: (v: boolean) => void patchQuery({ with_shells: v ? 'true' : undefined }),
+const withLoggedIn = computed({
+  get: () => q('with_logged_in') === 'true',
+  set: (v: boolean) => void patchQuery({ with_logged_in: v ? 'true' : undefined }),
 })
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
@@ -48,7 +48,7 @@ const { params: sortParams, kept, field: sortField, direction, onSort } = useTab
 // The API parameters of the filters, shared by the list and its export.
 const filters = computed(() => ({
   sensor: q('sensor'), ip: q('ip'), username: q('username'), password: q('password'),
-  success: false, interactive: withShells.value ? undefined : false,
+  success: false, logged_in: withLoggedIn.value ? undefined : false,
   ...dayRange(q('from'), q('to')),
 }))
 const csvUrl = computed(() => api.loginAttemptsCsvUrl(filters.value))
@@ -131,7 +131,7 @@ function open(e: DataTableRowClickEvent<LoginAttemptRow>) {
       </div>
       <div class="filters">
         <label class="toggle">
-          <ToggleSwitch v-model="withShells" />
+          <ToggleSwitch v-model="withLoggedIn" />
           {{ t('logins.includeLoggedIn') }}
         </label>
         <Button

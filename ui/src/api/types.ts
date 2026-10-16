@@ -140,13 +140,13 @@ export interface CityCount {
   lat: number
   lon: number
   sessions: number
-  shells: number
+  logged_in: number
 }
 
 export interface CountryCount {
   country: string // ISO 3166-1 alpha-2
   sessions: number
-  shells: number // sessions that obtained a shell
+  logged_in: number // sessions that logged in
 }
 
 /** GET /api/about. */
@@ -168,7 +168,7 @@ export interface GeoDatabase {
 /** Headline numbers (GET /api/stats/summary); previous: the period of equal length before. */
 export interface Summary {
   sessions: number
-  shells: number
+  logged_in: number
   source_ips: number
   countries: number
   logins: number
@@ -179,7 +179,7 @@ export interface Summary {
 /** When sessions start, in UTC (GET /api/stats/activity). */
 export interface Activity {
   hours: { weekday: number; hour: number; sessions: number }[] // weekday 0 is Sunday
-  days: { day: string; sessions: number; shells: number }[] // day: YYYY-MM-DD
+  days: { day: string; sessions: number; logged_in: number }[] // day: YYYY-MM-DD
 }
 
 export interface ValueCount {
@@ -239,7 +239,7 @@ export interface Commands {
 
 /** Who attacks (GET /api/stats/origins). */
 export interface Origins {
-  sources: { ip: string; country: string | null; sessions: number; shells: number; last: string }[]
+  sources: { ip: string; country: string | null; sessions: number; logged_in: number; last: string }[]
   networks: { asn: number; org: string; sessions: number; sources: number }[] // with an ASN database
   clients: { client: string; sessions: number; sources: number }[]
 }
@@ -258,7 +258,7 @@ export interface AdminToken {
 export interface Attacker {
   ip: string
   sessions: number
-  shells: number // sessions that obtained a shell
+  logged_in: number // sessions that logged in
   logins: number // login attempts
   first_seen: string
   last_seen: string

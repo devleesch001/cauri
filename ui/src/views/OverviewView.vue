@@ -129,10 +129,10 @@ function open(country: string, city?: string) {
           <template #value="{ item }">
             {{ item.sessions.toLocaleString() }}
             <span
-              v-if="item.shells"
-              class="shell"
-              :title="t('overview.loggedIn', { n: item.shells.toLocaleString() }, item.shells)"
-            > · {{ item.shells.toLocaleString() }}</span>
+              v-if="item.logged_in"
+              class="logged-in"
+              :title="t('overview.loggedIn', { n: item.logged_in.toLocaleString() }, item.logged_in)"
+            > · {{ item.logged_in.toLocaleString() }}</span>
           </template>
         </BarList>
       </FloatingPanel>

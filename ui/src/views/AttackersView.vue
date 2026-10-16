@@ -64,9 +64,9 @@ const verdictOptions = computed(() => [
   { label: t('sessions.filters.humans'), value: 'human' },
   { label: t('sessions.filters.bots'), value: 'bot' },
 ])
-const shell = computed({
-  get: () => q('shell') === 'true',
-  set: (v: boolean) => void patchQuery({ shell: v ? 'true' : undefined }),
+const loggedIn = computed({
+  get: () => q('logged_in') === 'true',
+  set: (v: boolean) => void patchQuery({ logged_in: v ? 'true' : undefined }),
 })
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
@@ -86,7 +86,7 @@ watch(
     try {
       const res = await api.attackers({
         sensor: q('sensor'), verdict: q('verdict'), country: q('country'), asn: q('asn'),
-        ip_prefix: q('ip_prefix'), shell: q('shell'), ...sortParams.value,
+        ip_prefix: q('ip_prefix'), logged_in: q('logged_in'), ...sortParams.value,
         ...dayRange(q('from'), q('to')),
         limit: rows, offset: (page.value - 1) * rows,
       })
@@ -189,7 +189,7 @@ function clearFilters() {
           :aria-label="t('sessions.filters.verdict')"
         />
         <label class="toggle">
-          <ToggleSwitch v-model="shell" />
+          <ToggleSwitch v-model="loggedIn" />
           {{ t('attackers.filters.loggedIn') }}
         </label>
         <Button
@@ -273,16 +273,16 @@ function clearFilters() {
         </template>
       </Column>
       <Column
-        field="shells"
+        field="logged_in"
         :header="t('attackers.columns.loggedIn')"
         sortable
         class="num"
       >
         <template #body="{ data }">
           <span
-            v-if="data.shells"
-            class="shell"
-          >{{ data.shells.toLocaleString() }}</span>
+            v-if="data.logged_in"
+            class="logged-in"
+          >{{ data.logged_in.toLocaleString() }}</span>
           <span
             v-else
             class="muted"

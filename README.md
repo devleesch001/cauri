@@ -209,7 +209,7 @@ its name (from the browser) and its flag, from
 UI: no request leaves for another site.
 
 The **overview** page, the first one, maps where attacks come from:
-countries coloured by sessions (logarithmic scale), sessions and shells
+countries coloured by sessions (logarithmic scale), sessions and logins
 on hover, with the period, sensor and human/bot filters of the lists; a
 country leads to its sessions. With a city database (DB-IP City Lite,
 GeoLite2 City), the 500 most active cities are placed too, as circles
@@ -276,8 +276,8 @@ Besides the lists, the UI has pages that count:
 
 | Page | Shows |
 |---|---|
-| Overview | A full-page world map (wheel or buttons to zoom, drag to move, keys `+` `-` `0` and arrows) with, floating over it, a bubble per headline number (sessions, shells, login attempts, source addresses, countries; the previous period and more on hover) and an accordion of the first ten latest sessions, countries, busiest addresses, networks (with an ASN database) and SSH clients |
-| Activity | Sessions by hour and weekday, the busiest hours, sessions and shells by day (UTC) |
+| Overview | A full-page world map (wheel or buttons to zoom, drag to move, keys `+` `-` `0` and arrows) with, floating over it, a bubble per headline number (sessions, logged in, login attempts, source addresses, countries; the previous period and more on hover) and an accordion of the first ten latest sessions, countries, busiest addresses, networks (with an ASN database) and SSH clients |
+| Activity | Sessions by hour and weekday, the busiest hours, sessions and logins by day (UTC) |
 | Credentials | Usernames, passwords and pairs tried, those that let attackers in, password lengths |
 | Commands | Command lines run, by how many sessions and addresses ran each; client fingerprints (HASSH) of those sessions |
 | Payloads | Files downloaded or uploaded, by SHA-256: sessions, addresses and countries that fetched each, first and last seen, a VirusTotal link (by digest: the file never leaves cauri) |
@@ -286,15 +286,20 @@ Every page takes the filters of the lists (period, sensor, human or bot)
 and every number leads to the matching sessions or login attempts. The
 API serves them under `/api/stats/` (`summary`, `activity`,
 `credentials`, `commands`, `payloads`, `origins`) and `/api/countries`,
-`/api/cities`, with the parameters `sensor`, `from`, `to`, `verdict`.
+`/api/cities`, with the parameters `sensor`, `from`, `to`, `verdict` and
+`login` (`success` or `failed`).
+
+The session list, the failed logins and the attackers sort by a column:
+a click on its header, `sort` and `order` (`asc` or `desc`, the default)
+in the API.
 
 ### Attackers
 
 An attacker is, for now, a source address. The **Attackers** page lists
-them with their sessions, shells, login attempts, first and last seen,
+them with their sessions, those that logged in, login attempts, first and last seen,
 location, network and the verdict most of their sessions got; it filters
-by address prefix, country, network, verdict, period and whether they got
-a shell, and sorts by sessions, shells or last seen. A profile
+by address prefix, country, network, verdict, period and whether they
+logged in, and sorts by sessions, logins or last seen. A profile
 (`/attackers/{ip}`) gathers everything from one address: where it comes
 from, the sensors it reached, its SSH clients and HASSH, the statistics
 of the pages above narrowed to it (days, credentials, commands,
@@ -302,8 +307,8 @@ payloads) and its latest sessions. Addresses in the other pages, and an
 address typed in the search, lead to it.
 
 The API serves them as `GET /api/attackers` (parameters of the
-statistics plus `country`, `asn`, `ip_prefix`, `shell`, `sort` =
-`sessions`, `shells` or `last_seen`, `limit`, `offset`) and
+statistics plus `country`, `asn`, `ip_prefix`, `logged_in`, `sort` =
+`sessions`, `logged_in` or `last_seen`, `order`, `limit`, `offset`) and
 `GET /api/attackers/{ip}`; every `/api/stats/` route also takes `ip`.
 
 ### Exports

@@ -175,7 +175,7 @@ const logins = computed(() => {
           >{{ t('session.unknownSource') }}</span>
           <span
             v-if="session.login_success"
-            class="shell verdict"
+            class="logged-in verdict"
           >{{ t('session.loggedIn') }}</span>
           <span
             v-else
@@ -377,7 +377,7 @@ const logins = computed(() => {
                   >
                     {{ l.secret || t('session.logins.emptyPassword') }}
                   </td>
-                  <td :class="{ shell: l.result === 'accepted', muted: l.result !== 'accepted' }">
+                  <td :class="{ 'logged-in': l.result === 'accepted', muted: l.result !== 'accepted' }">
                     {{ t('session.logins.' + l.result) }}
                   </td>
                 </tr>

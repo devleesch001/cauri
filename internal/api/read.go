@@ -118,17 +118,17 @@ func (s *server) listLoginAttempts(w http.ResponseWriter, r *http.Request) {
 // loginAttemptFilter reads the filters of the login attempt list.
 func loginAttemptFilter(q *query) store.LoginAttemptFilter {
 	return store.LoginAttemptFilter{
-		Sensor:      q.str("sensor"),
-		SrcIP:       q.str("ip"),
-		Country:     q.country("country"),
-		Username:    q.str("username"),
-		Password:    q.str("password"),
-		From:        q.time("from"),
-		To:          q.time("to"),
-		Success:     q.bool("success"),
-		Interactive: q.bool("interactive"),
-		Sort:        q.sort(store.LoginAttemptSorts()),
-		Page:        q.page(),
+		Sensor:   q.str("sensor"),
+		SrcIP:    q.str("ip"),
+		Country:  q.country("country"),
+		Username: q.str("username"),
+		Password: q.str("password"),
+		From:     q.time("from"),
+		To:       q.time("to"),
+		Success:  q.bool("success"),
+		LoggedIn: q.bool("logged_in"),
+		Sort:     q.sort(store.LoginAttemptSorts()),
+		Page:     q.page(),
 	}
 }
 
@@ -301,7 +301,7 @@ func (s *server) listAttackers(w http.ResponseWriter, r *http.Request) {
 		Country:     q.country("country"),
 		ASN:         int64(q.int("asn")),
 		IPPrefix:    q.str("ip_prefix"),
-		Shell:       q.bool("shell"),
+		LoggedIn:    q.bool("logged_in"),
 		Sort:        q.sort(store.AttackerSorts()),
 		Page:        q.page(),
 	}

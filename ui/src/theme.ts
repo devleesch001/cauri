@@ -2,7 +2,7 @@ import { definePreset } from '@openvue/themes'
 import Aura from '@openvue/themes/aura'
 
 // Aura with orange as the interaction colour. Red is kept for one meaning
-// only, in style.css: an attacker obtained a shell.
+// only, in style.css: an attacker logged in.
 export const Cauri = definePreset(Aura, {
   semantic: {
     primary: {

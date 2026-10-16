@@ -130,15 +130,15 @@ const mostDay = computed(() => Math.max(1, ...days.value.map((d) => d.sessions))
           v-for="d in days"
           :key="d.day"
           class="day"
-          :title="t('activity.day', { day: d.day, n: d.sessions.toLocaleString(), loggedIn: d.shells.toLocaleString() })"
+          :title="t('activity.day', { day: d.day, n: d.sessions.toLocaleString(), loggedIn: d.logged_in.toLocaleString() })"
         >
           <span
             class="col"
             :style="{ height: `${(100 * d.sessions) / mostDay}%` }"
           >
             <span
-              class="shells"
-              :style="{ height: `${d.sessions ? (100 * d.shells) / d.sessions : 0}%` }"
+              class="logged-in-share"
+              :style="{ height: `${d.sessions ? (100 * d.logged_in) / d.sessions : 0}%` }"
             />
           </span>
         </span>
@@ -158,7 +158,7 @@ const mostDay = computed(() => Math.max(1, ...days.value.map((d) => d.sessions))
       </p>
       <p class="muted legend">
         <span class="swatch" /> {{ t('activity.legendSessions') }}
-        <span class="swatch shell-swatch" /> {{ t('activity.legendLoggedIn') }}
+        <span class="swatch logged-in-swatch" /> {{ t('activity.legendLoggedIn') }}
       </p>
     </section>
   </div>
@@ -247,9 +247,9 @@ const mostDay = computed(() => Math.max(1, ...days.value.map((d) => d.sessions))
   overflow: hidden;
 }
 
-/* Shells, red as everywhere: the share of the day's sessions. */
-.shells {
-  background: var(--c-shell);
+/* Logged in, red as everywhere: the share of the day's sessions. */
+.logged-in-share {
+  background: var(--c-logged-in);
 }
 
 .axis {
@@ -273,8 +273,8 @@ const mostDay = computed(() => Math.max(1, ...days.value.map((d) => d.sessions))
   background: var(--p-primary-color);
 }
 
-.shell-swatch {
+.logged-in-swatch {
   margin-left: var(--space-3);
-  background: var(--c-shell);
+  background: var(--c-logged-in);
 }
 </style>

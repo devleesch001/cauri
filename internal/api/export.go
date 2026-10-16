@@ -26,7 +26,7 @@ func (s *server) exportSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	cw := startCSV(w, "sessions")
 	_ = cw.Write([]string{"id", "started_at", "sensor", "session", "src_ip", "src_port", "country", "city", "asn", "as_org",
-		"client_version", "hassh", "duration_ms", "login_attempts", "shell", "commands", "verdict", "verdict_score", "recording"})
+		"client_version", "hassh", "duration_ms", "login_attempts", "logged_in", "commands", "verdict", "verdict_score", "recording"})
 	err := store.EachSession(r.Context(), s.DB, f, MaxExport, func(rows []store.SessionSummary) error {
 		for _, x := range rows {
 			_ = cw.Write([]string{

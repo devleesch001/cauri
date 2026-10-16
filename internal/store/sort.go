@@ -90,7 +90,7 @@ var attackerSort = sortable{
 	cols: map[string]column{
 		SortSessions: {"n", false},
 		SortLastSeen: {"last_ts", false},
-		SortShells:   {"shells", false},
+		SortLoggedIn: {"logged_in", false},
 	},
 	tie: []string{"n DESC", "last_ts DESC", "s.src_ip"},
 }

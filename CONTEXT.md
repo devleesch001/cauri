@@ -16,8 +16,8 @@ Version 1 is complete:
 - UI: session list, session detail with a timeline (commands shown as a
   terminal) and the replay of the recording with chapters (one per
   command, with its output) and player controls, a human/bot verdict with
-  its reasons, failed logins without a
-  shell, sensor filter; English, all texts in vue-i18n;
+  its reasons, failed logins of sessions
+  that never logged in, sensor filter; English, all texts in vue-i18n;
 - one Docker image (scratch, non-root), compose examples for modes 1
   and 2, GitHub and Forgejo Actions workflows with GoReleaser releases,
   README.

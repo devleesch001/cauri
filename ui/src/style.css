@@ -9,7 +9,7 @@
   --c-paper: var(--p-surface-50);
   --c-surface: var(--p-content-background);
   --c-rule: var(--p-content-border-color);
-  --c-shell: var(--p-red-700); /* an attacker obtained a shell: the one alarm colour */
+  --c-logged-in: var(--p-red-700); /* an attacker logged in: the one alarm colour */
   --c-map-land: var(--p-surface-200); /* countries without attacks */
   /* The terminal stays dark in both modes, as dark as the cards in dark
      mode: it stands out from the page. */
@@ -30,7 +30,7 @@
 
 :root.app-dark {
   --c-paper: var(--p-surface-950);
-  --c-shell: var(--p-red-400);
+  --c-logged-in: var(--p-red-400);
   --c-map-land: var(--p-surface-700);
 }
 
@@ -110,12 +110,12 @@ a {
   color: var(--c-muted);
 }
 
-.shell {
-  color: var(--c-shell);
+.logged-in {
+  color: var(--c-logged-in);
   font-weight: 600;
 }
 
-/* Verdict of a session: neutral colours; red only means "got a shell". */
+/* Verdict of a session: neutral colours; red only means "logged in". */
 .badge {
   display: inline-block;
   padding: 0 var(--space-2);

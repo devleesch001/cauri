@@ -234,8 +234,9 @@ without asking. Every user-facing string goes through vue-i18n
 (`ui/src/locales/en.ts` is the typed reference). Filters live in the URL
 query, kept per page for the browser session and restored when a page is
 reached without any (`ui/src/router.ts`, VueUse `useSessionStorage`). Visual system in `ui/src/style.css`: IBM Plex Sans for the UI, IBM
-Plex Mono only for technical values; red (`--c-shell`) means only "an
-attacker obtained a shell". Colours come from the OpenVue theme
+Plex Mono only for technical values; red (`--c-logged-in`) means only "an
+attacker logged in" (a login succeeded; many such sessions open no
+shell, so the UI never says "shell" for it). Colours come from the OpenVue theme
 (`ui/src/theme.ts`): the `--c-*` variables point to its tokens (`--p-*`),
 so that other themes can be added; no colour value in components. Dark
 mode has one source, the `app-dark` class on `<html>` set by

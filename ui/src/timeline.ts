@@ -6,7 +6,7 @@ import { t } from './i18n'
 // consecutive commands are grouped into one terminal block, every other
 // event becomes a line of prose.
 
-export type Tone = 'normal' | 'muted' | 'shell'
+export type Tone = 'normal' | 'muted' | 'logged-in'
 
 export interface ProseEntry {
   kind: 'prose'
@@ -60,13 +60,13 @@ function prose(e: RawEvent): ProseEntry {
     case 'cowrie.login.failed':
       return p(t('events.loginFailed'), `${str(d.username)} / ${str(d.password)}`)
     case 'cowrie.login.success':
-      return p(t('events.loginSuccess'), `${str(d.username)} / ${str(d.password)}`, 'shell')
+      return p(t('events.loginSuccess'), `${str(d.username)} / ${str(d.password)}`, 'logged-in')
     case 'cowrie.session.file_download':
-      return p(t('events.download', { url: str(d.url) }), t('session.files.sha256', { sha: str(d.shasum) }), 'shell')
+      return p(t('events.download', { url: str(d.url) }), t('session.files.sha256', { sha: str(d.shasum) }), 'logged-in')
     case 'cowrie.session.file_download.failed':
       return p(t('events.downloadFailed'), str(d.url))
     case 'cowrie.session.file_upload':
-      return p(t('events.upload', { filename: str(d.filename) }), t('session.files.sha256', { sha: str(d.shasum) }), 'shell')
+      return p(t('events.upload', { filename: str(d.filename) }), t('session.files.sha256', { sha: str(d.shasum) }), 'logged-in')
     case 'cowrie.log.closed':
       return p(t('events.logClosed', { duration: duration(d) }), undefined, 'muted')
     case 'cowrie.session.closed':
