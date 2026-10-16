@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -83,6 +84,19 @@ func (s *Store) Open(sha string) (*os.File, error) {
 		return nil, fmt.Errorf("invalid sha256 %q", sha)
 	}
 	return os.Open(filepath.Join(s.dir, RelPath(sha)))
+}
+
+// Remove deletes a stored recording. A recording already gone is not an
+// error: removing twice changes nothing.
+func (s *Store) Remove(sha string) error {
+	if !protocol.ValidSHA256(sha) {
+		return fmt.Errorf("invalid sha256 %q", sha)
+	}
+	err := os.Remove(filepath.Join(s.dir, RelPath(sha)))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 // Available tells whether the volume is there: a recording missing from

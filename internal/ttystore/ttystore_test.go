@@ -75,3 +75,26 @@ func TestInvalidSHA(t *testing.T) {
 		t.Error("want error for invalid sha")
 	}
 }
+
+func TestRemove(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := "recorded output"
+	sha := sum(content)
+	if _, err := s.Write(sha, int64(len(content)), strings.NewReader(content)); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // removing a removed file is harmless
+		if err := s.Remove(sha); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Open(sha); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Open after Remove: %v", err)
+	}
+	if err := s.Remove("../x"); err == nil {
+		t.Fatal("Remove accepted an invalid digest")
+	}
+}

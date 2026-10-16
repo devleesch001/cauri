@@ -150,7 +150,12 @@ func EachSession(ctx context.Context, db bun.IDB, f SessionFilter, limit int, fn
 
 // query selects the sessions of the filter, without order or page.
 func (f SessionFilter) query(db bun.IDB, dst any) *bun.SelectQuery {
-	q := selectSessions(db, dst)
+	return f.where(db, selectSessions(db, dst))
+}
+
+// where adds the conditions of the filter to q, a query on sessions (s)
+// joined with their sensor (sn).
+func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 	if f.Sensor != "" {
 		q = q.Where("sn.name = ?", f.Sensor)
 	}
