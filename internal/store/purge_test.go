@@ -69,3 +69,66 @@ func TestPurgeSessions(t *testing.T) {
 		}
 	})
 }
+
+// The key exchanges, networks and GeoIP databases of deleted sessions go
+// once no other session uses them.
+func TestPurgeSharedRows(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		seed(t, db)
+		ctx := context.Background()
+		shared := store.SSHKex{Digest: []byte("shared"), HASSH: ptr("h1")}
+		own := store.SSHKex{Digest: []byte("own"), HASSH: ptr("h2")}
+		for _, k := range []*store.SSHKex{&shared, &own} {
+			if _, err := db.NewInsert().Model(k).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		net, err := store.NetworkID(ctx, db, 4134, ptr("Chinanet"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		geo, err := store.GeoSourceID(ctx, db, "DBIP-City-Lite", t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Sessions 1 and 2 share a key exchange, a network and a database;
+		// 1 has a key exchange of its own.
+		for sess, kex := range map[string]int64{"1": own.ID, "2": shared.ID, "3": shared.ID} {
+			q := db.NewUpdate().Model((*store.Session)(nil)).Set("ssh_kex_id = ?", kex).Where("cowrie_session = ?", sess)
+			if sess != "3" {
+				q = q.Set("network_id = ?", net).Set("geo_source_id = ?", geo)
+			}
+			if _, err := q.Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		count := func(model any) int {
+			t.Helper()
+			n, err := db.NewSelect().Model(model).Count(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return int(n)
+		}
+
+		one := store.SessionFilter{SrcIP: "203.0.113.1"} // session 1
+		if c, err := store.CountPurge(ctx, db, one); err != nil || c.KeyExchanges != 1 || c.Networks != 0 || c.GeoSources != 0 {
+			t.Fatalf("count 1 = %+v, %v", c, err)
+		}
+		if c, _, err := store.DeleteSessionBatch(ctx, db, one, 10); err != nil || c.KeyExchanges != 1 {
+			t.Fatalf("delete 1 = %+v, %v", c, err)
+		}
+		if count((*store.SSHKex)(nil)) != 1 || count((*store.Network)(nil)) != 1 || count((*store.GeoSource)(nil)) != 1 {
+			t.Error("rows another session uses were deleted")
+		}
+
+		two := store.SessionFilter{SrcIP: "203.0.113.2"} // session 2, the last with the network and database
+		c, _, err := store.DeleteSessionBatch(ctx, db, two, 10)
+		if err != nil || c.KeyExchanges != 0 || c.Networks != 1 || c.GeoSources != 1 {
+			t.Fatalf("delete 2 = %+v, %v", c, err)
+		}
+		if count((*store.SSHKex)(nil)) != 1 || count((*store.Network)(nil)) != 0 || count((*store.GeoSource)(nil)) != 0 {
+			t.Error("rows no session uses were kept")
+		}
+	})
+}

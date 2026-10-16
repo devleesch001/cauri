@@ -447,7 +447,8 @@ With Docker: `docker compose exec api cauri token create --sensor hp-01`.
 
 `cauri purge` deletes the sessions matching every criterion given, with
 their events, raw lines, login attempts, commands, transfers, and the
-recordings no other session has (database rows and files). Without
+recordings (database rows and files), SSH key exchanges, networks and
+GeoIP databases no other session has: nothing of them stays. Without
 `--yes` it only counts what would go:
 
 ```sh

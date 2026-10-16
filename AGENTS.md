@@ -169,7 +169,7 @@ mandatory.
 | `internal/cowrie/` | What is kept of a Cowrie line besides it: projected fields, the event's data (`Fragment`), key exchanges (`Kex`); shared by ingestion and migrations |
 | `internal/store/` | bun models, migrations, read queries, statistics (`stats.go`), raw-data retention; `storetest/` gives test databases |
 | `internal/ttystore/` | Content-addressed recording storage |
-| `internal/purge/` | Deletes the sessions a `store.SessionFilter` selects, rows by batches then orphaned recording files; `cauri purge` now, the admin API later |
+| `internal/purge/` | Deletes the sessions a `store.SessionFilter` selects, rows by batches (with the recordings, key exchanges, networks and GeoIP databases no other session uses) then orphaned recording files; `cauri purge` now, the admin API later |
 | `internal/ttylog/`, `internal/asciicast/` | Cowrie recording parser and replay conversion; asciicast model, v3 encoder and simulated replay |
 | `internal/geoip/` | GeoIP lookups in an MMDB file (DB-IP Lite or GeoLite2), read into memory, reloaded on change; `geoiptest/` writes test databases |
 | `internal/verdict/` | Human/bot verdict: signals from the recording and the events, points, thresholds |

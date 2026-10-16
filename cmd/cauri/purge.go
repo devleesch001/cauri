@@ -101,6 +101,7 @@ func runPurge(ctx context.Context, args []string) error {
 	}{
 		{c.Sessions, "sessions"}, {c.Events, "events"}, {c.LoginAttempts, "login attempts"},
 		{c.Commands, "commands"}, {c.Transfers, "transfers"}, {c.Recordings, "recordings"},
+		{c.KeyExchanges, "key exchanges"}, {c.Networks, "networks"}, {c.GeoSources, "GeoIP databases"},
 	} {
 		fmt.Fprintf(w, "%d\t %s\n", r.n, r.name)
 	}
