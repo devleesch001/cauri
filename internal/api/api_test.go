@@ -299,6 +299,11 @@ func TestReadEndpoints(t *testing.T) {
 		if sessions.Total != 0 || sessions.Items == nil {
 			t.Errorf("failed sessions = %+v, want an empty list", sessions)
 		}
+		// Without a recording, whether it typed in a shell is unknown.
+		get(t, e, "/api/sessions?shell=true", http.StatusOK, &sessions)
+		if sessions.Total != 0 {
+			t.Errorf("shell sessions = %+v, want none", sessions)
+		}
 
 		var detail store.SessionDetail
 		get(t, e, fmt.Sprint("/api/sessions/", id), http.StatusOK, &detail)
@@ -316,7 +321,7 @@ func TestReadEndpoints(t *testing.T) {
 			t.Errorf("attempts = %+v", attempts)
 		}
 
-		for _, bad := range []string{"from=yesterday", "has_tty=maybe", "login=other", "limit=-1", "sort=s.id", "order=up"} {
+		for _, bad := range []string{"from=yesterday", "has_tty=maybe", "shell=maybe", "login=other", "limit=-1", "sort=s.id", "order=up"} {
 			get(t, e, "/api/sessions?"+bad, http.StatusBadRequest, nil)
 		}
 		get(t, e, "/api/login-attempts?sort=ts", http.StatusBadRequest, nil)

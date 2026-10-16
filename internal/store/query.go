@@ -67,6 +67,7 @@ type SessionFilter struct {
 	Verdict     string     // VerdictHuman or VerdictBot
 	HasCommands *bool
 	HasTTY      *bool
+	Shell       *bool  // typed in an interactive shell, or not; without a recording read, neither
 	File        string // SHA-256 of a file the session transferred
 	ASN         int64  // autonomous system of the source address
 	Command     string // a command line run in the session, exactly
@@ -217,6 +218,9 @@ func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 	if f.File != "" {
 		sub := db.NewSelect().TableExpr("transfers AS fx").ColumnExpr("fx.session_id").Where("fx.sha256 = ?", f.File)
 		q = q.Where("s.id IN (?)", sub)
+	}
+	if f.Shell != nil {
+		q = q.Where("s.shell = ?", *f.Shell)
 	}
 	if f.HasTTY != nil {
 		if *f.HasTTY {

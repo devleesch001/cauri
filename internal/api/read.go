@@ -68,6 +68,7 @@ func sessionFilter(q *query) store.SessionFilter {
 		Verdict:     q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
 		HasCommands: q.bool("has_commands"),
 		HasTTY:      q.bool("has_tty"),
+		Shell:       q.bool("shell"),
 		File:        q.str("file"),
 		ASN:         int64(q.int("asn")),
 		Command:     q.str("command"),

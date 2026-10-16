@@ -143,6 +143,26 @@ func TestListSessions(t *testing.T) {
 	})
 }
 
+// The shell column is set from recordings at ingestion (see package
+// ingest); set here, unknown for 3.
+func TestListSessionsShell(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		seed(t, db)
+		ctx := context.Background()
+		for sess, v := range map[string]bool{"1": true, "2": false} {
+			if _, err := db.NewUpdate().Model((*store.Session)(nil)).Set("shell = ?", v).
+				Where("cowrie_session = ?", sess).Exec(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for f, want := range map[*bool]string{ptr(true): "1", ptr(false): "2"} {
+			if _, got := sessions(t, db, store.SessionFilter{Shell: f}); got != want {
+				t.Errorf("shell %v: got %q, want %q", *f, got, want)
+			}
+		}
+	})
+}
+
 func TestListSessionsPageAndSummary(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		seed(t, db)

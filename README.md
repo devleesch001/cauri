@@ -364,6 +364,19 @@ whose recording was removed from the volume keeps its stored verdict, which
 could not be judged again on typing. The session page computes it on read,
 with the same code.
 
+### Interactive shells
+
+`GET /api/sessions?shell=true` lists the sessions that typed in an
+interactive shell, `shell=false` those whose recording is an exec
+command (`ssh host command`) or a shell left without typing. It is read
+from the recording, with the verdict: Cowrie writes an exec channel's
+command whole, in a direction of its own, and not its standard input,
+while a shell starts with a prompt and records what is typed. A script
+piping its commands to a shell counts as a shell; the verdict tells it
+from a human. Sessions without a recording (several channels, or none)
+match neither. A recording later removed from the volume keeps the
+answer it gave.
+
 ## Configuration
 
 Every option is a flag and an environment variable: `--db-dsn` is
