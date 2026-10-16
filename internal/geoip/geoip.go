@@ -2,8 +2,9 @@
 // Lite or MaxMind GeoLite2, which share the same record structure, and
 // finds their network (autonomous system) with an ASN database of either
 // provider. The
-// database is not part of cauri: the operator provides the file, and
-// replaces it to update it; it is reloaded when it changes.
+// database is not part of cauri: the operator provides the file, or has
+// cauri download it (see Download), and replaces it to update it; it is
+// reloaded when it changes.
 //
 // The file is read into memory rather than memory-mapped: overwriting a
 // mapped file in place (a plain cp) would change, or truncate, the data
@@ -13,7 +14,9 @@ package geoip
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/netip"
 	"os"
@@ -91,19 +94,45 @@ type DB struct {
 	log  *slog.Logger
 
 	mu     sync.RWMutex
-	reader *maxminddb.Reader
+	reader *maxminddb.Reader // nil until a file is loaded
 	info   Info
 	mtime  time.Time
+	onLoad func()
 }
 
-// Open opens the database at path.
+// Open opens the database at path. A missing file is no error: the
+// database stays empty, knowing no address, until the file appears (see
+// Watch and Reload), such as when it is downloaded after the start.
 func Open(path string, log *slog.Logger) (*DB, error) {
 	d := &DB{path: path, log: log}
-	if err := d.load(); err != nil {
+	if err := d.load(); errors.Is(err, fs.ErrNotExist) {
+		log.Warn("geoip database missing: nothing located until it is downloaded or copied", "path", path)
+	} else if err != nil {
 		return nil, err
 	}
 	return d, nil
 }
+
+// Path is the file of the database.
+func (d *DB) Path() string { return d.path }
+
+// Loaded reports whether a file is loaded.
+func (d *DB) Loaded() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.reader != nil
+}
+
+// OnLoad calls f, in a goroutine of its own, after each load of a file
+// following Open.
+func (d *DB) OnLoad(f func()) {
+	d.mu.Lock()
+	d.onLoad = f
+	d.mu.Unlock()
+}
+
+// Reload loads the file now, rather than at the next check of Watch.
+func (d *DB) Reload() error { return d.load() }
 
 func (d *DB) load() error {
 	fi, err := os.Stat(d.path)
@@ -118,21 +147,31 @@ func (d *DB) load() error {
 	if err != nil {
 		return fmt.Errorf("geoip database %s: %w", d.path, err)
 	}
-	info := Info{Type: r.Metadata.DatabaseType, Built: time.Unix(int64(r.Metadata.BuildEpoch), 0).UTC()} //nolint:gosec // G115: an epoch fits int64
-	info.Provider = Provider(info.Type)
+	info := infoOf(r)
 
 	d.mu.Lock()
 	old := d.reader
 	d.reader, d.info, d.mtime = r, info, fi.ModTime()
+	onLoad := d.onLoad
 	d.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
 	}
 	d.log.Info("geoip database loaded", "path", d.path, "source", info.Source())
+	if onLoad != nil {
+		go onLoad()
+	}
 	return nil
 }
 
-// Info describes the loaded database.
+// infoOf describes a database from its metadata.
+func infoOf(r *maxminddb.Reader) Info {
+	info := Info{Type: r.Metadata.DatabaseType, Built: time.Unix(int64(r.Metadata.BuildEpoch), 0).UTC()} //nolint:gosec // G115: an epoch fits int64
+	info.Provider = Provider(info.Type)
+	return info
+}
+
+// Info describes the loaded database; it is zero while none is.
 func (d *DB) Info() Info {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -141,13 +180,13 @@ func (d *DB) Info() Info {
 
 // Locate returns the location of ip and the database that answered. ok is
 // false when the address is invalid or unknown to the database (private
-// and reserved ranges are).
+// and reserved ranges are); source is zero while no database is loaded.
 func (d *DB) Locate(ip string) (loc Location, source Info, ok bool) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	source = d.info
 	addr, err := netip.ParseAddr(ip)
-	if err != nil {
+	if err != nil || d.reader == nil {
 		return loc, source, false
 	}
 	var rec record
@@ -171,6 +210,9 @@ func (d *DB) Network(ip string) (n Network, ok bool) {
 	}
 	d.mu.RLock()
 	defer d.mu.RUnlock()
+	if d.reader == nil {
+		return n, false
+	}
 	var rec record
 	res := d.reader.Lookup(addr.Unmap())
 	if !res.Found() || res.Decode(&rec) != nil || rec.ASN == 0 {

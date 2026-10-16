@@ -340,6 +340,10 @@ func (w *batchWriter) locate(ctx context.Context, tx bun.Tx, s *store.Session) e
 		return nil
 	}
 	loc, source, ok := w.locator.Locate(*s.SrcIP)
+	if source.Type == "" {
+		// No database loaded yet: located once one is (LocateSessions).
+		return nil
+	}
 	id, known := w.geo[source.Source()]
 	if !known {
 		var err error

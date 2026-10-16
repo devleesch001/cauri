@@ -16,6 +16,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/store"
 )
 
@@ -28,6 +29,31 @@ type dbFlags struct {
 func (f *dbFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.driver, "db-driver", store.SQLite, "database: sqlite or postgres")
 	fs.StringVar(&f.dsn, "db-dsn", "data/cauri.db", "SQLite file path, or PostgreSQL URL (postgres://user:pass@host/db)")
+}
+
+// geoFlags are the GeoIP databases of api and download: their files, and
+// where download fetches them.
+type geoFlags struct {
+	db, url       string
+	asnDB, asnURL string
+}
+
+func (f *geoFlags) register(fs *flag.FlagSet) {
+	fs.StringVar(&f.db, "geoip-db", "data/geoip.mmdb", "MMDB GeoIP database (DB-IP Lite or MaxMind GeoLite2) locating sessions, used once the file exists (cauri download geoip); empty: none")
+	fs.StringVar(&f.url, "geoip-db-url", geoip.DefaultURL, "where cauri download geoip fetches --geoip-db, gzipped or not; {year} and {month} are the current month's, then the previous one's; empty: the default")
+	fs.StringVar(&f.asnDB, "geoip-asn-db", "data/asn.mmdb", "MMDB ASN database (DB-IP ASN Lite or MaxMind GeoLite2-ASN) finding the network of sessions, used once the file exists (cauri download asn); empty: none")
+	fs.StringVar(&f.asnURL, "geoip-asn-db-url", geoip.DefaultASNURL, "where cauri download asn fetches --geoip-asn-db, as --geoip-db-url")
+}
+
+// defaults gives the empty URLs their default, as compose files pass a
+// variable unset in .env.
+func (f *geoFlags) defaults() {
+	if f.url == "" {
+		f.url = geoip.DefaultURL
+	}
+	if f.asnURL == "" {
+		f.asnURL = geoip.DefaultASNURL
+	}
 }
 
 // location says where the database is, for the log: the file of a SQLite

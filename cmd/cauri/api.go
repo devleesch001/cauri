@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -40,8 +41,8 @@ func runAPI(ctx context.Context, args []string) error {
 	ttyDir := fs.String("tty-dir", "data/tty", "directory storing raw TTY recordings")
 	maxTTY := fs.Int64("max-tty-size", ingest.DefaultMaxTTYSize, "largest TTY recording accepted, in bytes")
 	withUI := fs.Bool("ui", false, "also serve the web UI, for a single container")
-	geoDB := fs.String("geoip-db", "", "MMDB GeoIP database (DB-IP Lite or MaxMind GeoLite2) to locate sessions; none by default")
-	asnDB := fs.String("geoip-asn-db", "", "MMDB ASN database (DB-IP ASN Lite or MaxMind GeoLite2-ASN) to find the network of sessions; none by default")
+	var geo geoFlags
+	geo.register(fs)
 	retention := keepForever
 	fs.Var(&retention, "event-raw-data-retention-days", "days the raw Cowrie lines of events are kept, sessions and their details staying: -1 for ever, 0 none (not even stored), empty or null for ever")
 	oldRetention := fs.Int("raw-retention-days", 0, "deprecated, see --event-raw-data-retention-days, which it sets unless that one is given; 0 keeps the raw lines for ever")
@@ -52,6 +53,7 @@ func runAPI(ctx context.Context, args []string) error {
 	if err := envflag.Parse(fs, args); err != nil {
 		return err
 	}
+	geo.defaults()
 
 	log, err := newLogger(*logLevel)
 	if err != nil {
@@ -93,18 +95,21 @@ func runAPI(ctx context.Context, args []string) error {
 		Options:        maskSecrets(envflag.Describe(fs)),
 		UnknownEnv:     envflag.Unknown(fs),
 	}
-	if *geoDB != "" {
-		geo, err := geoip.Open(*geoDB, log)
+	if geo.db != "" {
+		loc, err := geoip.Open(geo.db, log)
 		if err != nil {
 			return err
 		}
-		defer func() { _ = geo.Close() }()
-		svc.SetLocator(geo)
-		cfg.GeoIP = geo
-		// The operator replaces the file to update it.
-		go geo.Watch(ctx, time.Minute)
-		// Sessions stored before the database was configured.
-		go func() {
+		defer func() { _ = loc.Close() }()
+		svc.SetLocator(loc)
+		cfg.GeoIP = loc
+		cfg.Downloads = append(cfg.Downloads, api.Download{Name: "geoip", URL: geo.url, DB: loc})
+		// Sessions stored before the database was loaded: at start, and
+		// whenever a file appears or replaces it, copied or downloaded.
+		var mu sync.Mutex
+		locate := func() {
+			mu.Lock()
+			defer mu.Unlock()
 			n, err := svc.LocateSessions(ctx)
 			if err != nil && ctx.Err() == nil {
 				log.Error("locating stored sessions", "err", err)
@@ -120,7 +125,12 @@ func runAPI(ctx context.Context, args []string) error {
 			if n > 0 {
 				log.Info("placed stored sessions", "sessions", n)
 			}
-		}()
+		}
+		loc.OnLoad(locate)
+		if loc.Loaded() {
+			go locate()
+		}
+		go loc.Watch(ctx, time.Minute)
 	}
 	// The former option keeps its meaning (0 for ever) unless the new one
 	// is given: a configuration written for it loses nothing.
@@ -150,17 +160,20 @@ func runAPI(ctx context.Context, args []string) error {
 		log.Info("raw lines kept", "days", int(retention))
 		go purgeRaw(ctx, conn, time.Duration(retention)*24*time.Hour, log)
 	}
-	if *asnDB != "" {
-		asn, err := geoip.Open(*asnDB, log)
+	if geo.asnDB != "" {
+		asn, err := geoip.Open(geo.asnDB, log)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = asn.Close() }()
 		svc.SetNetworker(asn)
 		cfg.ASN = asn
-		go asn.Watch(ctx, time.Minute)
-		// Sessions stored before the database was configured.
-		go func() {
+		cfg.Downloads = append(cfg.Downloads, api.Download{Name: "asn", URL: geo.asnURL, ASN: true, DB: asn})
+		// Sessions stored before the database was loaded, as above.
+		var mu sync.Mutex
+		network := func() {
+			mu.Lock()
+			defer mu.Unlock()
 			n, err := svc.NetworkSessions(ctx)
 			if err != nil && ctx.Err() == nil {
 				log.Error("finding the network of stored sessions", "err", err)
@@ -168,7 +181,12 @@ func runAPI(ctx context.Context, args []string) error {
 			if n > 0 {
 				log.Info("found the network of stored sessions", "sessions", n)
 			}
-		}()
+		}
+		asn.OnLoad(network)
+		if asn.Loaded() {
+			go network()
+		}
+		go asn.Watch(ctx, time.Minute)
 	}
 	// Sessions judged by older criteria, or before verdicts were stored.
 	go func() {
@@ -213,7 +231,7 @@ func maskSecrets(opts []envflag.Option) []envflag.Option {
 			if o.Value != "" {
 				opts[i].Value = "****"
 			}
-		case "db-dsn":
+		case "db-dsn", "geoip-db-url", "geoip-asn-db-url":
 			opts[i].Value = maskDSN(o.Value)
 		}
 	}

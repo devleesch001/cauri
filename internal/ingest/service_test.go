@@ -740,6 +740,37 @@ func TestLocateSessions(t *testing.T) {
 	})
 }
 
+// A database configured but not loaded yet (geoip.Open of a missing file)
+// answers with no source: sessions stay unlocated, to be located once it
+// is loaded, never marked as looked up by a database without a name.
+func TestLocateUnloaded(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		loc := &fakeLocator{}
+		svc.SetLocator(loc)
+		ctx := context.Background()
+		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evConnect, "a", 0, nil))); err != nil {
+			t.Fatal(err)
+		}
+		if s := getSession(t, db, sensor, "a"); s.GeoSourceID != nil || s.GeoCountry != nil {
+			t.Fatalf("located without a database: %v %v", s.GeoSourceID, s.GeoCountry)
+		}
+		if n, err := svc.LocateSessions(ctx); n != 0 || err != nil {
+			t.Fatalf("without a database: %d, %v", n, err)
+		}
+		if n := count(t, db, (*store.GeoSource)(nil)); n != 0 {
+			t.Errorf("geo_sources = %d", n)
+		}
+		loc.source = "DBIP-City-Lite 2026-10-01"
+		if n, err := svc.LocateSessions(ctx); n != 1 || err != nil {
+			t.Fatalf("once loaded: %d, %v", n, err)
+		}
+		if s := getSession(t, db, sensor, "a"); geoSource(s) != "DBIP-City-Lite 2026-10-01" {
+			t.Errorf("source = %q", geoSource(s))
+		}
+	})
+}
+
 // Sessions are judged as they are stored, and again by JudgeSessions when
 // the criteria change.
 func TestJudgeSessions(t *testing.T) {

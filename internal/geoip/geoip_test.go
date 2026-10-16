@@ -104,10 +104,33 @@ func TestWatchReloads(t *testing.T) {
 	}
 }
 
-func TestOpenErrors(t *testing.T) {
-	if _, err := Open(t.TempDir()+"/missing.mmdb", quiet); err == nil {
-		t.Error("want error for a missing file")
+// A missing file leaves the database empty until it appears.
+func TestOpenMissing(t *testing.T) {
+	dir := t.TempDir()
+	d, err := Open(dir+"/geo.mmdb", quiet)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer func() { _ = d.Close() }()
+	if _, source, ok := d.Locate("5.160.0.1"); ok || d.Loaded() || source != (Info{}) {
+		t.Errorf("empty database answers: %v %v %+v", ok, d.Loaded(), source)
+	}
+	if _, ok := d.Network("5.160.0.1"); ok {
+		t.Error("empty database finds a network")
+	}
+	loaded := make(chan struct{})
+	d.OnLoad(func() { close(loaded) })
+	geoiptest.Write(t, dir, "DBIP-City-Lite", oct1, geoiptest.Network{CIDR: "5.160.0.0/16", Country: "IR"})
+	if err := d.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	<-loaded
+	if loc, _, ok := d.Locate("5.160.0.1"); !ok || loc.Country != "IR" {
+		t.Errorf("after the file appeared: %+v %v", loc, ok)
+	}
+}
+
+func TestOpenErrors(t *testing.T) {
 	bad := t.TempDir() + "/bad.mmdb"
 	_ = os.WriteFile(bad, []byte("not mmdb"), 0o600)
 	if _, err := Open(bad, quiet); err == nil {

@@ -71,6 +71,8 @@ type Config struct {
 	// masked, shown to the administrator (see envflag.Describe).
 	Options    []envflag.Option
 	UnknownEnv []string
+	// Downloads are the databases the administration downloads on request.
+	Downloads []Download
 }
 
 // New returns the HTTP handler of the API.
@@ -143,6 +145,8 @@ func New(c Config) http.Handler {
 					r.Get("/database", s.getDatabase)
 					r.Post("/database/vacuum", s.vacuum)
 					r.Get("/config", s.getConfig)
+					r.Get("/downloads", s.listDownloads)
+					r.Post("/downloads/{name}", s.download)
 					// GET simulates what DELETE, with the same query, does.
 					r.Get("/sessions", s.countPurgeSessions)
 					r.Delete("/sessions", s.purgeSessions)

@@ -58,7 +58,8 @@ type Service struct {
 }
 
 // Locator locates IP addresses, see package geoip. source names the
-// database that answered; ok is false for unknown addresses.
+// database that answered, zero while none is loaded; ok is false for
+// unknown addresses.
 type Locator interface {
 	Locate(ip string) (loc geoip.Location, source geoip.Info, ok bool)
 }
@@ -314,9 +315,14 @@ func (s *Service) LocateSessions(ctx context.Context) (int, error) {
 		if err != nil || len(rows) == 0 {
 			return total, err
 		}
+		unloaded := false
 		err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 			for _, r := range rows {
 				loc, source, ok := s.locator.Locate(*r.SrcIP)
+				if source.Type == "" {
+					unloaded = true // no database (yet): it calls again once loaded
+					return nil
+				}
 				id, known := geo[source.Source()]
 				if !known {
 					var err error
@@ -339,7 +345,7 @@ func (s *Service) LocateSessions(ctx context.Context) (int, error) {
 			}
 			return nil
 		})
-		if err != nil {
+		if err != nil || unloaded {
 			return total, err
 		}
 		total += len(rows)

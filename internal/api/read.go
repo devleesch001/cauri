@@ -408,15 +408,18 @@ func (s *server) getAbout(w http.ResponseWriter, r *http.Request) {
 			out.Providers = append(out.Providers, p)
 		}
 	}
+	// A database configured but not loaded yet has no type.
 	if s.GeoIP != nil {
-		info := s.GeoIP.Info()
-		out.GeoIP = &info
-		add(info.Provider)
+		if info := s.GeoIP.Info(); info.Type != "" {
+			out.GeoIP = &info
+			add(info.Provider)
+		}
 	}
 	if s.ASN != nil {
-		info := s.ASN.Info()
-		out.ASN = &info
-		add(info.Provider)
+		if info := s.ASN.Info(); info.Type != "" {
+			out.ASN = &info
+			add(info.Provider)
+		}
 	}
 	// Locations stay stored after their database is removed or replaced.
 	sources, err := store.ListGeoSources(r.Context(), s.DB)
