@@ -726,6 +726,7 @@ func LookupSession(ctx context.Context, db bun.IDB, sensor, cowrieSession string
 // session and who ran them.
 type Simulation struct {
 	User     string // the account that logged in, empty if unknown
+	Sensor   string // the sensor the session reached
 	Commands []Command
 }
 
@@ -739,7 +740,7 @@ func GetSimulation(ctx context.Context, db bun.IDB, id int64) (*Simulation, erro
 	if err != nil {
 		return nil, err
 	}
-	sim := &Simulation{}
+	sim := &Simulation{Sensor: s.Sensor}
 	if err := db.NewSelect().Model(&sim.Commands).Where("session_id = ?", id).
 		Order("ts", "id").Scan(ctx); err != nil {
 		return nil, err

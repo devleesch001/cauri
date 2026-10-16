@@ -175,7 +175,8 @@ request and never modified.
 - Without a stored recording, or when its file was removed from the TTY
   volume, the replay is **simulated** from the commands: a banner
   (`### simulated session ###`), then, 500 ms later, each command with
-  the prompt (`# ` for root, `$ ` otherwise), at its real time, and no
+  the prompt of the account that logged in on its sensor
+  (`root@hp-01:~# `, `admin@hp-01:~$ `), at its real time, and no
   output. `404` if there is no command either. The UI marks it
   "Simulated". Deleting old recordings from the volume is thus a retention
   policy: those sessions stay replayable as commands only. `?simulated=1`

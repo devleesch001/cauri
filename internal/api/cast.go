@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-chi/render"
 
@@ -79,6 +81,30 @@ func (s *server) replaySource(r *http.Request, forced bool) (*store.Recording, *
 // replay and its first command.
 const simulatedLead = 500 * time.Millisecond
 
+// simulatedPrompt is a shell's prompt for user on the sensor, in its home:
+// "root@hp-01:~# ", "admin@hp-01:~$ ", "hp-01:~$ " when no login is known.
+// The user name comes from the attacker and the replay is drawn by a
+// terminal: control characters, escape sequences among them, are dropped.
+func simulatedPrompt(user, sensor string) string {
+	visible := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return -1
+			}
+			return r
+		}, s)
+	}
+	end := "$ "
+	if user == "root" {
+		end = "# "
+	}
+	host := visible(sensor) + ":~" + end
+	if user = visible(user); user != "" {
+		return user + "@" + host
+	}
+	return host
+}
+
 // simulatedSteps returns the commands of a session as steps of a simulated
 // replay, the first one after the lead, and the prompt to show.
 func (s *server) simulatedSteps(r *http.Request) (start time.Time, prompt string, steps []asciicast.Step, err error) {
@@ -90,10 +116,7 @@ func (s *server) simulatedSteps(r *http.Request) (start time.Time, prompt string
 		return start, "", nil, errNothingToReplay
 	}
 	start = sim.Commands[0].TS.Time
-	prompt = "$ "
-	if sim.User == "root" {
-		prompt = "# "
-	}
+	prompt = simulatedPrompt(sim.User, sim.Sensor)
 	for _, c := range sim.Commands {
 		steps = append(steps, asciicast.Step{Time: simulatedLead + max(c.TS.Sub(start), 0), Command: c.Input})
 	}

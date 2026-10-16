@@ -411,7 +411,7 @@ func TestCast(t *testing.T) {
 		// No recording yet: the replay is simulated from the commands.
 		resp, body := getRaw(t, e, path, nil)
 		if resp.code != http.StatusOK || resp.header.Get("ETag") != "" ||
-			!strings.Contains(body, `"m", "id"]`) || !strings.Contains(body, `"o", "# id\r\n"]`) {
+			!strings.Contains(body, `"m", "id"]`) || !strings.Contains(body, `"o", "root@hp-01:~# id\r\n"]`) {
 			t.Fatalf("before upload: %d %s", resp.code, body)
 		}
 
@@ -919,8 +919,9 @@ func TestSimulatedReplay(t *testing.T) {
 	if got.Chapters[0].Time != 0.5 {
 		t.Errorf("first chapter at %v s, want 0.5", got.Chapters[0].Time)
 	}
+	// The prompt of the account that logged in, on its sensor.
 	if _, body := getRaw(t, e, "/api/sessions/"+id+"/cast", nil); !strings.Contains(body, "### simulated session ###") ||
-		!strings.Contains(body, `[0.5, "m", "id"]`) {
+		!strings.Contains(body, `[0.5, "m", "id"]`) || !strings.Contains(body, `"root@hp-01:~# id\r\n"`) {
 		t.Errorf("simulated cast = %s", body)
 	}
 
@@ -940,7 +941,7 @@ func TestSimulatedReplay(t *testing.T) {
 	}
 	resp, body := getRaw(t, e, "/api/sessions/"+id+"/cast?simulated=1", nil)
 	if resp.code != http.StatusOK || resp.header.Get("X-Cauri-Replay") != "simulated" ||
-		resp.header.Get("ETag") != "" || !strings.Contains(body, `"o", "# id\r\n"]`) {
+		resp.header.Get("ETag") != "" || !strings.Contains(body, `"o", "root@hp-01:~# id\r\n"]`) {
 		t.Errorf("forced simulation: %d %q %s", resp.code, resp.header.Get("X-Cauri-Replay"), body)
 	}
 	got = chapters{}
