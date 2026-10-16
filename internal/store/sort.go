@@ -3,6 +3,7 @@ package store
 import (
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/uptrace/bun"
 )
@@ -26,7 +27,9 @@ type column struct {
 type sortable struct {
 	def  string
 	cols map[string]column
-	tie  string // unique last: paging stays stable
+	// tie breaks ties, unique last: paging stays stable. The sorted
+	// column is left out of it: repeated, SQLite would not use its index.
+	tie []string
 }
 
 func (l sortable) names() []string { return slices.Sorted(maps.Keys(l.cols)) }
@@ -44,7 +47,13 @@ func (l sortable) order(q *bun.SelectQuery, s Sort) *bun.SelectQuery {
 	if c.nullable {
 		q = q.OrderExpr("CASE WHEN " + c.expr + " IS NULL THEN 1 ELSE 0 END")
 	}
-	return q.OrderExpr(c.expr + dir).OrderExpr(l.tie)
+	q = q.OrderExpr(c.expr + dir)
+	for _, t := range l.tie {
+		if !strings.HasPrefix(t, c.expr+" ") {
+			q = q.OrderExpr(t)
+		}
+	}
+	return q
 }
 
 var sessionSort = sortable{
@@ -59,7 +68,7 @@ var sessionSort = sortable{
 		"verdict":  {"s.verdict_score", true},
 		"client":   {"s.client_version", true},
 	},
-	tie: "s.started_at DESC, s.id DESC",
+	tie: []string{"s.started_at DESC", "s.id DESC"},
 }
 
 var loginAttemptSort = sortable{
@@ -73,7 +82,7 @@ var loginAttemptSort = sortable{
 		"country":  {"s.geo_country", true},
 		"client":   {"s.client_version", true},
 	},
-	tie: "la.ts DESC, la.id DESC",
+	tie: []string{"la.ts DESC", "la.id DESC"},
 }
 
 // Aggregates are referred to by their aliases, which PostgreSQL accepts in
@@ -85,7 +94,7 @@ var attackerSort = sortable{
 		SortLastSeen: {"last_ts", false},
 		SortShells:   {"shells", false},
 	},
-	tie: "n DESC, last_ts DESC, s.src_ip",
+	tie: []string{"n DESC", "last_ts DESC", "s.src_ip"},
 }
 
 // SessionSorts, LoginAttemptSorts and AttackerSorts name the columns each
