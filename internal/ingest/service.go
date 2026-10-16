@@ -52,6 +52,9 @@ type Service struct {
 	now        func() time.Time
 	locator    Locator   // optional
 	networker  Networker // optional
+	// noRawData leaves the raw lines out of event_raw_data: what the
+	// tables do not hold of a line stays in events.data.
+	noRawData bool
 }
 
 // Locator locates IP addresses, see package geoip. source names the
@@ -73,6 +76,11 @@ type Networker interface {
 // SetNetworker makes the service record the network of new sessions,
 // independently of their location: either database may be missing.
 func (s *Service) SetNetworker(n Networker) { s.networker = n }
+
+// SetRawData sets whether new events keep their raw Cowrie line in
+// event_raw_data (the default). Without it nothing the application shows
+// is lost: only the raw view of the events and their reprocessing.
+func (s *Service) SetRawData(keep bool) { s.noRawData = !keep }
 
 // New returns a service writing to db and tty, refusing TTY recordings
 // larger than maxTTYSize bytes (DefaultMaxTTYSize if not positive).
@@ -148,6 +156,7 @@ func (s *Service) IngestEvents(ctx context.Context, sensorID string, b protocol.
 		}
 
 		w := newBatchWriter(sensorID, s.now(), s.locator, s.networker)
+		w.noRawData = s.noRawData
 		for i, e := range events {
 			if !isKnown[string(hashes[i])] {
 				w.add(hashes[i], e.raw, e.ev)

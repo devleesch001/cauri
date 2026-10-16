@@ -62,7 +62,7 @@ func TestPurgeSessions(t *testing.T) {
 		if total.Sessions != 2 || total.LoginAttempts != 2 || total.Recordings != 1 || !slices.Equal(removed, []string{sha}) {
 			t.Fatalf("delete B and C = %+v %v", total, removed)
 		}
-		for _, table := range []string{"sessions", "events", "event_data", "login_attempts", "commands", "tty_files"} {
+		for _, table := range []string{"sessions", "events", "event_raw_data", "login_attempts", "commands", "tty_files"} {
 			if n, err := db.NewSelect().TableExpr(table).Count(ctx); err != nil || n != 0 {
 				t.Errorf("%s: %d rows left, %v", table, n, err)
 			}

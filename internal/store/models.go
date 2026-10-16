@@ -140,8 +140,8 @@ type Event struct {
 	Data *string `bun:"data"`
 }
 
-type EventData struct {
-	bun.BaseModel `bun:"table:event_data,alias:ed"`
+type EventRawData struct {
+	bun.BaseModel `bun:"table:event_raw_data,alias:ed"`
 
 	EventID int64  `bun:"event_id,pk"`
 	Data    string `bun:"data"`

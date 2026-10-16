@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,9 +13,9 @@ import (
 )
 
 // Migration 00009 projects the raw lines stored before it: from the schema
-// of 00008 (its down migration), with a session whose key exchange line
-// is there, one known only by its HASSH, and lines with fields no table
-// holds.
+// of 00008 (its down migration, after 00013's: the raw lines had their
+// first name then), with a session whose key exchange line is there, one
+// known only by its HASSH, and lines with fields no table holds.
 func TestProjectRawEvents(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		ctx := context.Background()
@@ -24,6 +25,7 @@ func TestProjectRawEvents(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		runMigration(t, db, "00013_event_raw_data.tx.down.sql")
 		inTx(store.ProjectDown)
 
 		sn := store.Sensor{Name: "hp"}
@@ -50,7 +52,7 @@ func TestProjectRawEvents(t *testing.T) {
 			if _, err := db.NewInsert().Model(&e).Exec(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.NewInsert().Model(&store.EventData{EventID: e.ID, Data: raw}).Exec(ctx); err != nil {
+			if _, err := db.ExecContext(ctx, "INSERT INTO event_data (event_id, data) VALUES (?, ?)", e.ID, raw); err != nil {
 				t.Fatal(err)
 			}
 			return e.ID
@@ -62,6 +64,7 @@ func TestProjectRawEvents(t *testing.T) {
 		v := event(a, "cowrie.client.var", `{"eventid":"cowrie.client.var","session":"a","name":"LANG","value":"C","message":"request_env: LANG=C"}`)
 
 		inTx(store.ProjectUp)
+		runMigration(t, db, "00013_event_raw_data.tx.up.sql")
 
 		var kexes []store.SSHKex
 		if err := db.NewSelect().Model(&kexes).OrderExpr("hassh").Scan(ctx); err != nil {
@@ -106,4 +109,29 @@ func text(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// runMigration runs one SQL migration file of the engine of db, in a
+// transaction.
+func runMigration(t *testing.T, db *bun.DB, file string) {
+	t.Helper()
+	engine := store.SQLite
+	if db.Dialect().Name().String() == "pg" {
+		engine = store.Postgres
+	}
+	qs, err := store.MigrationSQL(engine, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.RunInTx(context.Background(), nil, func(ctx context.Context, tx bun.Tx) error {
+		for _, q := range qs {
+			if _, err := tx.ExecContext(ctx, q); err != nil {
+				return fmt.Errorf("%s: %w", q, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

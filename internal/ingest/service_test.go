@@ -156,7 +156,7 @@ func TestIngestFullSession(t *testing.T) {
 		if n := count(t, db, (*store.Event)(nil)); n != len(lines) {
 			t.Errorf("events = %d, want all including unprojected ones", n)
 		}
-		if n := count(t, db, (*store.EventData)(nil)); n != len(lines) {
+		if n := count(t, db, (*store.EventRawData)(nil)); n != len(lines) {
 			t.Errorf("event data = %d, want one per event", n)
 		}
 		var sn store.Sensor
@@ -219,7 +219,7 @@ func TestIngestConcurrentDuplicates(t *testing.T) {
 			t.Errorf("accepted %d events in all, want %d", accepted, len(lines))
 		}
 		for model, want := range map[any]int{
-			(*store.Event)(nil): len(lines), (*store.EventData)(nil): len(lines),
+			(*store.Event)(nil): len(lines), (*store.EventRawData)(nil): len(lines),
 			(*store.LoginAttempt)(nil): 2, (*store.Command)(nil): 1, (*store.Session)(nil): 1,
 		} {
 			if n := count(t, db, model); n != want {
@@ -491,6 +491,27 @@ func TestIngestDataAndKex(t *testing.T) {
 		}
 		if data[1].Data != `{"name":"LANG","value":"fr_FR.UTF-8"}` {
 			t.Errorf("client.var data = %s", data[1].Data)
+		}
+	})
+}
+
+// Without raw lines, events and what the tables do not hold of them are
+// stored all the same.
+func TestIngestWithoutRawData(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		svc := newService(t, db)
+		svc.SetRawData(false)
+		ctx := context.Background()
+		l := line("cowrie.client.var", "a1b2c3d4e5f6", 0, map[string]any{"name": "LANG", "value": "C"})
+		if res, err := svc.IngestEvents(ctx, sensor, batch(sensor, l)); err != nil || res.Accepted != 1 {
+			t.Fatalf("ingest = %+v, %v", res, err)
+		}
+		if n, err := db.NewSelect().Model((*store.EventRawData)(nil)).Count(ctx); err != nil || n != 0 {
+			t.Errorf("raw lines = %d, %v", n, err)
+		}
+		var data string
+		if err := db.NewSelect().Model((*store.Event)(nil)).Column("data").Scan(ctx, &data); err != nil || data != `{"name":"LANG","value":"C"}` {
+			t.Errorf("event data = %q, %v", data, err)
 		}
 	})
 }

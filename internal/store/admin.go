@@ -118,7 +118,7 @@ func countRaw(ctx context.Context, db bun.IDB, before *time.Time) (RawInfo, erro
 		Bytes  *int64 `bun:"bytes"`
 		Oldest *Time  `bun:"oldest"`
 	}
-	q := db.NewSelect().TableExpr("event_data AS ed").Join("JOIN events AS e ON e.id = ed.event_id").
+	q := db.NewSelect().TableExpr("event_raw_data AS ed").Join("JOIN events AS e ON e.id = ed.event_id").
 		ColumnExpr("COUNT(*) AS lines, SUM(LENGTH(ed.data)) AS bytes, MIN(e.ts) AS oldest")
 	if before != nil {
 		q = q.Where("e.ts < ?", Micro(*before))

@@ -7,7 +7,7 @@ import (
 )
 
 // PurgeCounts tells what deleting sessions removes, or would remove. The
-// raw lines (event_data) go with their events.
+// raw lines (event_raw_data) go with their events.
 type PurgeCounts struct {
 	Sessions      int `json:"sessions"`
 	Events        int `json:"events"`

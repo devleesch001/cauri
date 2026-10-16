@@ -45,7 +45,7 @@ session), has these problems:
   has no native time type), so a Go type converts `time.Time` to and from
   the integer. Ordering is always right, and grouping by hour or day for
   statistics is a portable division (`ts / 3600000000`).
-- **Raw data is separate and purgeable**: `event_data` holds the Cowrie line,
+- **Raw data is separate and purgeable**: `event_raw_data` holds the Cowrie line,
   everything else points to `events`, which stays. What the tables do not
   hold of a line is kept in `events.data` (migration 00009), so purging
   loses nothing the application uses.
@@ -61,7 +61,7 @@ erDiagram
     sensors ||--o{ sessions : "records"
     sensors ||--o{ events : "sends"
     sessions ||--o{ events : "is built from"
-    events ||--o| event_data : "raw line (purgeable)"
+    events ||--o| event_raw_data : "raw line (purgeable)"
     sessions ||--o{ login_attempts : "tries"
     sessions ||--o{ commands : "runs"
     sessions ||--o{ transfers : "downloads, uploads"
@@ -124,7 +124,7 @@ erDiagram
         bigint received_at
         text data "JSON: what the tables do not hold"
     }
-    event_data {
+    event_raw_data {
         integer event_id PK, FK
         text data "the Cowrie JSON line"
     }
@@ -189,7 +189,7 @@ erDiagram
 | `ingest_tokens` | Ingestor credentials, one or more per sensor; only the hash is stored | A few |
 | `sessions` | One SSH or Telnet connection: the summary of its events, plus the location, verdict and shell computed by the API | One per connection |
 | `events` | One per Cowrie line: what happened, when, in which session; and the hash that recognises a line sent twice | 5 per session (measured) |
-| `event_data` | The Cowrie line itself, to show it raw and to project it again; can be purged | One per event, until purged |
+| `event_raw_data` | The Cowrie line itself, to show it raw and to project it again; can be purged, or not stored (`event_data` until migration 00013) | One per event, until purged |
 | `login_attempts` | Username and password tried, success or not | ~1 per session |
 | `commands` | Commands typed or run | Few sessions, several each |
 | `transfers` | Files downloaded (`wget`, `curl`) or uploaded (SFTP, SCP) | Rare |
@@ -229,7 +229,7 @@ vary for one HASSH, a scanner asking each type of key in turn.
 
 ```mermaid
 flowchart LR
-    line["cowrie.json line"] --> ev["events<br/>(+ event_data)"]
+    line["cowrie.json line"] --> ev["events<br/>(+ event_raw_data)"]
     ev -->|"session.connect, client.*,<br/>session.closed, log.closed"| s["sessions"]
     ev -->|"login.*"| la["login_attempts"]
     ev -->|"command.input"| c["commands"]
@@ -250,7 +250,8 @@ In one transaction:
    start, etc.).
 2. `INSERT INTO events ... ON CONFLICT (hash) DO NOTHING RETURNING id, hash`:
    only the lines not seen before come back, with their new ids.
-3. For those only: insert `event_data` (and `events.data` with the
+3. For those only: insert `event_raw_data` unless raw lines are not
+   stored (and `events.data` with the
    event) and the projections. A resent batch
    inserts nothing: ingestion stays idempotent without the projections
    needing the event's key.
@@ -259,15 +260,17 @@ In one transaction:
 ### Purging raw data
 
 ```sql
-DELETE FROM event_data
+DELETE FROM event_raw_data
 WHERE event_id IN (SELECT id FROM events WHERE ts < :limit);
 ```
 
 Sessions, events and their data, projections and deduplication are
 untouched; only the raw view of old events (the session page then shows
 their data) and their reprocessing are lost. Retention is an operator
-setting, off by default: `CAURI_RAW_RETENTION_DAYS`, run at start and
-every hour, in batches (`store.PurgeRawEvents`). Measured on 20,778
+setting, `CAURI_EVENT_RAW_DATA_RETENTION_DAYS`: -1 keeps the lines for
+ever (the default), N days, 0 none (the ingestion stops storing them and
+those stored are purged); the purge runs at start and every hour, in
+batches (`store.PurgeRawEvents`). Measured on 20,778
 sessions: 107 MB with every raw line, 27 MB once they are all purged and
 the file vacuumed.
 
@@ -325,7 +328,7 @@ so that ids can be renumbered):
 | `fk_sessions_network_id` | `networks` | `SET NULL`: the sessions are found again by the ASN database loaded |
 | `fk_sessions_ssh_kex_id` | `ssh_kex` | `RESTRICT`: key exchanges are never removed |
 | `fk_events_session_id` | `sessions` | `CASCADE`: the events belong to the session |
-| `fk_event_data_event_id` | `events` | `CASCADE`: the raw line follows its event |
+| `fk_event_raw_data_event_id` | `events` | `CASCADE`: the raw line follows its event |
 | `fk_login_attempts_session_id`, `fk_commands_session_id`, `fk_transfers_session_id` | `sessions` | `CASCADE`: projections of the session |
 
 So deleting a session takes its events, raw lines, logins, commands and
@@ -432,9 +435,11 @@ a test compares the schema read back from both engines.
   (goose's `goose_db_version` table present) with a message saying so,
   rather than creating new tables beside the old ones.
 - **`events.type`**: text, as Cowrie names its events.
-- **Retention of `event_data`**: off by default. Since migration 00009,
-  purging loses only the raw view and reprocessing; whether to purge by
-  default is still open.
+- **Retention of `event_raw_data`**: kept for ever by default (-1). Since
+  migration 00009, purging loses only the raw view and reprocessing; 0
+  stores none. The variable was renamed with the table (migration 00013)
+  because 0 changed meaning: the former one keeps its meaning, so that
+  no configuration written for it loses data.
 
 ## Statistics at scale
 

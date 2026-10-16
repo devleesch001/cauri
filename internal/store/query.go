@@ -338,7 +338,7 @@ func GetSession(ctx context.Context, db bun.IDB, id int64) (*SessionDetail, erro
 	err = db.NewSelect().Model((*Event)(nil)).
 		// The raw line while it is kept, then what the tables do not hold.
 		ColumnExpr("e.id, e.type, e.ts, COALESCE(ed.data, e.data) AS data").
-		Join("LEFT JOIN event_data AS ed ON ed.event_id = e.id").
+		Join("LEFT JOIN event_raw_data AS ed ON ed.event_id = e.id").
 		Where("e.session_id = ?", id).OrderExpr("e.ts, e.id").Scan(ctx, &d.Events)
 	return d, err
 }

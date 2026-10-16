@@ -29,6 +29,7 @@ type batchWriter struct {
 	sensor    store.Sensor
 	sessions  map[string]*store.Session // by Cowrie session id
 	order     []string                  // Cowrie session ids, in order of appearance
+	noRawData bool                      // see Service.SetRawData
 	kex       map[string]*cowrie.Kex    // the first key exchange of each session
 	geo       map[string]int64          // GeoIP database ids, by geoip.Info.Source
 	networks  map[uint32]int64          // network ids, by ASN
@@ -195,14 +196,16 @@ func (w *batchWriter) write(ctx context.Context, tx bun.Tx) (int, error) {
 		ids[string(e.Hash)] = e.ID
 	}
 
-	data := make([]store.EventData, 0, len(stored))
+	data := make([]store.EventRawData, 0, len(stored))
 	var r rows
 	for _, p := range w.events {
 		id, ok := ids[string(p.hash)]
 		if !ok {
 			continue // stored by another batch meanwhile
 		}
-		data = append(data, store.EventData{EventID: id, Data: p.raw})
+		if !w.noRawData {
+			data = append(data, store.EventRawData{EventID: id, Data: p.raw})
+		}
 		if sid, ok := sessionIDs[p.ev.Session]; ok {
 			r.add(sid, p.ev)
 		}

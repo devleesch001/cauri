@@ -260,7 +260,8 @@ CAURI_LISTEN=:8090 go run ./cmd/cauri api --log-level debug
 
 ### Supporting a new Cowrie event
 
-The event is already stored in `events` and `event_data`. To project it: read its
+The event is already stored in `events`, its fields in `events.data` and
+its line in `event_raw_data`. To project it: read its
 fields in `internal/ingest/cowrie.go`, use them in `batch.go`, show it in
 the timeline (`ui/src/timeline.ts`, texts in `ui/src/locales/en.ts`).
 Check the field names and types against real Cowrie output (your dev

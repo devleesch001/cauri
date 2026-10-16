@@ -11,7 +11,7 @@ import (
 // never holds the database for long.
 const purgeBatch = 5000
 
-// PurgeRawEvents deletes the raw Cowrie lines (event_data) of the events
+// PurgeRawEvents deletes the raw Cowrie lines (event_raw_data) of the events
 // before the given time and returns how many it deleted. Sessions, events,
 // their data, projections and deduplication stay: what the tables do not
 // hold is in events.data, so only the raw view of old events and their
@@ -30,10 +30,10 @@ func PurgeRawEventsProgress(ctx context.Context, db bun.IDB, before time.Time, p
 			return total, err
 		}
 		old := db.NewSelect().TableExpr("events AS pe").ColumnExpr("pe.id").
-			Join("JOIN event_data AS ped ON ped.event_id = pe.id").
+			Join("JOIN event_raw_data AS ped ON ped.event_id = pe.id").
 			Where("pe.ts < ?", Micro(before)).
 			OrderExpr("pe.id").Limit(purgeBatch)
-		res, err := db.NewDelete().Model((*EventData)(nil)).Where("event_id IN (?)", old).Exec(ctx)
+		res, err := db.NewDelete().Model((*EventRawData)(nil)).Where("event_id IN (?)", old).Exec(ctx)
 		if err != nil {
 			return total, err
 		}

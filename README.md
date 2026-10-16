@@ -70,7 +70,7 @@ and symbolic links are ignored.
 | Table                      | Content                                                                                       |
 |----------------------------|-----------------------------------------------------------------------------------------------|
 | `events`                   | One row per Cowrie line: type, time, session, the hash that recognises a line sent twice, and what no other table holds of it (public keys offered, terminal size, environment, …) |
-| `event_data`               | Each line as Cowrie wrote it; separate so it can be purged                                    |
+| `event_raw_data`           | Each line as Cowrie wrote it; separate so it can be purged, or not stored                    |
 | `sessions`                 | One row per Cowrie session and sensor: source, client, times, login outcome, recording        |
 | `ssh_kex`                  | What SSH clients offered in the key exchange, with their HASSH, once per combination          |
 | `login_attempts`           | Username and password of every login, with its outcome                                        |
@@ -348,12 +348,24 @@ running it as a formula.
 The raw Cowrie lines are most of the database (80 of 107 MB on 20,778
 real sessions) and serve only to show an event raw or to reprocess it:
 what the other tables do not hold of a line is kept with its event.
-`CAURI_RAW_RETENTION_DAYS=N` makes the API delete those older than N
-days, at start then every hour; sessions, their events and what they
-held, logins, commands, files and the deduplication of resent lines
-stay, and the session page shows an old event's data instead of its
-line. Purging every line took that database to 27 MB. Off by default. With SQLite, freed
-space is reused by new data; the file only shrinks after a `VACUUM`.
+`CAURI_EVENT_RAW_DATA_RETENTION_DAYS` sets how long they are kept, in
+`event_raw_data`:
+
+| Value | Raw lines |
+|---|---|
+| `-1`, empty or `null` (the default) | Kept for ever |
+| `0` | Not stored at all; those stored before are deleted |
+| `N` | Deleted once older than N days, at start then every hour |
+
+Sessions, their events and what they held, logins, commands, files and
+the deduplication of resent lines stay, and the session page shows an
+event's data instead of its line. Purging every line took that database
+to 27 MB. With SQLite, freed space is reused by new data; the file only
+shrinks after a `VACUUM` (the administration page compacts it).
+
+`CAURI_RAW_RETENTION_DAYS`, its former name, is still read, with its
+former meaning (`0` kept everything), unless the new one is set; the
+API warns at start that it is deprecated.
 
 ### Human or bot
 
@@ -419,7 +431,7 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_GEOIP_DB` | (none) | MMDB GeoIP database (DB-IP Lite or GeoLite2) to locate sessions, see [GeoIP](#geoip) |
 | `CAURI_GEOIP_ASN_DB` | (none) | MMDB ASN database (DB-IP ASN Lite or GeoLite2-ASN) for the network of sessions, see [GeoIP](#geoip) |
 | `CAURI_MAX_TTY_SIZE` | `134217728` (128 MiB)                     | Largest recording accepted, in bytes                                         |
-| `CAURI_RAW_RETENTION_DAYS` | `0` (keep)                          | Delete the raw Cowrie lines older than this many days, see [Raw data retention](#raw-data-retention) |
+| `CAURI_EVENT_RAW_DATA_RETENTION_DAYS` | `-1` (keep)              | Days the raw Cowrie lines are kept: `-1` for ever, `0` not stored, see [Raw data retention](#raw-data-retention) |
 | `CAURI_ADMIN_PASSWORD` | (generated) | Password of the administration page, see [Administration](#administration) |
 | `CAURI_ADMIN_PASSWORD_FILE` | (none) | File holding that password, such as a container secret; set only one of the two |
 | `CAURI_TRUSTED_PROXIES` | (none) | Comma-separated addresses or CIDR ranges of the reverse proxies whose `X-Forwarded-For` names the client, see [Administration](#administration) |

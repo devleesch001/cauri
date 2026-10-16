@@ -47,7 +47,7 @@ func TestMigrateLogs(t *testing.T) {
 				`"msg":"database"`, `"engine":"` + engine + `"`, `"version":"`,
 				`"msg":"database schema"`, `"version":"none (empty database)"`,
 				`"msg":"database upgrade needed"`, `"msg":"applying migration","migration":"00001_init"`,
-				`"msg":"migration applied","migration":"00012_networks"`, `"msg":"database upgraded"`,
+				`"msg":"migration applied","migration":"00013_event_raw_data"`, `"msg":"database upgraded"`,
 			} {
 				if !strings.Contains(first, want) {
 					t.Errorf("first run: no %s in\n%s", want, first)
@@ -62,7 +62,7 @@ func TestMigrateLogs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if second := out.String(); !strings.Contains(second, `"msg":"database schema is up to date"`) ||
-				!strings.Contains(second, `"version":"00012_networks","latest":"00012_networks","pending":0`) ||
+				!strings.Contains(second, `"version":"00013_event_raw_data","latest":"00013_event_raw_data","pending":0`) ||
 				strings.Contains(second, "applying migration") {
 				t.Errorf("second run:\n%s", second)
 			}
@@ -345,7 +345,7 @@ func TestKeyNames(t *testing.T) {
 func TestForeignKeyNamesAndActions(t *testing.T) {
 	want := []string{
 		"fk fk_commands_session_id: commands(session_id) -> sessions(id) cascade, update cascade",
-		"fk fk_event_data_event_id: event_data(event_id) -> events(id) cascade, update cascade",
+		"fk fk_event_raw_data_event_id: event_raw_data(event_id) -> events(id) cascade, update cascade",
 		"fk fk_events_sensor_id: events(sensor_id) -> sensors(id) restrict, update cascade",
 		"fk fk_events_session_id: events(session_id) -> sessions(id) cascade, update cascade",
 		"fk fk_ingest_tokens_sensor_id: ingest_tokens(sensor_id) -> sensors(id) cascade, update cascade",
@@ -400,7 +400,7 @@ func TestForeignKeyActions(t *testing.T) {
 		exec("INSERT INTO tty_files (id, sha256, size, path, stored_at) VALUES (1, 'sha', 1, 'p', 0)")
 		exec("INSERT INTO sessions (id, sensor_id, cowrie_session, started_at, tty_file_id) VALUES (1, 1, 's1', 0, 1), (2, 1, 's2', 0, 1)")
 		exec("INSERT INTO events (id, hash, sensor_id, session_id, type, ts, received_at) VALUES (1, ?, 1, 1, 'cowrie.session.connect', 0, 0), (2, ?, 1, 2, 'cowrie.session.connect', 0, 0)", []byte{1}, []byte{2})
-		exec("INSERT INTO event_data (event_id, data) VALUES (1, '{}'), (2, '{}')")
+		exec("INSERT INTO event_raw_data (event_id, data) VALUES (1, '{}'), (2, '{}')")
 		exec("INSERT INTO login_attempts (session_id, ts, username, password, success) VALUES (1, 0, 'root', 'x', ?)", false)
 		exec("INSERT INTO commands (session_id, ts, input) VALUES (1, 0, 'id')")
 		exec("INSERT INTO transfers (session_id, ts, direction) VALUES (1, 0, 'download')")
@@ -448,7 +448,7 @@ func TestForeignKeyActions(t *testing.T) {
 		// A session removed: everything of it.
 		exec("DELETE FROM sessions WHERE id = 1")
 		for table, want := range map[string]int{
-			"sessions": 1, "events": 1, "event_data": 1, "login_attempts": 0, "commands": 0, "transfers": 0,
+			"sessions": 1, "events": 1, "event_raw_data": 1, "login_attempts": 0, "commands": 0, "transfers": 0,
 		} {
 			if got := count(table); got != want {
 				t.Errorf("%s = %d after deleting a session, want %d", table, got, want)

@@ -23,7 +23,7 @@ func TestPurgeRawEvents(t *testing.T) {
 		if _, err := db.NewInsert().Model(&ev).Exec(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.NewInsert().Model(&store.EventData{EventID: ev.ID, Data: `{"eventid":"cowrie.client.size","width":80,"height":24}`}).Exec(ctx); err != nil {
+		if _, err := db.NewInsert().Model(&store.EventRawData{EventID: ev.ID, Data: `{"eventid":"cowrie.client.size","width":80,"height":24}`}).Exec(ctx); err != nil {
 			t.Fatal(err)
 		}
 		count := func(model any) int {

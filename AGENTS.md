@@ -97,7 +97,9 @@ needs Go (reading JSON, as 00009 does) is registered in `store.Migrate`
 for both engines and runs in a transaction. Released
 migrations are immutable: add a new file. Design in `docs/db.md`.
 
-**Raw data is purgeable.** `event_data` holds the Cowrie lines; nothing
+**Raw data is purgeable.** `event_raw_data` holds the Cowrie lines (kept
+for ever, N days or not at all: `CAURI_EVENT_RAW_DATA_RETENTION_DAYS`
+-1, N or 0; migration 00009 reads it by its former name, `event_data`); nothing
 may reference it except its event, and nothing may need it: what the
 tables do not hold of a line is kept in `events.data` (`cowrie.Fragment`:
 the line without its envelope and its projected fields), read by the
