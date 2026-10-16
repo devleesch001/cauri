@@ -49,8 +49,8 @@ const severity = { flag: 'info', env: 'success', default: 'secondary' } as const
             <span
               v-tooltip.top="data.usage"
               class="data"
-            >--{{ data.name }}</span>
-            <span class="data muted env">{{ data.env }}</span>
+            >{{ data.env }}</span>
+            <span class="data muted flag">--{{ data.name }}</span>
           </template>
         </Column>
         <Column :header="t('admin.config.value')">
@@ -91,7 +91,7 @@ const severity = { flag: 'info', env: 'success', default: 'secondary' } as const
 </template>
 
 <style scoped>
-.env {
+.flag {
   display: block;
   font-size: 0.8125rem;
 }
