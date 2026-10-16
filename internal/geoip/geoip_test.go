@@ -59,8 +59,8 @@ func TestLocate(t *testing.T) {
 	}
 	for ip, c := range cases {
 		loc, src, ok := d.Locate(ip)
-		if loc != c.loc || ok != c.ok || (ok && src != "DBIP-City-Lite 2026-10-01") {
-			t.Errorf("%s: %+v %q %v", ip, loc, src, ok)
+		if loc != c.loc || ok != c.ok || src.Source() != "DBIP-City-Lite 2026-10-01" {
+			t.Errorf("%s: %+v %q %v", ip, loc, src.Source(), ok)
 		}
 	}
 }
@@ -84,11 +84,11 @@ func TestWatchReloads(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		loc, src, _ := d.Locate("5.160.0.1")
-		if loc.Country == "AF" && src == "GeoLite2-City 2026-11-01" && d.Info().Provider == "maxmind" {
+		if loc.Country == "AF" && src.Source() == "GeoLite2-City 2026-11-01" && d.Info().Provider == "maxmind" {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("not reloaded: %+v %q", loc, src)
+			t.Fatalf("not reloaded: %+v %q", loc, src.Source())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

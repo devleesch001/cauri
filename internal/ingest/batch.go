@@ -30,6 +30,7 @@ type batchWriter struct {
 	sessions  map[string]*store.Session // by Cowrie session id
 	order     []string                  // Cowrie session ids, in order of appearance
 	kex       map[string]*cowrie.Kex    // the first key exchange of each session
+	geo       map[string]int64          // GeoIP database ids, by geoip.Info.Source
 	events    []pendingEvent
 	// sessionIDs are the sessions written, once write returned.
 	sessionIDs []int64
@@ -50,6 +51,7 @@ func newBatchWriter(sensor string, now time.Time, locator Locator, networker Net
 		sensor:    store.Sensor{Name: sensor},
 		sessions:  map[string]*store.Session{},
 		kex:       map[string]*cowrie.Kex{},
+		geo:       map[string]int64{},
 	}
 }
 
@@ -237,7 +239,9 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 			id := kexIDs[string(k.Digest)]
 			rows[i].SSHKexID = &id
 		}
-		w.locate(&rows[i])
+		if err := w.locate(ctx, tx, &rows[i]); err != nil {
+			return nil, fmt.Errorf("location: %w", err)
+		}
 		w.network(&rows[i])
 	}
 	q := tx.NewInsert().Model(&rows).On("CONFLICT (sensor_id, cowrie_session) DO UPDATE").
@@ -251,8 +255,8 @@ func (w *batchWriter) upsertSessions(ctx context.Context, tx bun.Tx) (map[string
 	}
 	// A located session keeps its location: the columns come from the same
 	// lookup, the first one.
-	for _, col := range []string{"geo_country", "geo_city", "geo_lat", "geo_lon", "geo_source"} {
-		q = q.Set(col + " = CASE WHEN ?TableAlias.geo_source IS NULL THEN EXCLUDED." + col + " ELSE ?TableAlias." + col + " END")
+	for _, col := range []string{"geo_country", "geo_city", "geo_lat", "geo_lon", "geo_source_id"} {
+		q = q.Set(col + " = CASE WHEN ?TableAlias.geo_source_id IS NULL THEN EXCLUDED." + col + " ELSE ?TableAlias." + col + " END")
 	}
 	var out []struct {
 		ID            int64  `bun:"id"`
@@ -286,7 +290,7 @@ func (w *batchWriter) upsertKex(ctx context.Context, tx bun.Tx) (map[string]int6
 		rows = append(rows, store.NewSSHKex(*k))
 		digests = append(digests, k.Digest)
 	}
-	if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (digest) DO NOTHING").Exec(ctx); err != nil {
+	if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (digest) DO NOTHING").Returning("NULL").Exec(ctx); err != nil {
 		return nil, err
 	}
 	var found []store.SSHKex
@@ -311,13 +315,22 @@ func (w *batchWriter) network(s *store.Session) {
 	}
 }
 
-// locate sets the location of a session row from its source address.
-func (w *batchWriter) locate(s *store.Session) {
+// locate sets the location of a session row from its source address,
+// and the database that answered, even if it did not know the address.
+func (w *batchWriter) locate(ctx context.Context, tx bun.Tx, s *store.Session) error {
 	if w.locator == nil || s.SrcIP == nil {
-		return
+		return nil
 	}
 	loc, source, ok := w.locator.Locate(*s.SrcIP)
-	s.GeoSource = &source
+	id, known := w.geo[source.Source()]
+	if !known {
+		var err error
+		if id, err = store.GeoSourceID(ctx, tx, source.Type, source.Built); err != nil {
+			return err
+		}
+		w.geo[source.Source()] = id
+	}
+	s.GeoSourceID = &id
 	if ok {
 		s.GeoCountry = &loc.Country
 		s.GeoCity = nullable(loc.City)
@@ -325,6 +338,7 @@ func (w *batchWriter) locate(s *store.Session) {
 			s.GeoLat, s.GeoLon = &loc.Lat, &loc.Lon
 		}
 	}
+	return nil
 }
 
 func insert[T any](ctx context.Context, tx bun.Tx, rows *[]T) error {

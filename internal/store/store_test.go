@@ -47,7 +47,7 @@ func TestMigrateLogs(t *testing.T) {
 				`"msg":"database"`, `"engine":"` + engine + `"`, `"version":"`,
 				`"msg":"database schema"`, `"version":"none (empty database)"`,
 				`"msg":"database upgrade needed"`, `"msg":"applying migration","migration":"00001_init"`,
-				`"msg":"migration applied","migration":"00009_project_raw_events"`, `"msg":"database upgraded"`,
+				`"msg":"migration applied","migration":"00011_geo_source_ids"`, `"msg":"database upgraded"`,
 			} {
 				if !strings.Contains(first, want) {
 					t.Errorf("first run: no %s in\n%s", want, first)
@@ -62,7 +62,7 @@ func TestMigrateLogs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if second := out.String(); !strings.Contains(second, `"msg":"database schema is up to date"`) ||
-				!strings.Contains(second, `"version":"00009_project_raw_events","latest":"00009_project_raw_events","pending":0`) ||
+				!strings.Contains(second, `"version":"00011_geo_source_ids","latest":"00011_geo_source_ids","pending":0`) ||
 				strings.Contains(second, "applying migration") {
 				t.Errorf("second run:\n%s", second)
 			}
@@ -230,9 +230,9 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 		if err := db.NewRaw(`SELECT name, sql AS "sql" FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'bun_%'`).Scan(ctx, &defs); err != nil {
 			t.Fatal(err)
 		}
-		fk := regexp.MustCompile(`CONSTRAINT (\w+) FOREIGN KEY \((\w+)\) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?`)
+		fk := regexp.MustCompile(`CONSTRAINT (\w+) FOREIGN KEY \((\w+)\) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?(?: ON UPDATE (CASCADE|RESTRICT|SET NULL))?`)
 		// A column added to a table holds its key in its own definition.
-		column := regexp.MustCompile(`(\w+) \w+ CONSTRAINT (\w+) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?`)
+		column := regexp.MustCompile(`(\w+) \w+ CONSTRAINT (\w+) REFERENCES "?(\w+)"? \((\w+)\)(?: ON DELETE (CASCADE|RESTRICT|SET NULL))?(?: ON UPDATE (CASCADE|RESTRICT|SET NULL))?`)
 		unnamed := regexp.MustCompile(`REFERENCES `)
 		pk := regexp.MustCompile(`CONSTRAINT (\w+) PRIMARY KEY \((\w+)\)`)
 		for _, d := range defs {
@@ -245,14 +245,16 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 			}
 			named := fk.FindAllStringSubmatch(d.SQL, -1)
 			for _, m := range column.FindAllStringSubmatch(d.SQL, -1) {
-				named = append(named, []string{m[0], m[2], m[1], m[3], m[4], m[5]})
+				named = append(named, []string{m[0], m[2], m[1], m[3], m[4], m[5], m[6]})
 			}
 			for _, m := range named {
-				action := strings.ToLower(m[5])
-				if action == "" {
-					action = "no action"
+				action := func(a string) string {
+					if a == "" {
+						return "no action"
+					}
+					return strings.ToLower(a)
 				}
-				lines = append(lines, fmt.Sprintf("fk %s: %s(%s) -> %s(%s) %s", m[1], d.Name, m[2], m[3], m[4], action))
+				lines = append(lines, fmt.Sprintf("fk %s: %s(%s) -> %s(%s) %s, update %s", m[1], d.Name, m[2], m[3], m[4], action(m[5]), action(m[6])))
 			}
 			if n := len(unnamed.FindAllString(d.SQL, -1)); n != len(named) {
 				t.Errorf("%s: %d foreign keys, %d named", d.Name, n, len(named))
@@ -278,7 +280,9 @@ func schema(t *testing.T, ctx context.Context, db *bun.DB, engine string) []stri
 			JOIN pg_attribute AS a ON a.attrelid = t.oid AND a.attnum = c.conkey[1]
 			WHERE c.contype = 'p' AND ns.nspname = current_schema()`)
 		add(`SELECT 'fk ' || c.conname || ': ' || t.relname || '(' || a.attname || ') -> ' || r.relname || '(' || ra.attname || ') ' ||
-				CASE c.confdeltype WHEN 'c' THEN 'cascade' WHEN 'r' THEN 'restrict' WHEN 'n' THEN 'set null' WHEN 'd' THEN 'set default' ELSE 'no action' END
+				CASE c.confdeltype WHEN 'c' THEN 'cascade' WHEN 'r' THEN 'restrict' WHEN 'n' THEN 'set null' WHEN 'd' THEN 'set default' ELSE 'no action' END ||
+				', update ' ||
+				CASE c.confupdtype WHEN 'c' THEN 'cascade' WHEN 'r' THEN 'restrict' WHEN 'n' THEN 'set null' WHEN 'd' THEN 'set default' ELSE 'no action' END
 			FROM pg_constraint AS c
 			JOIN pg_class AS t ON t.oid = c.conrelid
 			JOIN pg_class AS r ON r.oid = c.confrelid
@@ -335,20 +339,22 @@ func TestKeyNames(t *testing.T) {
 	})
 }
 
-// Every foreign key is named fk_<table>_<column> and has the action its
-// parent's removal calls for (see docs/db.md), on both engines.
+// Every foreign key is named fk_<table>_<column>, has the action its
+// parent's removal calls for (see docs/db.md) and follows a change of its
+// parent's id, on both engines.
 func TestForeignKeyNamesAndActions(t *testing.T) {
 	want := []string{
-		"fk fk_commands_session_id: commands(session_id) -> sessions(id) cascade",
-		"fk fk_event_data_event_id: event_data(event_id) -> events(id) cascade",
-		"fk fk_events_sensor_id: events(sensor_id) -> sensors(id) restrict",
-		"fk fk_events_session_id: events(session_id) -> sessions(id) cascade",
-		"fk fk_ingest_tokens_sensor_id: ingest_tokens(sensor_id) -> sensors(id) cascade",
-		"fk fk_login_attempts_session_id: login_attempts(session_id) -> sessions(id) cascade",
-		"fk fk_sessions_sensor_id: sessions(sensor_id) -> sensors(id) restrict",
-		"fk fk_sessions_ssh_kex_id: sessions(ssh_kex_id) -> ssh_kex(id) restrict",
-		"fk fk_sessions_tty_file_id: sessions(tty_file_id) -> tty_files(id) set null",
-		"fk fk_transfers_session_id: transfers(session_id) -> sessions(id) cascade",
+		"fk fk_commands_session_id: commands(session_id) -> sessions(id) cascade, update cascade",
+		"fk fk_event_data_event_id: event_data(event_id) -> events(id) cascade, update cascade",
+		"fk fk_events_sensor_id: events(sensor_id) -> sensors(id) restrict, update cascade",
+		"fk fk_events_session_id: events(session_id) -> sessions(id) cascade, update cascade",
+		"fk fk_ingest_tokens_sensor_id: ingest_tokens(sensor_id) -> sensors(id) cascade, update cascade",
+		"fk fk_login_attempts_session_id: login_attempts(session_id) -> sessions(id) cascade, update cascade",
+		"fk fk_sessions_geo_source_id: sessions(geo_source_id) -> geo_sources(id) set null, update cascade",
+		"fk fk_sessions_sensor_id: sessions(sensor_id) -> sensors(id) restrict, update cascade",
+		"fk fk_sessions_ssh_kex_id: sessions(ssh_kex_id) -> ssh_kex(id) restrict, update cascade",
+		"fk fk_sessions_tty_file_id: sessions(tty_file_id) -> tty_files(id) set null, update cascade",
+		"fk fk_transfers_session_id: transfers(session_id) -> sessions(id) cascade, update cascade",
 	}
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		engine := store.SQLite
@@ -370,7 +376,7 @@ func TestForeignKeyNamesAndActions(t *testing.T) {
 // What removing a parent does, as the actions say: a session takes its
 // events, their raw lines and its projections with it; a recording leaves
 // its sessions without one; a sensor that has sessions cannot go, one with
-// only tokens takes them along.
+// only tokens takes them along. A parent's id changed, its children follow.
 func TestForeignKeyActions(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		ctx := context.Background()
@@ -397,6 +403,29 @@ func TestForeignKeyActions(t *testing.T) {
 		exec("INSERT INTO login_attempts (session_id, ts, username, password, success) VALUES (1, 0, 'root', 'x', ?)", false)
 		exec("INSERT INTO commands (session_id, ts, input) VALUES (1, 0, 'id')")
 		exec("INSERT INTO transfers (session_id, ts, direction) VALUES (1, 0, 'download')")
+
+		// Ids changed: the references follow.
+		exec("UPDATE sensors SET id = 10 WHERE id = 1")
+		exec("UPDATE sessions SET id = 11 WHERE id = 1")
+		exec("UPDATE sessions SET id = 1 WHERE id = 11")
+		exec("UPDATE sensors SET id = 1 WHERE id = 10")
+		for table, want := range map[string]int{"sessions": 2, "events": 2, "ingest_tokens": 2, "login_attempts": 1, "commands": 1, "transfers": 1} {
+			if got := count(table); got != want {
+				t.Errorf("%s = %d after changing ids, want %d", table, got, want)
+			}
+		}
+		var moved int
+		if err := db.NewRaw("SELECT COUNT(*) FROM events WHERE sensor_id = 1 AND session_id IN (1, 2)").Scan(ctx, &moved); err != nil || moved != 2 {
+			t.Errorf("events following their sensor and session = %d, %v", moved, err)
+		}
+		exec("UPDATE sessions SET id = 21 WHERE id = 1")
+		for _, table := range []string{"events", "login_attempts", "commands", "transfers"} {
+			var n int
+			if err := db.NewRaw("SELECT COUNT(*) FROM "+table+" WHERE session_id = 21").Scan(ctx, &n); err != nil || n != 1 {
+				t.Errorf("%s of the renumbered session = %d, %v", table, n, err)
+			}
+		}
+		exec("UPDATE sessions SET id = 1 WHERE id = 21")
 
 		// A sensor with sessions or events stays.
 		if _, err := db.ExecContext(ctx, "DELETE FROM sensors WHERE id = 1"); err == nil {

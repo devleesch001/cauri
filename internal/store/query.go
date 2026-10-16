@@ -101,9 +101,11 @@ func selectSessions(db bun.IDB, dst any) *bun.SelectQuery {
 	return db.NewSelect().Model(dst).
 		ColumnExpr("s.*").
 		ColumnExpr("sn.name AS sensor, t.sha256 AS tty_sha256, t.size AS tty_size, k.hassh AS hassh").
+		ColumnExpr("g.type AS geo_source_type, g.built AS geo_source_built").
 		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").
 		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
-		Join("LEFT JOIN ssh_kex AS k ON k.id = s.ssh_kex_id")
+		Join("LEFT JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
+		Join("LEFT JOIN geo_sources AS g ON g.id = s.geo_source_id")
 }
 
 // ListSessions returns a page of sessions, latest first, and the number
@@ -656,14 +658,28 @@ func whereVerdict(q *bun.SelectQuery, v string) *bun.SelectQuery {
 	return q
 }
 
-// ListGeoSources returns the GeoIP databases the stored locations came
-// from (see Session.GeoSource): their attributions are due while their
-// data is shown, whether or not the database is still loaded.
+// ListGeoSources returns the types of the GeoIP databases the stored
+// locations came from (see Session.GeoSourceID): their attributions are
+// due while their data is shown, whether or not the database is still
+// loaded.
 func ListGeoSources(ctx context.Context, db bun.IDB) ([]string, error) {
 	out := []string{}
-	err := db.NewSelect().Model((*Session)(nil)).Distinct().Column("geo_source").
-		Where("s.geo_source IS NOT NULL").Order("geo_source").Scan(ctx, &out)
+	used := db.NewSelect().TableExpr("sessions AS gs").ColumnExpr("1").Where("gs.geo_source_id = g.id")
+	err := db.NewSelect().Model((*GeoSource)(nil)).Distinct().Column("type").
+		Where("EXISTS (?)", used).Order("type").Scan(ctx, &out)
 	return out, err
+}
+
+// GeoSourceID returns the id of a GeoIP database, stored on first use.
+func GeoSourceID(ctx context.Context, db bun.IDB, typ string, built time.Time) (int64, error) {
+	g := GeoSource{Type: typ, Built: NewTime(built)}
+	if _, err := db.NewInsert().Model(&g).On("CONFLICT (type, built) DO NOTHING").Returning("NULL").Exec(ctx); err != nil {
+		return 0, err
+	}
+	var id int64
+	err := db.NewSelect().Model((*GeoSource)(nil)).Column("id").
+		Where("type = ?", typ).Where("built = ?", g.Built).Scan(ctx, &id)
+	return id, err
 }
 
 // LookupSession returns the id of a session from its sensor name and

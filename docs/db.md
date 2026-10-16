@@ -67,6 +67,7 @@ erDiagram
     sessions ||--o{ transfers : "downloads, uploads"
     tty_files |o--o{ sessions : "recording of"
     ssh_kex |o--o{ sessions : "offered by the client of"
+    geo_sources |o--o{ sessions : "located"
 
     sensors {
         integer id PK
@@ -105,7 +106,7 @@ erDiagram
         text geo_city
         double geo_lat "centre of the city"
         double geo_lon
-        text geo_source
+        integer geo_source_id FK
         text verdict
         integer verdict_score
         text verdict_version
@@ -148,6 +149,11 @@ erDiagram
         text filename
         text sha256
     }
+    geo_sources {
+        integer id PK
+        text type "UK with built"
+        bigint built "build date"
+    }
     ssh_kex {
         integer id PK
         blob digest UK "SHA-256 of every list"
@@ -181,6 +187,7 @@ erDiagram
 | `commands` | Commands typed or run | Few sessions, several each |
 | `transfers` | Files downloaded (`wget`, `curl`) or uploaded (SFTP, SCP) | Rare |
 | `tty_files` | Recordings stored in the TTY volume, by digest of the file | One per distinct recording |
+| `geo_sources` | The GeoIP databases that located sessions, by type and build date: the session page names it, and its provider's attribution is due while a session uses it | One per database build |
 | `ssh_kex` | What SSH clients offered in the key exchange (`cowrie.client.kex`), once per combination of lists | A few dozen (68 for 20,000 sessions) |
 
 ### Sessions and events
@@ -268,6 +275,10 @@ the ingestion), the same for both engines, run in a transaction. A
 session whose key exchange line was purged gets a row with its HASSH
 alone. It then drops `sessions.hassh`.
 
+Migration 00011 splits the text `sessions.geo_source` ("DBIP-City-Lite
+2026-10-01") into `geo_sources` rows, whose date portable SQL cannot
+parse, sets `sessions.geo_source_id` and drops the text.
+
 ## Names
 
 Every key and index is named after its table and columns, the same in both
@@ -292,7 +303,9 @@ free in the file (about its size again) until new data reuses them or a
 ## Foreign keys
 
 Every foreign key says what removing its parent does (migration 00005;
-`TestForeignKeyNamesAndActions` reads them back):
+`TestForeignKeyNamesAndActions` reads them back), and follows a change of
+its parent's id (`ON UPDATE CASCADE`, migration 00007; the user's rule,
+so that ids can be renumbered):
 
 | Constraint | Parent | When the parent is deleted |
 |---|---|---|
@@ -300,6 +313,8 @@ Every foreign key says what removing its parent does (migration 00005;
 | `fk_sessions_sensor_id` | `sensors` | `RESTRICT`: a sensor with sessions cannot be deleted by accident |
 | `fk_events_sensor_id` | `sensors` | `RESTRICT`, as above |
 | `fk_sessions_tty_file_id` | `tty_files` | `SET NULL`: removing a recording leaves its sessions, without it |
+| `fk_sessions_geo_source_id` | `geo_sources` | `SET NULL`: the sessions are located again, by the database loaded |
+| `fk_sessions_ssh_kex_id` | `ssh_kex` | `RESTRICT`: key exchanges are never removed |
 | `fk_events_session_id` | `sessions` | `CASCADE`: the events belong to the session |
 | `fk_event_data_event_id` | `events` | `CASCADE`: the raw line follows its event |
 | `fk_login_attempts_session_id`, `fk_commands_session_id`, `fk_transfers_session_id` | `sessions` | `CASCADE`: projections of the session |
@@ -348,6 +363,8 @@ indexes too.
 | `ix_sessions_src_ip` | Filter by source address |
 | `ix_sessions_geo_country_geo_city` | Country and city filters, country counts (migration 00002) |
 | `ix_sessions_verdict` | Human/bot filter |
+| `ix_sessions_geo_source_id` | Sessions left to locate; attributions due; removing a database (migration 00010) |
+| `uk_geo_sources_type_built` | Find a database at ingestion |
 | `ix_sessions_ssh_kex_id` | HASSH filter and counts, through `ssh_kex` (migration 00008) |
 | `uk_ssh_kex_digest` | Find a key exchange at ingestion |
 | `ix_ssh_kex_hassh` | HASSH filter |

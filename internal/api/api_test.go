@@ -651,7 +651,7 @@ func TestGeoIP(t *testing.T) {
 			Items []store.SessionSummary `json:"items"`
 		}
 		get(t, e, "/api/sessions?country=ir", http.StatusOK, &list)
-		if len(list.Items) != 1 || *list.Items[0].GeoCity != "Tehran" || *list.Items[0].GeoSource != "DBIP-City-Lite 2026-10-01" {
+		if len(list.Items) != 1 || *list.Items[0].GeoCity != "Tehran" || *list.Items[0].GeoSourceType != "DBIP-City-Lite" {
 			t.Fatalf("sessions from IR = %+v", list.Items)
 		}
 		get(t, e, "/api/sessions?country=FR", http.StatusOK, &list)
@@ -750,8 +750,13 @@ func TestAboutStoredLocations(t *testing.T) {
 		if _, err := e.client.SendEvents(context.Background(), events("hp-01")); err != nil {
 			t.Fatal(err)
 		}
+		ctx := context.Background()
+		id, err := store.GeoSourceID(ctx, db, "DBIP-City-Lite", time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, err := db.NewUpdate().Model((*store.Session)(nil)).
-			Set("geo_source = ?", "DBIP-City-Lite 2026-10-01").Where("1 = 1").Exec(context.Background()); err != nil {
+			Set("geo_source_id = ?", id).Where("1 = 1").Exec(ctx); err != nil {
 			t.Fatal(err)
 		}
 		var a struct {

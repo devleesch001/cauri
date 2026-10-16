@@ -108,6 +108,7 @@ func Migrate(ctx context.Context, db *bun.DB, log *slog.Logger) error {
 	}
 	// The migrations written in Go, the same for both engines.
 	found.Add(projectRawEvents)
+	found.Add(geoSourceIDs)
 	// Each migration says when it starts and ends.
 	ms := migrate.NewMigrations()
 	for _, mig := range found.Sorted() {

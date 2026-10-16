@@ -1,40 +1,51 @@
--- Back to the names SQLite chose: inline primary and unique keys, indexes
--- named as before. The same rebuild as the migration, the other way round.
+-- Every key and index named, the same in both engines (AGENTS.md): pk_,
+-- uk_, fk_ and ix_ instead of the names SQLite chose; every foreign key
+-- also follows its parent's id (ON UPDATE CASCADE). SQLite renames
+-- neither a constraint nor an index, so every table is rebuilt, as in
+-- 00005: each new table is created under a temporary name, referring to the
+-- others' temporary names, and filled; the old tables are dropped, children
+-- first, and the new ones renamed, which makes SQLite rewrite the references
+-- to their final names. Primary keys become named table constraints (an
+-- INTEGER key stays the rowid); unique keys become named unique indexes,
+-- since SQLite gives inline ones automatic names. Rows and ids are kept.
 
 CREATE TABLE sensors_n (
-    id         INTEGER PRIMARY KEY,
-    name       TEXT NOT NULL UNIQUE, -- the id the operator gives the ingestor
+    id         INTEGER NOT NULL,
+    name       TEXT NOT NULL, -- the id the operator gives the ingestor
     first_seen INTEGER, -- null until the first event
-    last_seen  INTEGER
+    last_seen  INTEGER,
+    CONSTRAINT pk_sensors PRIMARY KEY (id)
 );
 
 --bun:split
 
 CREATE TABLE tty_files_n (
-    id        INTEGER PRIMARY KEY,
-    sha256    TEXT NOT NULL UNIQUE, -- of the file, names it in the TTY volume
+    id        INTEGER NOT NULL,
+    sha256    TEXT NOT NULL, -- of the file, names it in the TTY volume
     size      INTEGER NOT NULL,
     path      TEXT NOT NULL,
-    stored_at INTEGER NOT NULL
+    stored_at INTEGER NOT NULL,
+    CONSTRAINT pk_tty_files PRIMARY KEY (id)
 );
 
 --bun:split
 
 CREATE TABLE ingest_tokens_n (
-    id           INTEGER PRIMARY KEY,
+    id           INTEGER NOT NULL,
     sensor_id    INTEGER NOT NULL,
     name         TEXT NOT NULL,
-    token_hash   TEXT NOT NULL UNIQUE,
+    token_hash   TEXT NOT NULL,
     created_at   INTEGER NOT NULL,
     last_used_at INTEGER,
     revoked_at   INTEGER,
-    CONSTRAINT fk_ingest_tokens_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors_n (id) ON DELETE CASCADE
+    CONSTRAINT pk_ingest_tokens PRIMARY KEY (id),
+    CONSTRAINT fk_ingest_tokens_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors_n (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 --bun:split
 
 CREATE TABLE sessions_n (
-    id              INTEGER PRIMARY KEY,
+    id              INTEGER NOT NULL,
     sensor_id       INTEGER NOT NULL,
     cowrie_session  TEXT NOT NULL, -- Cowrie's id, unique within a sensor
     src_ip          TEXT,
@@ -62,66 +73,71 @@ CREATE TABLE sessions_n (
     asn             INTEGER,
     as_org          TEXT,
     shell           INTEGER,
-    UNIQUE (sensor_id, cowrie_session),
-    CONSTRAINT fk_sessions_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors_n (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_sessions_tty_file_id FOREIGN KEY (tty_file_id) REFERENCES tty_files_n (id) ON DELETE SET NULL
+    CONSTRAINT pk_sessions PRIMARY KEY (id),
+    CONSTRAINT fk_sessions_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors_n (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_sessions_tty_file_id FOREIGN KEY (tty_file_id) REFERENCES tty_files_n (id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 --bun:split
 
 CREATE TABLE events_n (
-    id          INTEGER PRIMARY KEY,
-    hash        BLOB NOT NULL UNIQUE, -- SHA-256 of sensor and line: deduplication
+    id          INTEGER NOT NULL,
+    hash        BLOB NOT NULL, -- SHA-256 of sensor and line: deduplication
     sensor_id   INTEGER NOT NULL,
     session_id  INTEGER,
     type        TEXT NOT NULL, -- Cowrie's eventid
     ts          INTEGER NOT NULL,
     received_at INTEGER NOT NULL,
-    CONSTRAINT fk_events_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors_n (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_events_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE
+    CONSTRAINT pk_events PRIMARY KEY (id),
+    CONSTRAINT fk_events_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors_n (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_events_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 --bun:split
 
 CREATE TABLE event_data_n (
-    event_id INTEGER PRIMARY KEY,
+    event_id INTEGER NOT NULL,
     data     TEXT NOT NULL, -- the Cowrie line; can be purged
-    CONSTRAINT fk_event_data_event_id FOREIGN KEY (event_id) REFERENCES events_n (id) ON DELETE CASCADE
+    CONSTRAINT pk_event_data PRIMARY KEY (event_id),
+    CONSTRAINT fk_event_data_event_id FOREIGN KEY (event_id) REFERENCES events_n (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 --bun:split
 
 CREATE TABLE login_attempts_n (
-    id         INTEGER PRIMARY KEY,
+    id         INTEGER NOT NULL,
     session_id INTEGER NOT NULL,
     ts         INTEGER NOT NULL,
     username   TEXT NOT NULL,
     password   TEXT NOT NULL,
     success    INTEGER NOT NULL,
-    CONSTRAINT fk_login_attempts_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE
+    CONSTRAINT pk_login_attempts PRIMARY KEY (id),
+    CONSTRAINT fk_login_attempts_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 --bun:split
 
 CREATE TABLE commands_n (
-    id         INTEGER PRIMARY KEY,
+    id         INTEGER NOT NULL,
     session_id INTEGER NOT NULL,
     ts         INTEGER NOT NULL,
     input      TEXT NOT NULL,
-    CONSTRAINT fk_commands_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE
+    CONSTRAINT pk_commands PRIMARY KEY (id),
+    CONSTRAINT fk_commands_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 --bun:split
 
 CREATE TABLE transfers_n (
-    id         INTEGER PRIMARY KEY,
+    id         INTEGER NOT NULL,
     session_id INTEGER NOT NULL,
     ts         INTEGER NOT NULL,
     direction  TEXT NOT NULL, -- download or upload
     url        TEXT,
     filename   TEXT,
     sha256     TEXT,
-    CONSTRAINT fk_transfers_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE
+    CONSTRAINT pk_transfers PRIMARY KEY (id),
+    CONSTRAINT fk_transfers_session_id FOREIGN KEY (session_id) REFERENCES sessions_n (id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 --bun:split
@@ -243,68 +259,88 @@ ALTER TABLE transfers_n RENAME TO transfers;
 
 --bun:split
 
-CREATE INDEX ingest_tokens_sensor ON ingest_tokens (sensor_id);
+CREATE UNIQUE INDEX uk_sensors_name ON sensors (name);
 
 --bun:split
 
-CREATE INDEX sessions_started_at ON sessions (started_at);
+CREATE UNIQUE INDEX uk_tty_files_sha256 ON tty_files (sha256);
 
 --bun:split
 
-CREATE INDEX sessions_sensor_started_at ON sessions (sensor_id, started_at);
+CREATE UNIQUE INDEX uk_ingest_tokens_token_hash ON ingest_tokens (token_hash);
 
 --bun:split
 
-CREATE INDEX sessions_src_ip ON sessions (src_ip);
+CREATE UNIQUE INDEX uk_sessions_sensor_id_cowrie_session ON sessions (sensor_id, cowrie_session);
 
 --bun:split
 
-CREATE INDEX sessions_verdict ON sessions (verdict);
+CREATE UNIQUE INDEX uk_events_hash ON events (hash);
 
 --bun:split
 
-CREATE INDEX sessions_geo_place ON sessions (geo_country, geo_city);
+CREATE INDEX ix_ingest_tokens_sensor_id ON ingest_tokens (sensor_id);
 
 --bun:split
 
-CREATE INDEX sessions_asn ON sessions (asn);
+CREATE INDEX ix_sessions_started_at ON sessions (started_at);
 
 --bun:split
 
-CREATE INDEX sessions_tty_file ON sessions (tty_file_id);
+CREATE INDEX ix_sessions_sensor_id_started_at ON sessions (sensor_id, started_at);
 
 --bun:split
 
-CREATE INDEX sessions_shell ON sessions (shell);
+CREATE INDEX ix_sessions_src_ip ON sessions (src_ip);
 
 --bun:split
 
-CREATE INDEX events_session_ts ON events (session_id, ts);
+CREATE INDEX ix_sessions_verdict ON sessions (verdict);
 
 --bun:split
 
-CREATE INDEX events_sensor ON events (sensor_id);
+CREATE INDEX ix_sessions_geo_country_geo_city ON sessions (geo_country, geo_city);
 
 --bun:split
 
-CREATE INDEX login_attempts_session ON login_attempts (session_id);
+CREATE INDEX ix_sessions_asn ON sessions (asn);
 
 --bun:split
 
-CREATE INDEX login_attempts_ts ON login_attempts (ts);
+CREATE INDEX ix_sessions_tty_file_id ON sessions (tty_file_id);
 
 --bun:split
 
-CREATE INDEX login_attempts_username ON login_attempts (username, session_id);
+CREATE INDEX ix_sessions_shell ON sessions (shell);
 
 --bun:split
 
-CREATE INDEX commands_session ON commands (session_id);
+CREATE INDEX ix_events_session_id_ts ON events (session_id, ts);
 
 --bun:split
 
-CREATE INDEX transfers_session ON transfers (session_id);
+CREATE INDEX ix_events_sensor_id ON events (sensor_id);
 
 --bun:split
 
-CREATE INDEX transfers_sha256 ON transfers (sha256);
+CREATE INDEX ix_login_attempts_session_id ON login_attempts (session_id);
+
+--bun:split
+
+CREATE INDEX ix_login_attempts_ts ON login_attempts (ts);
+
+--bun:split
+
+CREATE INDEX ix_login_attempts_username_session_id ON login_attempts (username, session_id);
+
+--bun:split
+
+CREATE INDEX ix_commands_session_id ON commands (session_id);
+
+--bun:split
+
+CREATE INDEX ix_transfers_session_id ON transfers (session_id);
+
+--bun:split
+
+CREATE INDEX ix_transfers_sha256 ON transfers (sha256);

@@ -40,7 +40,9 @@ export interface Session {
   tty_size: number | null
   geo_country: string | null // ISO 3166-1 alpha-2
   geo_city: string | null
-  geo_source: string | null // GeoIP database used; set with no country: unknown address
+  // GeoIP database that located it; set with no country: unknown address
+  geo_source_type: string | null
+  geo_source_built: string | null // build date of that database
   geo_lat: number | null // centre of the city
   geo_lon: number | null
   asn: number | null // autonomous system, with an ASN database

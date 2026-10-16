@@ -57,7 +57,7 @@ type Service struct {
 // Locator locates IP addresses, see package geoip. source names the
 // database that answered; ok is false for unknown addresses.
 type Locator interface {
-	Locate(ip string) (loc geoip.Location, source string, ok bool)
+	Locate(ip string) (loc geoip.Location, source geoip.Info, ok bool)
 }
 
 // SetLocator makes the service locate new sessions by their source
@@ -296,10 +296,11 @@ func (s *Service) LocateSessions(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	total := 0
+	geo := map[string]int64{} // GeoIP database ids, by geoip.Info.Source
 	for {
 		var rows []store.Session
 		err := s.db.NewSelect().Model(&rows).Column("id", "src_ip").
-			Where("geo_source IS NULL").Where("src_ip IS NOT NULL").
+			Where("geo_source_id IS NULL").Where("src_ip IS NOT NULL").
 			OrderExpr("s.id").Limit(locateBatch).Scan(ctx)
 		if err != nil || len(rows) == 0 {
 			return total, err
@@ -307,8 +308,16 @@ func (s *Service) LocateSessions(ctx context.Context) (int, error) {
 		err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 			for _, r := range rows {
 				loc, source, ok := s.locator.Locate(*r.SrcIP)
+				id, known := geo[source.Source()]
+				if !known {
+					var err error
+					if id, err = store.GeoSourceID(ctx, tx, source.Type, source.Built); err != nil {
+						return err
+					}
+					geo[source.Source()] = id
+				}
 				q := tx.NewUpdate().Model((*store.Session)(nil)).
-					Set("geo_source = ?", source).Where("id = ?", r.ID).Where("geo_source IS NULL")
+					Set("geo_source_id = ?", id).Where("id = ?", r.ID).Where("geo_source_id IS NULL")
 				if ok {
 					q = q.Set("geo_country = ?", loc.Country).Set("geo_city = ?", nullable(loc.City))
 					if loc.HasCoords {

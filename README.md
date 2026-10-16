@@ -105,7 +105,7 @@ migration`, then `migration applied` with its duration), then `database
 upgraded`, and only then starts. A schema ahead of the binary (a migration it
 does not know) stops the start with an error: run the version that migrated
 it. Back up the database before upgrading; the migration of a large SQLite
-file locks it while it copies. Migration 00007 (key and index names)
+file locks it while it copies. Migration 00007 (key and index names, foreign keys following their parent's id)
 rebuilds every SQLite table: about 0.7 s per 100 MB measured, twice the
 file's size on disk meanwhile, and the old pages stay free in the file
 until new data reuses them or a `VACUUM` (API stopped) gives them back.

@@ -71,8 +71,10 @@ func getSession(t *testing.T, db *bun.DB, sensorID, sess string) *store.Session 
 	t.Helper()
 	s := new(store.Session)
 	err := db.NewSelect().Model(s).ColumnExpr("s.*, t.sha256 AS tty_sha256, t.size AS tty_size, k.hassh AS hassh").
+		ColumnExpr("g.type AS geo_source_type, g.built AS geo_source_built").
 		Join("LEFT JOIN tty_files AS t ON t.id = s.tty_file_id").
 		Join("LEFT JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
+		Join("LEFT JOIN geo_sources AS g ON g.id = s.geo_source_id").
 		Where("s.id = ?", sessionID(t, db, sensorID, sess)).Scan(context.Background())
 	if err != nil {
 		t.Fatalf("session %s/%s: %v", sensorID, sess, err)
@@ -630,15 +632,26 @@ type fakeLocator struct {
 	city   string // Tehran if empty
 }
 
-func (f *fakeLocator) Locate(ip string) (geoip.Location, string, bool) {
+func (f *fakeLocator) Locate(ip string) (geoip.Location, geoip.Info, bool) {
+	typ, date, _ := strings.Cut(f.source, " ")
+	built, _ := time.Parse(time.DateOnly, date)
+	src := geoip.Info{Type: typ, Built: built}
 	if strings.HasPrefix(ip, "203.0.113.") {
 		city := f.city
 		if city == "" {
 			city = "Tehran"
 		}
-		return geoip.Location{Country: "IR", City: city, Lat: 35.69, Lon: 51.42, HasCoords: true}, f.source, true
+		return geoip.Location{Country: "IR", City: city, Lat: 35.69, Lon: 51.42, HasCoords: true}, src, true
 	}
-	return geoip.Location{}, f.source, false
+	return geoip.Location{}, src, false
+}
+
+// geoSource is the database that located s, as geoip.Info.Source names it.
+func geoSource(s *store.Session) string {
+	if s.GeoSourceType == nil {
+		return ""
+	}
+	return *s.GeoSourceType + " " + s.GeoSourceBuilt.UTC().Format(time.DateOnly)
 }
 
 func TestIngestLocates(t *testing.T) {
@@ -652,9 +665,9 @@ func TestIngestLocates(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := getSession(t, db, sensor, "s1")
-		if s.GeoCountry == nil || *s.GeoCountry != "IR" || *s.GeoCity != "Tehran" || *s.GeoSource != "DBIP-City-Lite 2026-10-01" ||
+		if s.GeoCountry == nil || *s.GeoCountry != "IR" || *s.GeoCity != "Tehran" || geoSource(s) != "DBIP-City-Lite 2026-10-01" ||
 			s.GeoLat == nil || *s.GeoLat != 35.69 || *s.GeoLon != 51.42 {
-			t.Fatalf("located session = %v %v %v %v", s.GeoCountry, s.GeoCity, s.GeoSource, s.GeoLat)
+			t.Fatalf("located session = %v %v %v %v", s.GeoCountry, s.GeoCity, geoSource(s), s.GeoLat)
 		}
 
 		// A later batch, with an updated database, keeps the first location.
@@ -662,8 +675,8 @@ func TestIngestLocates(t *testing.T) {
 		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, line(evCommandInput, "s1", 1, map[string]any{"input": "id"}))); err != nil {
 			t.Fatal(err)
 		}
-		if s := getSession(t, db, sensor, "s1"); *s.GeoSource != "DBIP-City-Lite 2026-10-01" {
-			t.Errorf("relocated: %v", *s.GeoSource)
+		if s := getSession(t, db, sensor, "s1"); geoSource(s) != "DBIP-City-Lite 2026-10-01" {
+			t.Errorf("relocated: %v", geoSource(s))
 		}
 
 		// A private address is looked up, but has no country.
@@ -672,8 +685,8 @@ func TestIngestLocates(t *testing.T) {
 		if _, err := svc.IngestEvents(ctx, sensor, batch(sensor, l)); err != nil {
 			t.Fatal(err)
 		}
-		if s := getSession(t, db, sensor, "s2"); s.GeoSource == nil || s.GeoCountry != nil || s.GeoCity != nil {
-			t.Errorf("private address = %v %v %v", s.GeoCountry, s.GeoCity, s.GeoSource)
+		if s := getSession(t, db, sensor, "s2"); geoSource(s) == "" || s.GeoCountry != nil || s.GeoCity != nil {
+			t.Errorf("private address = %v %v %v", s.GeoCountry, s.GeoCity, geoSource(s))
 		}
 	})
 }
@@ -805,9 +818,13 @@ func TestPlaceSessions(t *testing.T) {
 		}
 		// As located by an older cauri: a, b in Tehran, c in Mashhad, no
 		// coordinates.
+		old, err := store.GeoSourceID(ctx, db, "old", time.Unix(0, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
 		for sess, city := range map[string]string{"a": "Tehran", "b": "Tehran", "c": "Mashhad"} {
 			if _, err := db.NewUpdate().Model((*store.Session)(nil)).
-				Set("geo_country = 'IR'").Set("geo_city = ?", city).Set("geo_source = 'old'").
+				Set("geo_country = 'IR'").Set("geo_city = ?", city).Set("geo_source_id = ?", old).
 				Where("id = ?", sessionID(t, db, sensor, sess)).Exec(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -819,8 +836,8 @@ func TestPlaceSessions(t *testing.T) {
 		if n, err := svc.PlaceSessions(ctx); n != 2 || err != nil {
 			t.Fatalf("placed %d, %v", n, err)
 		}
-		if s := getSession(t, db, sensor, "b"); s.GeoLat == nil || *s.GeoLat != 35.69 || *s.GeoSource != "old" {
-			t.Errorf("session b = %v %v", s.GeoLat, *s.GeoSource)
+		if s := getSession(t, db, sensor, "b"); s.GeoLat == nil || *s.GeoLat != 35.69 || geoSource(s) != "old 1970-01-01" {
+			t.Errorf("session b = %v %v", s.GeoLat, geoSource(s))
 		}
 		// The database now says Tehran for c's address: c keeps its city
 		// and stays without a point.

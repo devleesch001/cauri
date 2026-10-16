@@ -31,6 +31,16 @@ type IngestToken struct {
 	RevokedAt  *Time  `bun:"revoked_at"`
 }
 
+// GeoSource is a GeoIP database that located sessions: one row per type
+// and build, its attribution due while a session uses it.
+type GeoSource struct {
+	bun.BaseModel `bun:"table:geo_sources,alias:g"`
+
+	ID    int64  `bun:"id,pk,autoincrement"`
+	Type  string `bun:"type"`  // such as "DBIP-City-Lite"
+	Built Time   `bun:"built"` // build date of the database
+}
+
 // SSHKex is a key exchange offer of SSH clients (cowrie.client.kex), once
 // per combination of lists (see cowrie.Kex).
 type SSHKex struct {
@@ -91,8 +101,10 @@ type Session struct {
 	TTYSize        *int64   `bun:"tty_size,scanonly" json:"tty_size"`
 	GeoCountry     *string  `bun:"geo_country" json:"geo_country"` // ISO 3166-1 alpha-2
 	GeoCity        *string  `bun:"geo_city" json:"geo_city"`
-	GeoSource      *string  `bun:"geo_source" json:"geo_source"` // database used, set even if not found
-	GeoLat         *float64 `bun:"geo_lat" json:"geo_lat"`       // of the city, from the same database
+	GeoSourceID    *int64   `bun:"geo_source_id" json:"-"` // the GeoIP database that located it, even if not found
+	GeoSourceType  *string  `bun:"geo_source_type,scanonly" json:"geo_source_type"`
+	GeoSourceBuilt *Time    `bun:"geo_source_built,scanonly" json:"geo_source_built"`
+	GeoLat         *float64 `bun:"geo_lat" json:"geo_lat"` // of the city, from the same database
 	GeoLon         *float64 `bun:"geo_lon" json:"geo_lon"`
 	ASN            *int64   `bun:"asn" json:"asn"`         // autonomous system, from the ASN database
 	ASOrg          *string  `bun:"as_org" json:"as_org"`   // its organisation

@@ -139,17 +139,17 @@ func (d *DB) Info() Info {
 	return d.info
 }
 
-// Locate returns the location of ip and the source of the answer. ok is
+// Locate returns the location of ip and the database that answered. ok is
 // false when the address is invalid or unknown to the database (private
 // and reserved ranges are).
-func (d *DB) Locate(ip string) (loc Location, source string, ok bool) {
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
-		return loc, "", false
-	}
+func (d *DB) Locate(ip string) (loc Location, source Info, ok bool) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	source = d.info.Source()
+	source = d.info
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return loc, source, false
+	}
 	var rec record
 	res := d.reader.Lookup(addr.Unmap())
 	if !res.Found() || res.Decode(&rec) != nil || rec.Country.ISOCode == "" {

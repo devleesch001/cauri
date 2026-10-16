@@ -102,6 +102,12 @@ const commandChapters = computed<Chapter[]>(() => {
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n))
 
+// The GeoIP database that located the session, as "DBIP-City-Lite 2026-10-01".
+const geoSource = computed(() => {
+  const s = session.value
+  return s?.geo_source_type ? [s.geo_source_type, s.geo_source_built?.slice(0, 10)].filter(Boolean).join(' ') : ''
+})
+
 const eventsOf = (id: string) => session.value?.events.filter((e) => e.eventid === id) ?? []
 
 const user = computed(() => session.value?.login_attempt_list.find((l) => l.success)?.username)
@@ -234,13 +240,13 @@ const logins = computed(() => {
                   {{ endpoint(session.src_ip, session.src_port) }}
                 </template>
               </dd>
-              <template v-if="session.geo_source">
+              <template v-if="geoSource">
                 <dt>{{ t('session.facts.location') }}</dt>
                 <dd v-if="session.geo_country">
                   <CountryFlag :code="session.geo_country">
                     {{ session.geo_city ? `, ${session.geo_city}` : '' }}
                   </CountryFlag>
-                  <span class="muted source">{{ t('session.facts.locationSource', { source: session.geo_source }) }}</span>
+                  <span class="muted source">{{ t('session.facts.locationSource', { source: geoSource }) }}</span>
                 </dd>
                 <dd
                   v-else

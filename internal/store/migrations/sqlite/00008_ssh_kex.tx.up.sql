@@ -28,7 +28,7 @@ CREATE INDEX ix_ssh_kex_hassh ON ssh_kex (hassh);
 --bun:split
 
 -- Key exchanges are never deleted: RESTRICT only guards against a mistake.
-ALTER TABLE sessions ADD COLUMN ssh_kex_id INTEGER CONSTRAINT fk_sessions_ssh_kex_id REFERENCES ssh_kex (id) ON DELETE RESTRICT;
+ALTER TABLE sessions ADD COLUMN ssh_kex_id INTEGER CONSTRAINT fk_sessions_ssh_kex_id REFERENCES ssh_kex (id) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 --bun:split
 

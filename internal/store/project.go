@@ -44,7 +44,7 @@ func projectUp(ctx context.Context, tx bun.Tx) error {
 			return id, nil
 		}
 		row := NewSSHKex(k)
-		if _, err := tx.NewInsert().Model(&row).On("CONFLICT (digest) DO NOTHING").Exec(ctx); err != nil {
+		if _, err := tx.NewInsert().Model(&row).On("CONFLICT (digest) DO NOTHING").Returning("NULL").Exec(ctx); err != nil {
 			return 0, err
 		}
 		var id int64

@@ -121,3 +121,75 @@ ALTER INDEX ix_transfers_session_id RENAME TO transfers_session;
 --bun:split
 
 ALTER INDEX ix_transfers_sha256 RENAME TO transfers_sha256;
+
+--bun:split
+
+ALTER TABLE ingest_tokens DROP CONSTRAINT fk_ingest_tokens_sensor_id;
+
+--bun:split
+
+ALTER TABLE ingest_tokens ADD CONSTRAINT fk_ingest_tokens_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors (id) ON DELETE CASCADE;
+
+--bun:split
+
+ALTER TABLE sessions DROP CONSTRAINT fk_sessions_sensor_id;
+
+--bun:split
+
+ALTER TABLE sessions ADD CONSTRAINT fk_sessions_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors (id) ON DELETE RESTRICT;
+
+--bun:split
+
+ALTER TABLE sessions DROP CONSTRAINT fk_sessions_tty_file_id;
+
+--bun:split
+
+ALTER TABLE sessions ADD CONSTRAINT fk_sessions_tty_file_id FOREIGN KEY (tty_file_id) REFERENCES tty_files (id) ON DELETE SET NULL;
+
+--bun:split
+
+ALTER TABLE events DROP CONSTRAINT fk_events_sensor_id;
+
+--bun:split
+
+ALTER TABLE events ADD CONSTRAINT fk_events_sensor_id FOREIGN KEY (sensor_id) REFERENCES sensors (id) ON DELETE RESTRICT;
+
+--bun:split
+
+ALTER TABLE events DROP CONSTRAINT fk_events_session_id;
+
+--bun:split
+
+ALTER TABLE events ADD CONSTRAINT fk_events_session_id FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE;
+
+--bun:split
+
+ALTER TABLE event_data DROP CONSTRAINT fk_event_data_event_id;
+
+--bun:split
+
+ALTER TABLE event_data ADD CONSTRAINT fk_event_data_event_id FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE;
+
+--bun:split
+
+ALTER TABLE login_attempts DROP CONSTRAINT fk_login_attempts_session_id;
+
+--bun:split
+
+ALTER TABLE login_attempts ADD CONSTRAINT fk_login_attempts_session_id FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE;
+
+--bun:split
+
+ALTER TABLE commands DROP CONSTRAINT fk_commands_session_id;
+
+--bun:split
+
+ALTER TABLE commands ADD CONSTRAINT fk_commands_session_id FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE;
+
+--bun:split
+
+ALTER TABLE transfers DROP CONSTRAINT fk_transfers_session_id;
+
+--bun:split
+
+ALTER TABLE transfers ADD CONSTRAINT fk_transfers_session_id FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE;
