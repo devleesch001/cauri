@@ -98,7 +98,7 @@ func TestGetAttacker(t *testing.T) {
 			t.Fatal(err)
 		}
 		if d.Sessions != 2 || d.Logins != 3 || !slices.Equal(d.Sensors, []string{"hp-01", "hp-02"}) ||
-			len(d.Clients) != 1 || d.Clients[0].Client != "SSH-2.0-OpenSSH_9.6" || len(d.HASSH) != 0 {
+			len(d.Clients) != 1 || d.Clients[0].Client != "SSH-2.0-OpenSSH_9.6" || len(d.Kex) != 0 {
 			t.Errorf("attacker = %+v", d)
 		}
 		if _, err := store.GetAttacker(ctx, db, "198.51.100.1", store.StatsFilter{}); !errors.Is(err, store.ErrNotFound) {

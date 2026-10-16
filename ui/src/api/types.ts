@@ -30,6 +30,7 @@ export interface Session {
   protocol: string | null
   client_version: string | null
   hassh: string | null
+  kex_id: number | null // its key exchange
   started_at: string
   ended_at: string | null
   duration_ms: number | null
@@ -257,7 +258,7 @@ export interface AdminToken {
   revoked_at: string | null
 }
 
-/** A source address and what came from it (GET /api/attackers). */
+/** A source address and what came from it (GET /api/attackers/ip). */
 export interface Attacker {
   ip: string
   sessions: number
@@ -276,9 +277,57 @@ export interface Attacker {
   no_interaction: number
 }
 
-/** One attacker, with what tells it apart (GET /api/attackers/{ip}). */
+/** One attacker, with what tells it apart (GET /api/attackers/ip/{ip}). */
 export interface AttackerDetail extends Attacker {
   sensors: string[]
   clients: { client: string; sessions: number }[]
-  hassh: string[]
+  kex: KexUse[] // key exchanges it used, most used first
+  public_keys: OfferedKey[]
+}
+
+/** A key exchange of an attacker, with its sessions. */
+export interface KexUse {
+  id: number
+  hassh: string | null
+  key_algs: string | null
+  sessions: number
+}
+
+/** A public key offered to log in (cowrie.client.fingerprint). */
+export interface OfferedKey {
+  fingerprint: string
+  type: string
+  key: string
+  sessions: number
+}
+
+/** A key exchange, the algorithms an SSH tool offers, and what came with it (GET /api/attackers/kex). */
+export interface KexAttacker {
+  id: number
+  hassh: string | null
+  key_algs: string | null // what tells apart the combinations of one HASSH
+  sessions: number
+  sources: number // distinct source addresses
+  logged_in: number
+  logins: number
+  first_seen: string
+  last_seen: string
+  humans: number
+  bots: number
+  uncertain: number
+  no_interaction: number
+}
+
+/** One key exchange, with its lists and what it links to (GET /api/attackers/kex/{id}). */
+export interface KexDetail extends KexAttacker {
+  kex_algs: string | null
+  enc_algs: string | null
+  mac_algs: string | null
+  comp_algs: string | null
+  lang_algs: string | null
+  sensors: string[]
+  clients: { client: string; sessions: number }[]
+  addresses: { ip: string; country: string | null; sessions: number; logged_in: number }[]
+  variants: { id: number; key_algs: string | null; sessions: number }[] // the other combinations of its HASSH
+  public_keys: OfferedKey[]
 }

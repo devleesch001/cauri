@@ -11,8 +11,22 @@ export const router: Router = createRouter({
     { path: '/commands', name: 'commands', component: () => import('./views/CommandsView.vue') },
     { path: '/payloads', name: 'payloads', component: () => import('./views/PayloadsView.vue') },
     { path: '/sessions', name: 'sessions', component: () => import('./views/SessionsView.vue') },
-    { path: '/attackers', name: 'attackers', component: () => import('./views/AttackersView.vue') },
-    { path: '/attackers/:ip', name: 'attacker', component: () => import('./views/AttackerView.vue'), props: true },
+    // An attacker by one of its identities: its address or its key exchange.
+    { path: '/attackers', redirect: '/attackers/ip' },
+    { path: '/attackers/ip', name: 'attackers', component: () => import('./views/AttackersView.vue'), props: { kind: 'ip' } },
+    {
+      path: '/attackers/ip/:ip',
+      name: 'attacker',
+      component: () => import('./views/AttackerView.vue'),
+      props: (to) => ({ kind: 'ip', id: to.params.ip }),
+    },
+    { path: '/attackers/kex', name: 'kex-attackers', component: () => import('./views/AttackersView.vue'), props: { kind: 'kex' } },
+    {
+      path: '/attackers/kex/:id',
+      name: 'kex-attacker',
+      component: () => import('./views/AttackerView.vue'),
+      props: (to) => ({ kind: 'kex', id: to.params.id }),
+    },
     { path: '/sessions/:id', name: 'session', component: () => import('./views/SessionDetailView.vue'), props: true },
     { path: '/login-attempts', name: 'login-attempts', component: () => import('./views/LoginAttemptsView.vue') },
     { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue') },
@@ -23,7 +37,9 @@ export const router: Router = createRouter({
 // The pages with filters. Their filters, which live in the URL, are kept
 // per page for the browser session: back on a page without filters, as
 // from the menu, it shows the last ones again.
-const filtered = new Set(['overview', 'activity', 'credentials', 'commands', 'payloads', 'sessions', 'attackers', 'login-attempts'])
+const filtered = new Set([
+  'overview', 'activity', 'credentials', 'commands', 'payloads', 'sessions', 'attackers', 'kex-attackers', 'login-attempts',
+])
 const savedFilters = useSessionStorage<Record<string, LocationQuery>>('cauri.filters', {})
 
 router.beforeEach((to, from) => {

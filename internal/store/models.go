@@ -98,7 +98,7 @@ type Session struct {
 	DstPort        *int     `bun:"dst_port" json:"dst_port"`
 	Protocol       *string  `bun:"protocol" json:"protocol"`
 	ClientVersion  *string  `bun:"client_version" json:"client_version"`
-	SSHKexID       *int64   `bun:"ssh_kex_id" json:"-"`
+	SSHKexID       *int64   `bun:"ssh_kex_id" json:"kex_id"`
 	HASSH          *string  `bun:"hassh,scanonly" json:"hassh"` // of its key exchange
 	StartedAt      Time     `bun:"started_at" json:"started_at"`
 	EndedAt        *Time    `bun:"ended_at" json:"ended_at"`

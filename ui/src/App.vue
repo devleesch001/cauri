@@ -30,6 +30,9 @@ const statsItems = computed(() =>
   })),
 )
 const statsActive = computed(() => statsPages.some((p) => route.name === p.name))
+// A page below a section, such as a session or an attacker's profile,
+// keeps the section marked.
+const within = (path: string) => path !== '/' && route.path.startsWith(path + '/')
 const statsOpen = ref(false)
 const sensors = useSensors()
 // The GeoIP database, when there is one, requires an attribution.
@@ -81,6 +84,7 @@ onMounted(() => {
         v-for="p in primaryPages"
         :key="p.name"
         :to="p.path"
+        :class="{ under: within(p.path) }"
       >
         {{ t(`nav.${p.label}`) }}
       </RouterLink>
@@ -256,7 +260,8 @@ nav a:hover,
 }
 
 .menu-trigger.active,
-nav a.router-link-active {
+nav a.router-link-active,
+nav a.under {
   color: var(--c-ink);
   box-shadow: inset 0 -2px 0 var(--p-primary-color);
   border-radius: 0;

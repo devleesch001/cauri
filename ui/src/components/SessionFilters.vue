@@ -182,6 +182,13 @@ function clearFilters() {
         @remove="patchQuery({ hassh: undefined })"
       />
       <Chip
+        v-if="q('kex')"
+        removable
+        :label="t('sessions.filters.kexChip', { id: q('kex') })"
+        :aria-label="t('sessions.filters.kex', { id: q('kex') })"
+        @remove="patchQuery({ kex: undefined })"
+      />
+      <Chip
         v-if="q('asn')"
         removable
         :label="`AS${q('asn')}`"

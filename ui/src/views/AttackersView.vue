@@ -11,7 +11,7 @@ import ToggleSwitch from 'openvue/toggleswitch'
 import Button from 'openvue/button'
 import Chip from 'openvue/chip'
 import { api } from '@/api/client'
-import type { Attacker, CountryCount } from '@/api/types'
+import type { Attacker, CountryCount, KexAttacker } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
@@ -20,12 +20,28 @@ import { countryName, formatTime } from '@/format'
 import { patchQuery, queryValue } from '@/router'
 import { notFilters, pageSizes, useTablePage, useTableSort } from '@/sort'
 
-// Attackers: the source addresses sessions came from, with what came from
-// each. A row opens the attacker's profile, with the same period and verdict.
+// Attackers, by one of their identities: the source addresses sessions came
+// from, or the key exchanges their SSH tools offered, with what came with
+// each. A row opens its profile, with the same period and verdict.
+const props = defineProps<{ kind: 'ip' | 'kex' }>()
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const q = (k: string) => queryValue(route.query, k)
+
+// The filters both kinds share follow a change of kind.
+const shared = ['sensor', 'from', 'to', 'verdict', 'logged_in']
+const kindOptions = computed(() => [
+  { label: t('attackers.kinds.ip'), value: 'ip' },
+  { label: t('attackers.kinds.kex'), value: 'kex' },
+])
+const kind = computed({
+  get: () => props.kind,
+  set: (v: 'ip' | 'kex') => {
+    const query = Object.fromEntries(shared.filter((k) => q(k)).map((k) => [k, q(k)]))
+    void router.push({ name: v === 'ip' ? 'attackers' : 'kex-attackers', query })
+  },
+})
 
 // The address prefix is edited locally and applied on Enter or leaving the field.
 const prefix = ref('')
@@ -74,23 +90,29 @@ const filtered = computed(() => Object.keys(route.query).some((k) => !notFilters
 const { params: sortParams, kept, field: sortField, direction, onSort } = useTableSort('sessions')
 
 const items = ref<Attacker[]>([])
+const kexItems = ref<KexAttacker[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
 watch(
-  () => route.query,
+  [() => route.query, () => props.kind],
   async () => {
     loading.value = true
+    const common = {
+      sensor: q('sensor'), verdict: q('verdict'), logged_in: q('logged_in'), ...sortParams.value,
+      ...dayRange(q('from'), q('to')), ...pageParams.value,
+    }
     try {
-      const res = await api.attackers({
-        sensor: q('sensor'), verdict: q('verdict'), country: q('country'), asn: q('asn'),
-        ip_prefix: q('ip_prefix'), logged_in: q('logged_in'), ...sortParams.value,
-        ...dayRange(q('from'), q('to')),
-        ...pageParams.value,
-      })
-      items.value = res.items
-      total.value = res.total
+      if (props.kind === 'kex') {
+        const res = await api.kexAttackers({ ...common, hassh: q('hassh') })
+        kexItems.value = res.items
+        total.value = res.total
+      } else {
+        const res = await api.attackers({ ...common, country: q('country'), asn: q('asn'), ip_prefix: q('ip_prefix') })
+        items.value = res.items
+        total.value = res.total
+      }
       error.value = null
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
@@ -101,15 +123,19 @@ watch(
   { immediate: true },
 )
 
-function open(e: DataTableRowClickEvent<Attacker>) {
+function open(e: DataTableRowClickEvent<Attacker | KexAttacker>) {
   const query: Record<string, string> = {}
   for (const k of ['sensor', 'from', 'to', 'verdict']) {
     if (q(k)) query[k] = q(k)
   }
-  void router.push({ name: 'attacker', params: { ip: e.data.ip }, query })
+  if ('ip' in e.data) {
+    void router.push({ name: 'attacker', params: { ip: e.data.ip }, query })
+  } else {
+    void router.push({ name: 'kex-attacker', params: { id: String(e.data.id) }, query })
+  }
 }
 // The verdict most of its sessions got.
-function mostly(a: Attacker) {
+function mostly(a: Attacker | KexAttacker) {
   const counts: [string, number][] = [
     ['human', a.humans], ['bot', a.bots], ['uncertain', a.uncertain], ['no_interaction', a.no_interaction],
   ]
@@ -125,14 +151,26 @@ function clearFilters() {
   <div class="page">
     <div class="page-head">
       <h1>{{ t('attackers.title') }}</h1>
-      <span class="muted">{{ t('attackers.count', { n: total.toLocaleString() }, total) }}</span>
+      <span class="muted">{{ t(kind === 'kex' ? 'attackers.countKex' : 'attackers.count', { n: total.toLocaleString() }, total) }}</span>
     </div>
+    <SelectButton
+      v-model="kind"
+      class="kinds"
+      :options="kindOptions"
+      option-label="label"
+      option-value="value"
+      :allow-empty="false"
+      :aria-label="t('attackers.by')"
+    />
 
     <div
       class="filter-rows"
       role="search"
     >
-      <div class="filters">
+      <div
+        v-if="kind === 'ip'"
+        class="filters"
+      >
         <InputText
           v-model="prefix"
           class="data"
@@ -175,6 +213,23 @@ function clearFilters() {
           v-model:to="to"
         />
       </div>
+      <div
+        v-else
+        class="filters"
+      >
+        <Chip
+          v-if="q('hassh')"
+          removable
+          class="data"
+          :label="t('attackers.filters.hasshChip', { hassh: q('hassh').slice(0, 12) })"
+          :aria-label="t('attackers.filters.hassh', { hassh: q('hassh') })"
+          @remove="patchQuery({ hassh: undefined })"
+        />
+        <DayRange
+          v-model:from="from"
+          v-model:to="to"
+        />
+      </div>
       <div class="filters">
         <SelectButton
           v-model="verdict"
@@ -201,7 +256,7 @@ function clearFilters() {
     <ErrorNotice :error="error" />
 
     <DataTable
-      :value="items"
+      :value="kind === 'kex' ? kexItems : items"
       :loading="loading"
       lazy
       paginator
@@ -211,7 +266,7 @@ function clearFilters() {
       :total-records="total"
       :sort-field="sortField"
       :sort-order="direction"
-      data-key="ip"
+      :data-key="kind === 'kex' ? 'id' : 'ip'"
       size="small"
       striped-rows
       scrollable
@@ -224,41 +279,76 @@ function clearFilters() {
           {{ filtered ? t('attackers.empty.filtered') : t('attackers.empty.none') }}
         </p>
       </template>
-      <Column :header="t('attackers.columns.address')">
-        <template #body="{ data }">
-          <RouterLink
-            :to="{ name: 'attacker', params: { ip: data.ip } }"
-            class="data"
-            @click.stop
-          >
-            {{ data.ip }}
-          </RouterLink>
-        </template>
-      </Column>
-      <Column :header="t('sessions.columns.country')">
-        <template #body="{ data }">
-          <CountryFlag
-            v-if="data.country"
-            :code="data.country"
-          />
-          <span
-            v-else
-            class="muted"
-          >—</span>
-        </template>
-      </Column>
-      <Column :header="t('attackers.columns.network')">
-        <template #body="{ data }">
-          <span
-            v-if="data.asn"
-            class="network"
-          >AS{{ data.asn }} <span class="muted">{{ data.as_org }}</span></span>
-          <span
-            v-else
-            class="muted"
-          >—</span>
-        </template>
-      </Column>
+      <template v-if="kind === 'kex'">
+        <Column :header="t('attackers.columns.hassh')">
+          <template #body="{ data }">
+            <RouterLink
+              v-tooltip.top="data.hassh"
+              :to="{ name: 'kex-attacker', params: { id: String(data.id) } }"
+              class="data"
+              @click.stop
+            >
+              {{ data.hassh ? data.hassh.slice(0, 12) : '#' + data.id }}
+            </RouterLink>
+          </template>
+        </Column>
+        <!-- What tells apart the combinations of one HASSH, cut; whole on hover. -->
+        <Column :header="t('attackers.columns.keyAlgs')">
+          <template #body="{ data }">
+            <span
+              v-tooltip.top="data.key_algs"
+              class="data algs"
+            >{{ data.key_algs ?? '—' }}</span>
+          </template>
+        </Column>
+        <Column
+          field="sources"
+          :header="t('attackers.columns.sources')"
+          sortable
+          class="num"
+        >
+          <template #body="{ data }">
+            {{ data.sources.toLocaleString() }}
+          </template>
+        </Column>
+      </template>
+      <template v-else>
+        <Column :header="t('attackers.columns.address')">
+          <template #body="{ data }">
+            <RouterLink
+              :to="{ name: 'attacker', params: { ip: data.ip } }"
+              class="data"
+              @click.stop
+            >
+              {{ data.ip }}
+            </RouterLink>
+          </template>
+        </Column>
+        <Column :header="t('sessions.columns.country')">
+          <template #body="{ data }">
+            <CountryFlag
+              v-if="data.country"
+              :code="data.country"
+            />
+            <span
+              v-else
+              class="muted"
+            >—</span>
+          </template>
+        </Column>
+        <Column :header="t('attackers.columns.network')">
+          <template #body="{ data }">
+            <span
+              v-if="data.asn"
+              class="network"
+            >AS{{ data.asn }} <span class="muted">{{ data.as_org }}</span></span>
+            <span
+              v-else
+              class="muted"
+            >—</span>
+          </template>
+        </Column>
+      </template>
       <Column
         field="sessions"
         :header="t('attackers.columns.sessions')"
@@ -333,6 +423,20 @@ function clearFilters() {
 
 .network {
   white-space: nowrap;
+}
+
+.kinds {
+  margin-bottom: var(--space-3);
+}
+
+/* Host key algorithms are long: cut, whole on hover. */
+.algs {
+  display: inline-block;
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 :deep(.num) {

@@ -276,7 +276,16 @@ const logins = computed(() => {
               </dd>
               <dt>{{ t('session.facts.hassh') }}</dt>
               <dd class="data">
-                {{ session.hassh ?? '—' }}
+                <!-- Its key exchange, an attacker's identity: its profile. -->
+                <RouterLink
+                  v-if="session.kex_id"
+                  :to="{ name: 'kex-attacker', params: { id: String(session.kex_id) } }"
+                >
+                  {{ session.hassh ?? '#' + session.kex_id }}
+                </RouterLink>
+                <template v-else>
+                  {{ session.hassh ?? '—' }}
+                </template>
               </dd>
               <dt>{{ t('session.facts.started') }}</dt>
               <dd>{{ formatTime(session.started_at) }}</dd>

@@ -100,8 +100,12 @@ func New(c Config) http.Handler {
 			r.Get("/stats/origins", s.getOrigins)
 			r.Get("/stats/commands", s.getCommands)
 			r.Get("/about", s.getAbout)
-			r.Get("/attackers", s.listAttackers)
-			r.Get("/attackers/{ip}", s.getAttacker)
+			// An attacker by one of its identities: its address or its
+			// key exchange.
+			r.Get("/attackers/ip", s.listAttackers)
+			r.Get("/attackers/ip/{ip}", s.getAttacker)
+			r.Get("/attackers/kex", s.listKex)
+			r.Get("/attackers/kex/{id}", s.getKex)
 			r.Get("/sessions", s.listSessions)
 			r.Get("/sessions.csv", s.exportSessions)
 			r.Get("/sessions/{id}", s.getSession)

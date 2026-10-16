@@ -69,6 +69,7 @@ func sessionFilter(q *query) store.SessionFilter {
 		HasCommands: q.bool("has_commands"),
 		HasTTY:      q.bool("has_tty"),
 		Shell:       q.bool("shell"),
+		Kex:         int64(q.int("kex")),
 		File:        q.str("file"),
 		ASN:         int64(q.int("asn")),
 		Command:     q.str("command"),
@@ -291,6 +292,7 @@ func statsFilter(q *query) store.StatsFilter {
 		Verdict: q.oneOf("verdict", store.VerdictHuman, store.VerdictBot),
 		SrcIP:   q.str("ip"),
 		Login:   q.oneOf("login", store.LoginSuccess, store.LoginFailed),
+		Kex:     int64(q.int("kex")),
 	}
 }
 
@@ -330,6 +332,54 @@ func (s *server) getAttacker(w http.ResponseWriter, r *http.Request) {
 	d, err := store.GetAttacker(r.Context(), s.DB, chi.URLParam(r, "ip"), f)
 	if errors.Is(err, store.ErrNotFound) {
 		render.Render(w, r, errorOf(http.StatusNotFound, "no session from this address"))
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	render.JSON(w, r, d)
+}
+
+// listKex pages the key exchanges sessions offered.
+func (s *server) listKex(w http.ResponseWriter, r *http.Request) {
+	q := query{v: r.URL.Query()}
+	f := store.KexFilter{
+		StatsFilter: statsFilter(&q),
+		HASSH:       q.str("hassh"),
+		LoggedIn:    q.bool("logged_in"),
+		Sort:        q.sort(store.KexSorts()),
+		Page:        q.page(),
+	}
+	if q.err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
+		return
+	}
+	rows, total, err := store.ListKex(r.Context(), s.DB, f)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	render.JSON(w, r, newList(rows, total, f.Page))
+}
+
+// getKex describes a key exchange, from its sessions the statistics
+// filters select.
+func (s *server) getKex(w http.ResponseWriter, r *http.Request) {
+	q := query{v: r.URL.Query()}
+	f := statsFilter(&q)
+	if q.err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		render.Render(w, r, errorOf(http.StatusNotFound, "no such key exchange"))
+		return
+	}
+	d, err := store.GetKex(r.Context(), s.DB, id, f)
+	if errors.Is(err, store.ErrNotFound) {
+		render.Render(w, r, errorOf(http.StatusNotFound, "no session with this key exchange"))
 		return
 	}
 	if err != nil {

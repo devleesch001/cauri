@@ -300,21 +300,38 @@ in the API.
 
 ### Attackers
 
-An attacker is, for now, a source address. The **Attackers** page lists
-them with their sessions, those that logged in, login attempts, first and last seen,
-location, network and the verdict most of their sessions got; it filters
-by address prefix, country, network, verdict, period and whether they
-logged in, and sorts by sessions, logins or last seen. A profile
-(`/attackers/{ip}`) gathers everything from one address: where it comes
-from, the sensors it reached, its SSH clients and HASSH, the statistics
-of the pages above narrowed to it (days, credentials, commands,
-payloads) and its latest sessions. Addresses in the other pages, and an
-address typed in the search, lead to it.
+An attacker is told by one of its identities: its source address, or the
+key exchange its SSH tool offered (`ssh_kex`: the six algorithm lists,
+the same whatever address the tool runs from; the HASSH covers four of
+them). The **Attackers** page lists either (`/attackers/ip`,
+`/attackers/kex`). Addresses come with their sessions, those that logged
+in, login attempts, first and last seen, location, network and the
+verdict most of their sessions got, filtered by address prefix, country,
+network, verdict, period and whether they logged in. Key exchanges come
+with their HASSH, host key algorithms, addresses, sessions, logins and
+times, filtered by HASSH, verdict, period and logins. Both sort by
+sessions, logins or last seen, key exchanges also by addresses.
 
-The API serves them as `GET /api/attackers` (parameters of the
+A profile (`/attackers/ip/{ip}`, `/attackers/kex/{id}`) gathers
+everything from one identity: who it is (where an address comes from;
+the algorithm lists of a key exchange), the identities it is linked to
+(the key exchanges an address used; the addresses that used a key
+exchange and the other combinations of its HASSH), the public keys it
+offered, the sensors it reached, the SSH clients it announced, the
+statistics of the pages above narrowed to it (days, credentials,
+commands, payloads) and its sessions. Following the links goes from one
+identity of an attacker to the next. Addresses in the other pages, and
+an address typed in the search, lead to their profile; a session's
+HASSH to its key exchange.
+
+The API serves them as `GET /api/attackers/ip` (parameters of the
 statistics plus `country`, `asn`, `ip_prefix`, `logged_in`, `sort` =
-`sessions`, `logged_in` or `last_seen`, `order`, `limit`, `offset`) and
-`GET /api/attackers/{ip}`; every `/api/stats/` route also takes `ip`.
+`sessions`, `logged_in` or `last_seen`, `order`, `limit`, `offset`),
+`GET /api/attackers/ip/{ip}`, `GET /api/attackers/kex` (parameters of the
+statistics plus `hassh`, `logged_in`, `sort` = `sessions`, `sources`,
+`logged_in` or `last_seen`, `order`, `limit`, `offset`) and
+`GET /api/attackers/kex/{id}`; every `/api/stats/` route also takes `ip`
+and `kex`, and `/api/sessions` (and its CSV export) `kex`.
 
 ### Exports
 

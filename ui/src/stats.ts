@@ -13,13 +13,13 @@ export function useStatsFilters() {
   const q = (k: string) => queryValue(route.query, k)
   /** Parameters of the /api/stats calls. */
   const params = computed(() => ({ sensor: q('sensor'), verdict: q('verdict'), login: q('login'), ...dayRange(q('from'), q('to')) }))
-  /** A link to a list with the same filters, plus its own. */
-  function link(name: string, extra: Record<string, string> = {}) {
+  /** A link to a page with the same filters, plus its own (and its route's params). */
+  function link(name: string, extra: Record<string, string> = {}, params: Record<string, string> = {}) {
     const query: Record<string, string> = {}
     for (const k of keys) {
       if (q(k)) query[k] = q(k)
     }
-    return { name, query: { ...query, ...extra } }
+    return { name, params, query: { ...query, ...extra } }
   }
   return { params, link, q }
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// An attacker is a source address: its sessions, grouped on read. Other
-// ways to tell one attacker (its network, its tools) may come later.
+// An attacker is a source address: its sessions, grouped on read. It can
+// also be told by its key exchange (kex.go).
 
 // Attacker sorts.
 const (
@@ -125,9 +125,10 @@ func countLogins(ctx context.Context, db bun.IDB, f StatsFilter, rows []Attacker
 // AttackerDetail is an attacker with what tells it apart.
 type AttackerDetail struct {
 	Attacker
-	Sensors []string      `json:"sensors"` // sensors it reached
-	Clients []ClientCount `json:"clients"` // SSH clients it announced, most used first
-	HASSH   []string      `json:"hassh"`   // client fingerprints
+	Sensors []string      `json:"sensors"`     // sensors it reached
+	Clients []ClientCount `json:"clients"`     // SSH clients it announced, most used first
+	Kex     []KexUse      `json:"kex"`         // key exchanges it used, most used first
+	Keys    []OfferedKey  `json:"public_keys"` // public keys it offered
 }
 
 // GetAttacker returns the attacker of an address, from the sessions f
@@ -144,7 +145,7 @@ func GetAttacker(ctx context.Context, db bun.IDB, ip string, f StatsFilter) (*At
 	if err := countLogins(ctx, db, f, rows); err != nil {
 		return nil, err
 	}
-	d := &AttackerDetail{Attacker: rows[0], Sensors: []string{}, Clients: []ClientCount{}, HASSH: []string{}}
+	d := &AttackerDetail{Attacker: rows[0], Sensors: []string{}, Clients: []ClientCount{}}
 	q := db.NewSelect().Model((*Session)(nil)).ColumnExpr("DISTINCT sn.name").
 		Join("JOIN sensors AS sn ON sn.id = s.sensor_id").OrderExpr("sn.name")
 	if err := f.apply(q).Scan(ctx, &d.Sensors); err != nil {
@@ -156,10 +157,11 @@ func GetAttacker(ctx context.Context, db bun.IDB, ip string, f StatsFilter) (*At
 	if err := f.apply(q).Scan(ctx, &d.Clients); err != nil {
 		return nil, err
 	}
-	q = db.NewSelect().Model((*Session)(nil)).ColumnExpr("DISTINCT k.hassh").
-		Join("JOIN ssh_kex AS k ON k.id = s.ssh_kex_id").
-		Where("k.hassh IS NOT NULL").OrderExpr("k.hassh")
-	if err := f.apply(q).Scan(ctx, &d.HASSH); err != nil {
+	var err error
+	if d.Kex, err = kexUses(ctx, db, f); err != nil {
+		return nil, err
+	}
+	if d.Keys, err = OfferedKeys(ctx, db, f); err != nil {
 		return nil, err
 	}
 	return d, nil

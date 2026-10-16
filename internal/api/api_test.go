@@ -325,7 +325,7 @@ func TestReadEndpoints(t *testing.T) {
 			get(t, e, "/api/sessions?"+bad, http.StatusBadRequest, nil)
 		}
 		get(t, e, "/api/login-attempts?sort=ts", http.StatusBadRequest, nil)
-		get(t, e, "/api/attackers?sort=sessions&order=asc", http.StatusOK, nil)
+		get(t, e, "/api/attackers/ip?sort=sessions&order=asc", http.StatusOK, nil)
 		get(t, e, "/api/nothing", http.StatusNotFound, nil)
 	})
 }
@@ -1046,31 +1046,31 @@ func TestAttackers(t *testing.T) {
 			Items []store.Attacker `json:"items"`
 			Total int              `json:"total"`
 		}
-		get(t, e, "/api/attackers", http.StatusOK, &list)
+		get(t, e, "/api/attackers/ip", http.StatusOK, &list)
 		if list.Total != 2 || list.Items[0].IP != "203.0.113.9" || list.Items[0].Sessions != 2 || list.Items[0].LoggedIn != 1 {
 			t.Fatalf("attackers = %+v", list)
 		}
-		get(t, e, "/api/attackers?logged_in=true", http.StatusOK, &list)
+		get(t, e, "/api/attackers/ip?logged_in=true", http.StatusOK, &list)
 		if list.Total != 1 {
 			t.Errorf("with a shell = %+v", list)
 		}
-		get(t, e, "/api/attackers?ip_prefix=2001:", http.StatusOK, &list)
+		get(t, e, "/api/attackers/ip?ip_prefix=2001:", http.StatusOK, &list)
 		if list.Total != 1 || list.Items[0].IP != "2001:db8::1" {
 			t.Errorf("by prefix = %+v", list)
 		}
-		get(t, e, "/api/attackers?sort=name", http.StatusBadRequest, nil)
-		get(t, e, "/api/attackers?logged_in=maybe", http.StatusBadRequest, nil)
+		get(t, e, "/api/attackers/ip?sort=name", http.StatusBadRequest, nil)
+		get(t, e, "/api/attackers/ip?logged_in=maybe", http.StatusBadRequest, nil)
 
 		var d store.AttackerDetail
-		get(t, e, "/api/attackers/203.0.113.9", http.StatusOK, &d)
+		get(t, e, "/api/attackers/ip/203.0.113.9", http.StatusOK, &d)
 		if d.Sessions != 2 || !slices.Equal(d.Sensors, []string{"hp-01"}) || d.Logins != 1 {
 			t.Errorf("attacker = %+v", d)
 		}
-		get(t, e, "/api/attackers/2001:db8::1", http.StatusOK, &d)
+		get(t, e, "/api/attackers/ip/2001:db8::1", http.StatusOK, &d)
 		if d.IP != "2001:db8::1" {
 			t.Errorf("IPv6 attacker = %+v", d)
 		}
-		get(t, e, "/api/attackers/198.51.100.1", http.StatusNotFound, nil)
+		get(t, e, "/api/attackers/ip/198.51.100.1", http.StatusNotFound, nil)
 
 		// Statistics narrow to one attacker.
 		var sum store.Summary
@@ -1078,5 +1078,46 @@ func TestAttackers(t *testing.T) {
 		if sum.Sessions != 2 || sum.SourceIPs != 1 {
 			t.Errorf("summary of 203.0.113.9 = %+v", sum)
 		}
+	})
+}
+
+// An attacker told by its key exchange: the real capture's four sessions
+// share one, from one address.
+func TestKexAttackers(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		realSession(t, e)
+
+		var list struct {
+			Items []store.KexAttacker `json:"items"`
+			Total int                 `json:"total"`
+		}
+		get(t, e, "/api/attackers/kex?sort=sources&order=asc", http.StatusOK, &list)
+		if list.Total != 1 || list.Items[0].Sessions != 4 || list.Items[0].Sources != 1 ||
+			*list.Items[0].HASSH != "16443846184eafde36765c9bab2f4397" {
+			t.Fatalf("key exchanges = %+v", list)
+		}
+		id := list.Items[0].ID
+		var d store.KexDetail
+		get(t, e, fmt.Sprint("/api/attackers/kex/", id), http.StatusOK, &d)
+		if d.KexAlgs == nil || d.CompAlgs == nil || len(d.Addresses) != 1 || d.Addresses[0].Sessions != 4 {
+			t.Errorf("key exchange = %+v", d)
+		}
+		var sessions struct {
+			Total int `json:"total"`
+		}
+		get(t, e, fmt.Sprint("/api/sessions?kex=", id), http.StatusOK, &sessions)
+		if sessions.Total != 4 {
+			t.Errorf("sessions of the key exchange = %d", sessions.Total)
+		}
+		var a store.AttackerDetail
+		get(t, e, "/api/attackers/ip/172.16.0.1", http.StatusOK, &a)
+		if len(a.Kex) != 1 || a.Kex[0].ID != id || a.Kex[0].Sessions != 4 {
+			t.Errorf("key exchanges of the address = %+v", a.Kex)
+		}
+		get(t, e, "/api/attackers/kex/999999", http.StatusNotFound, nil)
+		get(t, e, "/api/attackers/kex/abc", http.StatusNotFound, nil)
+		get(t, e, "/api/attackers/kex?sort=name", http.StatusBadRequest, nil)
+		get(t, e, "/api/sessions?kex=abc", http.StatusBadRequest, nil)
 	})
 }

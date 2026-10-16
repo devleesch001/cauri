@@ -72,6 +72,7 @@ type SessionFilter struct {
 	ASN         int64  // autonomous system of the source address
 	Command     string // a command line run in the session, exactly
 	HASSH       string // client fingerprint
+	Kex         int64  // key exchange (ssh_kex id)
 	Sort        Sort   // of the list only, by SessionSorts
 	Page
 }
@@ -212,6 +213,9 @@ func (f SessionFilter) where(db bun.IDB, q *bun.SelectQuery) *bun.SelectQuery {
 	if f.Command != "" {
 		sub := db.NewSelect().TableExpr("commands AS fcm").ColumnExpr("fcm.session_id").Where("fcm.input = ?", f.Command)
 		q = q.Where("s.id IN (?)", sub)
+	}
+	if f.Kex != 0 {
+		q = q.Where("s.ssh_kex_id = ?", f.Kex)
 	}
 	if f.HASSH != "" {
 		sub := db.NewSelect().TableExpr("ssh_kex AS fk").ColumnExpr("fk.id").Where("fk.hassh = ?", f.HASSH)
@@ -582,6 +586,7 @@ type StatsFilter struct {
 	From, To *time.Time // on started_at, To exclusive
 	Verdict  string     // VerdictHuman or VerdictBot, as in SessionFilter
 	SrcIP    string     // one attacker's address, exactly
+	Kex      int64      // one attacker's key exchange (ssh_kex id)
 	Login    string     // LoginSuccess or LoginFailed, as in SessionFilter
 }
 
@@ -609,6 +614,9 @@ func (f StatsFilter) apply(q *bun.SelectQuery) *bun.SelectQuery {
 	}
 	if f.SrcIP != "" {
 		q = q.Where("s.src_ip = ?", f.SrcIP)
+	}
+	if f.Kex != 0 {
+		q = q.Where("s.ssh_kex_id = ?", f.Kex)
 	}
 	switch f.Login {
 	case LoginSuccess:
