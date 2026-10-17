@@ -299,7 +299,8 @@ func summarize(ctx context.Context, db bun.IDB, rows []Session) ([]SessionSummar
 }
 
 // EventView is a Cowrie event as returned by the API. Data is the line
-// Cowrie wrote, null once purged.
+// Cowrie wrote; once it is purged, what the tables and the event's data
+// still hold of it (all but Cowrie's envelope: message, sensor, uuid).
 type EventView struct {
 	ID      int64           `bun:"id" json:"id"`
 	EventID string          `bun:"column:type" json:"eventid"`
@@ -343,12 +344,35 @@ func GetSession(ctx context.Context, db bun.IDB, id int64) (*SessionDetail, erro
 			return nil, err
 		}
 	}
-	err = db.NewSelect().Model((*Event)(nil)).
-		// The raw line while it is kept, then what the tables do not hold.
-		ColumnExpr("e.id, e.type, e.ts, COALESCE(ed.data, e.data) AS data").
+	var events []struct {
+		ID   int64   `bun:"id"`
+		Type string  `bun:"type"`
+		TS   Time    `bun:"ts"`
+		Data *string `bun:"data"`
+		Raw  *string `bun:"raw"`
+	}
+	if err := db.NewSelect().Model((*Event)(nil)).
+		ColumnExpr("e.id, e.type, e.ts, e.data, ed.data AS raw").
 		Join("LEFT JOIN event_raw_data AS ed ON ed.event_id = e.id").
-		Where("e.session_id = ?", id).OrderExpr("e.ts, e.id").Scan(ctx, &d.Events)
-	return d, err
+		Where("e.session_id = ?", id).OrderExpr("e.ts, e.id").Scan(ctx, &events); err != nil {
+		return nil, err
+	}
+	r, err := newRestorer(ctx, db, d)
+	if err != nil {
+		return nil, err
+	}
+	// The raw line while it is kept, then its data and the tables' fields.
+	for _, e := range events {
+		v := EventView{ID: e.ID, EventID: e.Type, TS: e.TS}
+		fields := r.next(e.Type)
+		if e.Raw != nil {
+			v.Data = json.RawMessage(*e.Raw)
+		} else if v.Data, err = restore(e.Data, fields); err != nil {
+			return nil, err
+		}
+		d.Events = append(d.Events, v)
+	}
+	return d, nil
 }
 
 // LoginAttemptFilter selects login attempts. Zero values do not filter;

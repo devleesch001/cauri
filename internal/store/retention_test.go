@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -47,9 +48,14 @@ func TestPurgeRawEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Without the raw line, an event shows its data.
+		// Without the raw line, an event shows its data, and the
+		// connection its session holds.
 		for _, e := range d.Events {
-			if e.EventID == "cowrie.client.size" && string(e.Data) != size {
+			var got struct {
+				Width int    `json:"width"`
+				SrcIP string `json:"src_ip"`
+			}
+			if e.EventID == "cowrie.client.size" && (json.Unmarshal(e.Data, &got) != nil || got.Width != 80 || got.SrcIP == "") {
 				t.Errorf("size: data %s", e.Data)
 			}
 		}

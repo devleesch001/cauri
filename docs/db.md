@@ -238,7 +238,11 @@ flowchart LR
 
 So `events.session_id` links each event to the session it belongs to; the
 projections link to the session too, not to the event: they stay when raw
-data is purged, and do not depend on how events are stored.
+data is purged, and do not depend on how events are stored. A session's
+events read without their raw line get their projected fields back from
+the tables (`store.GetSession`): each login attempt, command and transfer
+comes from one event of its type, so rows and events pair up in time
+order.
 
 ### Ingestion of a batch
 
