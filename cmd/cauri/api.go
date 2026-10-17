@@ -174,13 +174,6 @@ func runAPI(ctx context.Context, args []string) error {
 	}
 	// Sessions judged by older criteria, or before verdicts were stored.
 	go func() {
-		forgotten, err := svc.ForgetPartialTTYs(ctx)
-		if err != nil && ctx.Err() == nil {
-			log.Error("detaching partial recordings", "err", err)
-		}
-		if forgotten > 0 {
-			log.Info("detached recordings of several channels or of another session (duplicate)", "sessions", forgotten)
-		}
 		n, err := svc.JudgeSessions(ctx)
 		if err != nil && ctx.Err() == nil {
 			log.Error("judging stored sessions", "err", err)

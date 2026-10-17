@@ -8,7 +8,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -263,79 +262,6 @@ func (s *Service) ForgetTTY(ctx context.Context, sha256 string) error {
 	// Its sessions let go of it by the foreign key (ON DELETE SET NULL).
 	_, err := s.db.NewDelete().Model((*store.TTYFile)(nil)).Where("sha256 = ?", sha256).Exec(ctx)
 	return err
-}
-
-// ForgetPartialTTYs detaches the recordings that are not a session's own
-// and whole, and returns how many sessions it changed. Before the ingestor
-// stopped sending them (see internal/ingestor), the API kept:
-//   - for a session that opened several channels, Cowrie writing a file
-//     per channel, the first channel's alone: a recording of one command
-//     out of dozens, which replays as if nothing else had run;
-//   - for a session whose channel was a duplicate, Cowrie keeping one file
-//     per input, the file of an earlier session: its times are not this
-//     session's, so no command falls in them and chapters have no output.
-//
-// Those sessions are replayed from their commands instead. Only rows go:
-// the files stay in the volume, and the verdicts stand. Run it again and
-// it changes nothing.
-func (s *Service) ForgetPartialTTYs(ctx context.Context) (int, error) {
-	n := 0
-	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		dups, err := duplicateRecordings(ctx, tx)
-		if err != nil {
-			return err
-		}
-		res, err := tx.NewUpdate().Model((*store.Session)(nil)).
-			Set("tty_file_id = NULL").
-			Where("tty_file_id IS NOT NULL").
-			WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
-				q = q.Where("(SELECT COUNT(*) FROM events AS e WHERE e.session_id = s.id AND e.type = ?) > 1", evLogClosed)
-				if len(dups) > 0 {
-					q = q.WhereOr("s.id IN (?)", bun.List(dups))
-				}
-				return q
-			}).
-			Exec(ctx)
-		if err != nil {
-			return err
-		}
-		changed, _ := res.RowsAffected()
-		n = int(changed)
-		if n == 0 {
-			return nil
-		}
-		_, err = tx.NewDelete().Model((*store.TTYFile)(nil)).
-			Where("id NOT IN (SELECT tty_file_id FROM sessions WHERE tty_file_id IS NOT NULL)").Exec(ctx)
-		return err
-	})
-	return n, err
-}
-
-// duplicateRecordings returns the sessions with a recording that closed a
-// channel whose file was a duplicate. The flag is in the event's data,
-// read here rather than in SQL: log.closed is not projected.
-func duplicateRecordings(ctx context.Context, db bun.IDB) ([]int64, error) {
-	var closed []struct {
-		SessionID int64   `bun:"session_id"`
-		Data      *string `bun:"data"`
-	}
-	err := db.NewSelect().Model((*store.Event)(nil)).ColumnExpr("e.session_id, e.data").
-		Join("JOIN sessions AS s ON s.id = e.session_id").
-		Where("s.tty_file_id IS NOT NULL").Where("e.type = ?", evLogClosed).
-		Scan(ctx, &closed)
-	if err != nil {
-		return nil, err
-	}
-	var ids []int64
-	for _, c := range closed {
-		var d struct {
-			Duplicate bool `json:"duplicate"`
-		}
-		if c.Data != nil && json.Unmarshal([]byte(*c.Data), &d) == nil && d.Duplicate {
-			ids = append(ids, c.SessionID)
-		}
-	}
-	return ids, nil
 }
 
 // locateBatch is the number of sessions located per transaction.
