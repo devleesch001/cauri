@@ -1000,16 +1000,19 @@ func TestJudgeChannels(t *testing.T) {
 }
 
 // The recording the API kept of a session with several channels is the
-// first channel's alone: it is detached, and the session replays from its
-// commands. A session of one channel keeps its recording.
+// first channel's alone, and that of a duplicate is another session's:
+// they are detached, and the sessions replay from their commands. A
+// session of one channel of its own keeps its recording.
 func TestForgetPartialTTYs(t *testing.T) {
 	storetest.Run(t, func(t *testing.T, db *bun.DB) {
 		svc := newService(t, db)
 		ctx := context.Background()
 		closed := func(sess string, at float64, name string) []byte {
-			return line("cowrie.log.closed", sess, at, map[string]any{"ttylog": "var/lib/cowrie/tty/" + name, "duration_ms": 4})
+			return line("cowrie.log.closed", sess, at, map[string]any{
+				"ttylog": "var/lib/cowrie/tty/" + name, "duration_ms": 4, "duplicate": sess == "dup",
+			})
 		}
-		for sess, channels := range map[string]int{"many": 3, "one": 1} {
+		for sess, channels := range map[string]int{"many": 3, "one": 1, "dup": 1} {
 			lines := [][]byte{line(evConnect, sess, 0, nil)}
 			for i := range channels {
 				lines = append(lines, closed(sess, float64(i+1), sess+fmt.Sprint(i)))
@@ -1023,11 +1026,14 @@ func TestForgetPartialTTYs(t *testing.T) {
 			}
 		}
 		n, err := svc.ForgetPartialTTYs(ctx)
-		if n != 1 || err != nil {
+		if n != 2 || err != nil {
 			t.Fatalf("detached %d, %v", n, err)
 		}
 		if s := getSession(t, db, sensor, "many"); s.TTYFileID != nil {
 			t.Error("recording of the session with several channels kept")
+		}
+		if s := getSession(t, db, sensor, "dup"); s.TTYFileID != nil {
+			t.Error("recording of the duplicate kept")
 		}
 		if s := getSession(t, db, sensor, "one"); s.TTYFileID == nil {
 			t.Error("recording of the session with one channel detached")
