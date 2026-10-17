@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -431,13 +430,6 @@ func fingerprintPath(path string, n int64) (string, int64, error) {
 	}
 	sum := sha256.Sum256(buf)
 	return hex.EncodeToString(sum[:]), n, nil
-}
-
-func inodeOf(fi os.FileInfo) uint64 {
-	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-		return st.Ino
-	}
-	return 0
 }
 
 func contains(list []string, s string) bool {
