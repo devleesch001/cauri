@@ -107,7 +107,9 @@ for ever, N days or not at all: `CAURI_EVENT_RAW_DATA_RETENTION_DAYS`
 may reference it except its event, and nothing may need it: what the
 tables do not hold of a line is kept in `events.data` (`cowrie.Fragment`:
 the line without its envelope and its projected fields), read by the
-session page and replays. Projections point to sessions; client key
+session page and replays, which get the projected fields back from the
+tables (`store.GetSession`, checked by `TestSessionAfterRawPurge`): a
+session reads the same before and after the purge. Projections point to sessions; client key
 exchanges are in `ssh_kex`, once per combination. When projecting a new
 field, add it to `cowrie`'s projected list so it leaves the fragment,
 and never query `events.data` in SQL: a field worth filtering on gets a
