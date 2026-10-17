@@ -28,6 +28,7 @@ Cowrie ──► cowrie.json ──┐
                          │    buffers, adds the sensor id)
                          │  POST /api/ingest/events     batches of raw events (JSON)
                          │  PUT  /api/ingest/tty/{id}   raw TTY recording, once per session
+                         │  POST /api/ingest/tty/{id}/channels   the files of its channels
                          ▼
                         API ──► database (events, sessions, logins, commands, transfers)
                          │  └─► volume (raw TTY recordings)
@@ -39,16 +40,20 @@ Cowrie ──► cowrie.json ──┐
 **The ingestor does not interpret events.** It sends each line of
 `cowrie.json` as is, with the sensor id and an event id: the SHA-256 of
 the sensor id and the line, so that the API can drop events it already
-has. It sends the TTY recording of a session, with its SHA-256, once the
-session ends (`cowrie.session.closed`), only if the session had a single
-SSH channel whose file is its own: that is a human at a shell. Cowrie
-writes a recording per channel, and bots run each command on its own
-channel (often with a pty): such sessions send no recording, and the API
-replays them from their commands.
+has. It sends the TTY recordings of a session, with their SHA-256, once
+the session ends (`cowrie.session.closed`). Cowrie writes a recording
+per SSH channel, and bots run each command on its own channel (often
+with a pty); it keeps one file per input, reused by a later run of the
+same input (`duplicate`). A session with a single channel whose file is
+its own sends that file; any other sends the files of all its channels
+at once, each once, and the API merges them into the session's one
+recording: one attack, one session, one recording.
 
 **The API owns all the logic**, in a single ingestion service (`internal/ingest`): validation, deduplication, projection
 of the events
-into tables, storage of recordings. The HTTP handlers only translate
+into tables, storage of recordings and the merge of a session's channels
+(each file placed as its channel's `cowrie.log.closed` tells, a
+duplicate moved to its own channel's start). The HTTP handlers only translate
 requests; a future all-in-one build will call the same service directly.
 
 **Delivery is at least once.** The ingestor saves its read position only
@@ -445,8 +450,7 @@ from the recording, with the verdict: Cowrie writes an exec channel's
 command whole, in a direction of its own, and not its standard input,
 while a shell starts with a prompt and records what is typed. A script
 piping its commands to a shell counts as a shell; the verdict tells it
-from a human. Sessions without a recording (several channels, or none)
-match neither. A recording later removed from the volume keeps the
+from a human. Sessions without a recording match neither. A recording later removed from the volume keeps the
 answer it gave.
 
 ## Configuration

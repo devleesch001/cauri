@@ -27,16 +27,16 @@ Do not break these without the user's explicit agreement.
 `api --ui`, `ui`, `ingestor`, `token`, `purge`, `db-copy`, `download`, `version`. A future all-in-one
 binary is a build tag (`allinone`), not a fork.
 
-**The ingestor only decides which recording to send.** It sends each
+**The ingestor only decides which recordings to send.** It sends each
 `cowrie.json` line unparsed, plus the sensor id and an event id
 (`protocol.EventID`: SHA-256 of sensor id and line). It reads only what it
 needs for that: `cowrie.log.closed` (one per SSH channel, one per command
-for many bots) and `cowrie.session.closed`. It sends a recording only for a
-session with exactly one channel whose file is its own (not `duplicate`),
-as Cowrie wrote it; sessions with several channels send none, and there is
-no merging. It waits for `cowrie.session.closed`, an hour at most. The pty
-is not the criterion: bots ask for one too. All interpretation of Cowrie
-events happens in the API.
+for many bots) and `cowrie.session.closed`, which it waits for, an hour at
+most. A session with exactly one channel whose file is its own (not
+`duplicate`) sends that file as Cowrie wrote it (`PUT`); any other sends
+the files of all its channels in one upload, each once
+(`POST …/channels`), and never merges them itself. All interpretation of
+Cowrie events, the merge included, happens in the API.
 
 **One ingestion service.** Validation, deduplication, projection into
 tables and recording storage live in `internal/ingest.Service`. HTTP
@@ -115,9 +115,17 @@ field, add it to `cowrie`'s projected list so it leaves the fragment,
 and never query `events.data` in SQL: a field worth filtering on gets a
 column.
 
-**TTY recordings** are stored as the ingestor sends them (at most one per
-session, see above), never modified, in a volume, named by the SHA-256 of
-the file (`internal/ttystore`); the database keeps the reference. They
+**TTY recordings**: one attack, one session, one recording (the user's
+rule: no recording per channel, no merge on read). A session's channels
+are merged once, at reception, by `ingest.Service.StoreTTYChannels`
+(`ttylog.Join`): each file placed as its channel's `cowrie.log.closed`
+tells, recognised by its Cowrie name (`ttylog.Name`), a duplicate moved
+to its own channel's start, a file several channels used played at each,
+a missing one left out. The same files make the same recording
+(idempotent); a session keeps its first recording (409). A single file of
+its own channel is stored as Cowrie wrote it. Recordings are never
+modified once stored, kept in a volume, named by the SHA-256 of the file
+(`internal/ttystore`); the database keeps the reference. They
 are converted to asciicast at read time (`/api/sessions/{id}/cast`,
 `internal/ttylog` → `internal/asciicast`), never at ingestion. Replays
 keep the real timing and include keystrokes (`"i"`) and a marker (`"m"`)
@@ -142,7 +150,8 @@ simulated from the commands (`asciicast.Simulate`): a banner (`### simulated ses
 control characters dropped) and command at their real times, no output;
 chapters carry `simulated: true` and the UI shows a badge. `cowrie.json`
 never holds terminal output, so a simulated replay cannot have any. The
-choice is made on read, never stored. A recording whose file is missing
+choice is made on read, never stored (sessions recorded before the merge
+existed, with several channels, have none). A recording whose file is missing
 from an available volume is forgotten on that read (`Service.ForgetTTY`:
 `sessions.tty_file_id` cleared, `tty_files` row deleted, verdict kept); an
 unavailable volume (`ttystore.Available`) forgets nothing.
@@ -187,7 +196,7 @@ mandatory.
 | `internal/auth/` | Ingestor tokens |
 | `internal/version/` | Tag, commit and build time of the binary, set by `-ldflags -X` (Makefile, Dockerfile, `.goreleaser.yaml`, CI build args); `cauri version`, start logs, `/api/about` |
 | `internal/api/` | chi router, ingestion and read handlers, middlewares |
-| `internal/ingestor/` | Ingestor loop, TTY queue (one channel only), `Sink`; `tail/` follows the log files |
+| `internal/ingestor/` | Ingestor loop, TTY queue (a session's channels, sent at its end), `Sink`; `tail/` follows the log files |
 | `internal/webui/` | Serves the UI embedded from `internal/webui/dist` |
 | `ui/` | Vue app; builds into `../internal/webui/dist`; `ui/go.mod` keeps `node_modules` out of the Go module |
 | `deploy/` | Compose examples (mode 1: api/ui/ingestor; mode 2: api --ui/ingestor), `.env.example` |

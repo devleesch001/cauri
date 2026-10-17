@@ -149,9 +149,8 @@ ssh -p 22222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@12
 ```
 
 The sessions appear in the UI a second or two later, with their
-recording once the shell is closed (only for a session with a single
-channel: bots running a command per channel are replayed, simulated, from
-their commands).
+recording once the session is closed (for bots running a command per
+channel, the files of all its channels, merged by the API).
 
 ### Without Docker: replaying a capture
 
