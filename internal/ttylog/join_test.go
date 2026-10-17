@@ -96,14 +96,3 @@ func TestName(t *testing.T) {
 		t.Errorf("damaged: %v", err)
 	}
 }
-
-func TestEncode(t *testing.T) {
-	recs := []Record{
-		{Op: OpWrite, Dir: DirOutput, Time: t0.Add(time.Second), Data: []byte("a")},
-		{Op: OpWrite, Dir: DirOutput, Time: t0.Add(1500 * time.Millisecond), Data: []byte("b")},
-	}
-	at, data, err := readAll(t, bytes.NewReader(Encode(recs...)))
-	if err != nil || !slices.Equal(at, []time.Duration{time.Second, 1500 * time.Millisecond}) || !slices.Equal(data, []string{"a", "b"}) {
-		t.Errorf("encoded = %v %q, %v", at, data, err)
-	}
-}

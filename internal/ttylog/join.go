@@ -128,16 +128,6 @@ func cmpErr(old, err error) error {
 	return err
 }
 
-// Encode returns records in Cowrie's format: a recording made by cauri,
-// such as the commands of a channel whose file is missing.
-func Encode(recs ...Record) []byte {
-	var b bytes.Buffer
-	for _, r := range recs {
-		encode(&b, r, r.Time)
-	}
-	return b.Bytes()
-}
-
 // encode writes rec at time t in Cowrie's format. Times outside its range
 // (a shift cannot produce them from valid files) are clamped.
 func encode(b *bytes.Buffer, rec Record, t time.Time) {
