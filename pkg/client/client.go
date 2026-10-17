@@ -9,8 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/devleesch001/cauri/pkg/protocol"
@@ -114,6 +117,53 @@ func (c *Client) SendTTY(ctx context.Context, m protocol.TTYMeta, body io.Reader
 	req.Header.Set(protocol.HeaderSensor, m.SensorID)
 	err = c.do(req, &res)
 	return res, err
+}
+
+// SendTTYChannels uploads the recordings of a session's channels at once,
+// at most protocol.MaxTTYChannels files: the API merges them into the
+// session's recording. Each file's Body must yield exactly its Size bytes,
+// whose SHA-256 is its SHA256. The body is streamed, read once.
+func (c *Client) SendTTYChannels(ctx context.Context, sensorID, session string, files []protocol.TTYFile) (protocol.TTYResult, error) {
+	var res protocol.TTYResult
+	digests := make([]string, len(files))
+	for i, f := range files {
+		d, err := protocol.FormatDigest(f.SHA256)
+		if err != nil {
+			return res, err
+		}
+		digests[i] = d
+	}
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		pw.CloseWithError(writeParts(mw, files, digests))
+	}()
+	defer func() { _ = pr.Close() }()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url(protocol.TTYChannelsPath(url.PathEscape(session))), pr)
+	if err != nil {
+		return res, err
+	}
+	req.Header.Set("Content-Type", "multipart/mixed; boundary="+mw.Boundary())
+	req.Header.Set(protocol.HeaderSensor, sensorID)
+	err = c.do(req, &res)
+	return res, err
+}
+
+func writeParts(mw *multipart.Writer, files []protocol.TTYFile, digests []string) error {
+	for i, f := range files {
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Type", "application/octet-stream")
+		h.Set("Content-Length", strconv.FormatInt(f.Size, 10))
+		h.Set(protocol.HeaderDigest, digests[i])
+		w, err := mw.CreatePart(h)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(w, io.LimitReader(f.Body, f.Size)); err != nil {
+			return err
+		}
+	}
+	return mw.Close()
 }
 
 func (c *Client) url(path string) string { return c.base.String() + path }

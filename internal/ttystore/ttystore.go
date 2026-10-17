@@ -78,6 +78,12 @@ func (s *Store) Write(sha string, size int64, r io.Reader) (string, error) {
 	return rel, nil
 }
 
+// Temp creates a file in the store's directory for files being written,
+// for work on uploads before they are stored. The caller removes it.
+func (s *Store) Temp() (*os.File, error) {
+	return os.CreateTemp(filepath.Join(s.dir, "tmp"), "work-*")
+}
+
 // Open opens a stored recording.
 func (s *Store) Open(sha string) (*os.File, error) {
 	if !protocol.ValidSHA256(sha) {

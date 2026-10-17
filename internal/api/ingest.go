@@ -2,7 +2,11 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -61,6 +65,58 @@ func (s *server) putTTY(w http.ResponseWriter, r *http.Request) {
 	}
 	render.Status(r, code)
 	render.JSON(w, r, res)
+}
+
+// postTTYChannels receives the recordings of a session's channels, a
+// multipart/mixed body of one part per file, merged by the service.
+func (s *server) postTTYChannels(w http.ResponseWriter, r *http.Request) {
+	session := chi.URLParam(r, "session")
+	if claimed := r.Header.Get(protocol.HeaderSensor); claimed != sensorFrom(r.Context()) {
+		s.ingestError(w, r, ingest.ErrSensorMismatch, "session", session)
+		return
+	}
+	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mt != "multipart/mixed" || params["boundary"] == "" {
+		s.refuse(w, r, http.StatusUnsupportedMediaType, "want multipart/mixed", "session", session)
+		return
+	}
+	// The service bounds the files; the reader bounds what a lying client
+	// could still send, part headers included.
+	body := http.MaxBytesReader(w, r.Body, s.Ingest.MaxTTYSize()+protocol.MaxTTYChannels*partOverhead)
+	res, err := s.Ingest.StoreTTYChannels(r.Context(), sensorFrom(r.Context()), session, parts{multipart.NewReader(body, params["boundary"])})
+	if err != nil {
+		s.ingestError(w, r, err, "session", session)
+		return
+	}
+	code := http.StatusOK
+	if res.Status == protocol.TTYStored {
+		code = http.StatusCreated
+	}
+	render.Status(r, code)
+	render.JSON(w, r, res)
+}
+
+// partOverhead bounds what a part adds to its file: boundary and headers.
+const partOverhead = 4 << 10
+
+// parts yields the files of a multipart body, described by the headers of
+// their part.
+type parts struct{ r *multipart.Reader }
+
+func (p parts) Next() (protocol.TTYFile, error) {
+	part, err := p.r.NextRawPart()
+	if err != nil {
+		return protocol.TTYFile{}, err
+	}
+	sha, err := protocol.ParseDigest(part.Header.Get(protocol.HeaderDigest))
+	if err != nil {
+		return protocol.TTYFile{}, fmt.Errorf("part %s: %w", protocol.HeaderDigest, err)
+	}
+	size, err := strconv.ParseInt(part.Header.Get("Content-Length"), 10, 64)
+	if err != nil {
+		return protocol.TTYFile{}, errors.New("part Content-Length required")
+	}
+	return protocol.TTYFile{SHA256: sha, Size: size, Body: part}, nil
 }
 
 // ingestError answers an error of the ingestion service; attrs identify

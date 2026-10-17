@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 )
@@ -112,4 +113,28 @@ func deref(s *string) string {
 		return "<nil>"
 	}
 	return *s
+}
+
+func TestParseChannel(t *testing.T) {
+	for raw, want := range map[string]string{
+		`{"ttylog":"var/lib/cowrie/tty/abc","duration_ms":4,"duplicate":true}`: "abc 4 true",
+		`{"ttylog":"abc","duration":"1.5"}`:                                    "abc 1500 false",
+		`{"ttylog":3,"duration_ms":"soon","duplicate":"yes"}`:                  "- - false",
+	} {
+		f, ok := Parse([]byte(raw))
+		if !ok {
+			t.Fatal(raw)
+		}
+		c := ParseChannel(f)
+		name, ms := "-", "-"
+		if c.TTYLog != nil {
+			name = *c.TTYLog
+		}
+		if c.DurationMS != nil {
+			ms = fmt.Sprint(*c.DurationMS)
+		}
+		if got := fmt.Sprintf("%s %s %v", name, ms, c.Duplicate); got != want {
+			t.Errorf("%s: %s, want %s", raw, got, want)
+		}
+	}
 }

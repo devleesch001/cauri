@@ -101,6 +101,7 @@ func New(c Config) http.Handler {
 			r.Use(s.ingestAuth)
 			r.Post(protocol.EventsPath[len("/api"):], s.postEvents)
 			r.Put(protocol.TTYPathPrefix[len("/api"):]+"{session}", s.putTTY)
+			r.Post(protocol.TTYPathPrefix[len("/api"):]+"{session}"+protocol.TTYChannelsSuffix, s.postTTYChannels)
 		})
 
 		r.Group(func(r chi.Router) {

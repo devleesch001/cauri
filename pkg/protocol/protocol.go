@@ -10,6 +10,13 @@
 // HeaderSensor header and a Content-Digest header (RFC 9530, sha-256),
 // answered by a TTYResult. The upload is idempotent.
 //
+// The recordings of a session's channels: POST TTYChannelsPath(session)
+// with a multipart/mixed body, one part per file (Content-Length and
+// Content-Digest headers each), and the HeaderSensor header, answered by
+// a TTYResult. Cowrie writes a recording per SSH channel; the API merges
+// the files of a session into its one recording, once. The upload is
+// idempotent.
+//
 // Every request carries "Authorization: Bearer <token>"; a token belongs to
 // one sensor. Errors are answered with an ErrorBody.
 package protocol
@@ -22,6 +29,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -31,6 +39,9 @@ const (
 	EventsPath = "/api/ingest/events"
 	// TTYPathPrefix is followed by the Cowrie session identifier (PUT).
 	TTYPathPrefix = "/api/ingest/tty/"
+	// TTYChannelsSuffix follows TTYPath(session) to upload the recordings
+	// of the session's channels at once (POST).
+	TTYChannelsSuffix = "/channels"
 
 	// HeaderSensor carries the sensor identifier of a TTY upload.
 	HeaderSensor = "Cauri-Sensor"
@@ -41,10 +52,17 @@ const (
 	MaxBatchEvents = 1000
 	// MaxBatchBytes is the largest event batch body the API accepts.
 	MaxBatchBytes = 16 << 20
+	// MaxTTYChannels is the largest number of files in an upload of a
+	// session's channels: the attacker chooses how many it opens.
+	MaxTTYChannels = 256
 )
 
 // TTYPath returns the upload path of the TTY recording of a session.
 func TTYPath(session string) string { return TTYPathPrefix + session }
+
+// TTYChannelsPath returns the upload path of the recordings of a
+// session's channels.
+func TTYChannelsPath(session string) string { return TTYPath(session) + TTYChannelsSuffix }
 
 // Event is one line of cowrie.json.
 type Event struct {
@@ -83,6 +101,14 @@ type TTYMeta struct {
 	// SHA256 is the hex-encoded digest of the file.
 	SHA256 string
 	Size   int64
+}
+
+// TTYFile is one file of an upload of a session's channels: Body yields
+// Size bytes whose SHA-256 is SHA256 (hex).
+type TTYFile struct {
+	SHA256 string
+	Size   int64
+	Body   io.Reader
 }
 
 // TTYStatus tells what the API did with an upload.

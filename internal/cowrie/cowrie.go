@@ -9,6 +9,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"math"
+	"path"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -199,4 +202,65 @@ func joined(f Fields, key string) *string {
 func CleanText(s string) string {
 	s = strings.ToValidUTF8(s, string(utf8.RuneError))
 	return strings.ReplaceAll(s, "\x00", string(utf8.RuneError))
+}
+
+// Channel is what a cowrie.log.closed tells of the SSH channel it closed:
+// Cowrie writes a recording per channel.
+type Channel struct {
+	// TTYLog is the recording's file name, the SHA-256 of its input: the
+	// keys typed, or the command of an exec channel.
+	TTYLog *string
+	// DurationMS is how long the channel was open, before it closed.
+	DurationMS *int64
+	// Duplicate: Cowrie kept the file of an earlier recording of the same
+	// input, with that one's times and output.
+	Duplicate bool
+}
+
+// ParseChannel reads the channel of a cowrie.log.closed line, leniently: a
+// field of an unexpected type is left out.
+func ParseChannel(f Fields) Channel {
+	var c Channel
+	if s := str(f, "ttylog"); s != nil && *s != "" {
+		name := path.Base(*s)
+		c.TTYLog = &name
+	}
+	if ms := float(f, "duration_ms"); ms != nil {
+		c.DurationMS = Millis(*ms)
+	} else if sec := float(f, "duration"); sec != nil {
+		c.DurationMS = Millis(*sec * 1000)
+	}
+	var dup bool
+	if v, ok := f["duplicate"]; ok && json.Unmarshal(v, &dup) == nil {
+		c.Duplicate = dup
+	}
+	return c
+}
+
+// float reads a number, or a string holding one.
+func float(f Fields, key string) *float64 {
+	v, ok := f[key]
+	if !ok {
+		return nil
+	}
+	var n float64
+	if json.Unmarshal(v, &n) == nil {
+		return &n
+	}
+	var s string
+	if json.Unmarshal(v, &s) == nil {
+		if n, err := strconv.ParseFloat(s, 64); err == nil {
+			return &n
+		}
+	}
+	return nil
+}
+
+// Millis rounds a duration in milliseconds, nil if out of range.
+func Millis(ms float64) *int64 {
+	if math.IsNaN(ms) || ms < 0 || ms > math.MaxInt64/2 {
+		return nil
+	}
+	v := int64(math.Round(ms))
+	return &v
 }
