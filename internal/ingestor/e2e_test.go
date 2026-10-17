@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,10 +122,10 @@ func TestEndToEnd(t *testing.T) {
 	}
 }
 
-// Sessions running one command per exec channel, as bots do, send no
-// recording (a file per channel, duplicates of other runs): the API replays
-// them, simulated, with every command (sample of the official Cowrie
-// v3.1.2, see internal/ingest).
+// Sessions running one command per exec channel, as bots do, send the
+// files of their channels, duplicates of other runs included: the API
+// merges them into one recording each, every command with its output
+// (sample of the official Cowrie v3.1.2, see internal/ingest).
 func TestEndToEndExecChannels(t *testing.T) {
 	ctx := context.Background()
 	db := storetest.SQLite(t)
@@ -165,7 +166,7 @@ func TestEndToEndExecChannels(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		rows, _, err := store.ListSessions(ctx, db, store.SessionFilter{})
-		if err == nil && len(rows) == 2 && rows[0].Commands+rows[1].Commands == 5 {
+		if err == nil && len(rows) == 2 && rows[0].TTYAvailable && rows[1].TTYAvailable {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -178,15 +179,9 @@ func TestEndToEndExecChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Let the TTY queue settle: nothing must have been stored.
-	time.Sleep(100 * time.Millisecond)
-	if n, _ := db.NewSelect().Model((*store.TTYFile)(nil)).Count(ctx); n != 0 {
-		t.Fatalf("%d recordings stored for sessions with several channels", n)
-	}
-
-	for sess, want := range map[string][]string{
-		"7dfe84911c9f": {"uname -a", "whoami", "uname -a"},
-		"246b6f85171f": {"whoami", "cat /proc/cpuinfo | grep name | wc -l"},
+	for sess, want := range map[string][][2]string{
+		"7dfe84911c9f": {{"uname -a", "Linux"}, {"whoami", "root"}, {"uname -a", "Linux"}},
+		"246b6f85171f": {{"whoami", "root"}, {"cat /proc/cpuinfo | grep name | wc -l", ""}},
 	} {
 		id, err := store.LookupSession(ctx, db, "hp-01", sess)
 		if err != nil {
@@ -201,17 +196,18 @@ func TestEndToEndExecChannels(t *testing.T) {
 			Chapters  []struct {
 				Time    float64 `json:"time"`
 				Command string  `json:"command"`
+				Output  string  `json:"output"`
 			} `json:"chapters"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&got)
 		_ = resp.Body.Close()
-		if err != nil || !got.Simulated || len(got.Chapters) != len(want) {
+		if err != nil || got.Simulated || len(got.Chapters) != len(want) {
 			t.Fatalf("%s: chapters = %+v, %v", sess, got.Chapters, err)
 		}
 		last := -1.0
 		for i, ch := range got.Chapters {
 			// In order, a few tenths of a second apart as run.
-			if ch.Command != want[i] || ch.Time < last || ch.Time > 5 {
+			if ch.Command != want[i][0] || !strings.HasPrefix(ch.Output, want[i][1]) || ch.Output == "" || ch.Time < last || ch.Time > 5 {
 				t.Errorf("%s #%d = %+v", sess, i, ch)
 			}
 			last = ch.Time

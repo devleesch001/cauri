@@ -331,8 +331,7 @@ func (in *ingestor) uploadTTYs(ctx context.Context) error {
 // errors are returned.
 func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	log := in.Logger.With("session", job.Session, "channels", len(job.Channels))
-	if len(job.Channels) != 1 || job.Channels[0].Duplicate {
-		log.Debug("several channels or a duplicate, no recording sent")
+	if len(job.Channels) == 0 {
 		return in.queue.done(job.Session)
 	}
 	if err := in.openTTYRoot(); err != nil {
@@ -341,13 +340,11 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 		log.Warn("tty directory unavailable, retrying", "err", err, "in", delay.String())
 		return in.queue.retry(job.Session, time.Now().Add(delay))
 	}
-	f, m, err := in.recording(job)
-	if err != nil {
+	res, err := in.send(ctx, log, job)
+	if errors.Is(err, errUnreadable) {
 		log.Warn("tty recording unreadable, dropping it", "err", err)
 		return in.queue.done(job.Session)
 	}
-	res, err := in.Sink.SendTTY(ctx, m, f)
-	_ = f.Close()
 	if err == nil {
 		log.Debug("tty recording delivered", "status", res.Status)
 		return in.queue.done(job.Session)
@@ -364,22 +361,52 @@ func (in *ingestor) uploadTTY(ctx context.Context, job ttyJob) error {
 	return in.queue.retry(job.Session, time.Now().Add(delay))
 }
 
-// recording opens the file to upload for a session and describes it. Only a
-// session with a single channel, whose file is its own, has a recording
-// worth keeping: a human holds one shell channel open. Bots open one channel
-// per command, and Cowrie reuses the file of an earlier identical input
-// (duplicate), with its times and output: the API replays those sessions
-// from their events.
-func (in *ingestor) recording(job ttyJob) (*os.File, protocol.TTYMeta, error) {
-	f, err := in.openTTY(job.Channels[0].TTYLog)
-	if err != nil {
-		return nil, protocol.TTYMeta{}, err
+// errUnreadable means no file of a session's channels could be read.
+var errUnreadable = errors.New("no readable recording")
+
+// send uploads the recordings of a session. A single channel whose file
+// is its own is sent alone, as before the API merged channels. Otherwise
+// every file of the session's channels goes at once, each once, and the
+// API merges them: bots run each command on its own channel, and Cowrie
+// keeps one file per input, reused by a later run (duplicate). A file
+// missing or unreadable is left out.
+func (in *ingestor) send(ctx context.Context, log *slog.Logger, job ttyJob) (protocol.TTYResult, error) {
+	var files []*os.File
+	defer func() {
+		for _, f := range files {
+			_ = f.Close()
+		}
+	}()
+	var parts []protocol.TTYFile
+	var single protocol.TTYMeta
+	seen := map[string]bool{}
+	for _, c := range job.Channels {
+		name := filepath.Base(c.TTYLog)
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		f, err := in.openTTY(name)
+		if err != nil {
+			log.Warn("tty recording of a channel unreadable, left out", "ttylog", name, "err", err)
+			continue
+		}
+		files = append(files, f)
+		m, err := in.describe(job.Session, f)
+		if err != nil {
+			log.Warn("tty recording of a channel unreadable, left out", "ttylog", name, "err", err)
+			continue
+		}
+		single = m
+		parts = append(parts, protocol.TTYFile{SHA256: m.SHA256, Size: m.Size, Body: f})
 	}
-	m, err := in.describe(job.Session, f)
-	if err != nil {
-		_ = f.Close()
+	switch {
+	case len(parts) == 0:
+		return protocol.TTYResult{}, errUnreadable
+	case len(job.Channels) == 1 && !job.Channels[0].Duplicate:
+		return in.Sink.SendTTY(ctx, single, parts[0].Body)
 	}
-	return f, m, err
+	return in.Sink.SendTTYChannels(ctx, in.SensorID, job.Session, parts)
 }
 
 // openTTYRoot opens the TTY directory on first use: Cowrie creates it

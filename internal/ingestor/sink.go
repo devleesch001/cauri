@@ -21,6 +21,9 @@ var ErrPermanent = errors.New("permanent error")
 type Sink interface {
 	SendEvents(ctx context.Context, b protocol.EventBatch) (protocol.EventBatchResult, error)
 	SendTTY(ctx context.Context, m protocol.TTYMeta, body io.Reader) (protocol.TTYResult, error)
+	// SendTTYChannels sends the recordings of a session's channels, which
+	// the API merges into the session's one.
+	SendTTYChannels(ctx context.Context, sensorID, session string, files []protocol.TTYFile) (protocol.TTYResult, error)
 }
 
 // NewHTTPSink returns a Sink posting to the API with the protocol client.
@@ -35,6 +38,11 @@ func (s httpSink) SendEvents(ctx context.Context, b protocol.EventBatch) (protoc
 
 func (s httpSink) SendTTY(ctx context.Context, m protocol.TTYMeta, body io.Reader) (protocol.TTYResult, error) {
 	res, err := s.c.SendTTY(ctx, m, body)
+	return res, classify(err)
+}
+
+func (s httpSink) SendTTYChannels(ctx context.Context, sensorID, session string, files []protocol.TTYFile) (protocol.TTYResult, error) {
+	res, err := s.c.SendTTYChannels(ctx, sensorID, session, files)
 	return res, classify(err)
 }
 

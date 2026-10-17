@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,7 @@ type fakeSink struct {
 	events     []protocol.Event
 	ttys       map[string]string // session -> content
 	ttyMeta    map[string]protocol.TTYMeta
+	channels   map[string][]string // session -> contents of its channels' files
 	failEvents int
 	failTTY    int
 	ttyErr     error
@@ -33,7 +35,7 @@ type fakeSink struct {
 }
 
 func newFakeSink() *fakeSink {
-	return &fakeSink{ttys: map[string]string{}, ttyMeta: map[string]protocol.TTYMeta{}}
+	return &fakeSink{ttys: map[string]string{}, ttyMeta: map[string]protocol.TTYMeta{}, channels: map[string][]string{}}
 }
 
 func (s *fakeSink) SendEvents(_ context.Context, b protocol.EventBatch) (protocol.EventBatchResult, error) {
@@ -68,6 +70,35 @@ func (s *fakeSink) SendTTY(_ context.Context, m protocol.TTYMeta, body io.Reader
 	s.ttys[m.Session] = string(data)
 	s.ttyMeta[m.Session] = m
 	return protocol.TTYResult{Status: protocol.TTYStored, SHA256: m.SHA256}, nil
+}
+
+func (s *fakeSink) SendTTYChannels(_ context.Context, sensorID, session string, files []protocol.TTYFile) (protocol.TTYResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failTTY > 0 {
+		s.failTTY--
+		return protocol.TTYResult{}, s.ttyErr
+	}
+	if sensorID != "hp-01" {
+		panic("bad sensor")
+	}
+	var contents []string
+	for _, f := range files {
+		data, _ := io.ReadAll(f.Body)
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) != f.SHA256 || int64(len(data)) != f.Size {
+			panic("digest or size mismatch")
+		}
+		contents = append(contents, string(data))
+	}
+	s.channels[session] = contents
+	return protocol.TTYResult{Status: protocol.TTYStored}, nil
+}
+
+func (s *fakeSink) sentChannels() map[string][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return maps.Clone(s.channels)
 }
 
 func (s *fakeSink) snapshot() ([]protocol.Event, map[string]string) {
@@ -396,10 +427,10 @@ func TestDirectoriesCreatedLater(t *testing.T) {
 
 // Bots run one command per exec channel: Cowrie writes a recording per
 // channel, and keeps one file per input (a later one is a duplicate, with
-// the times of the first). No recording is sent for such sessions: the API
-// replays them from their events (sample of the official Cowrie v3.1.2,
+// the times of the first). Every file of such a session is sent at once,
+// each once, for the API to merge (sample of the official Cowrie v3.1.2,
 // see internal/ingest).
-func TestTTYSeveralChannelsNotSent(t *testing.T) {
+func TestTTYSeveralChannelsSent(t *testing.T) {
 	f := newFixture(t)
 	sample := "../ingest/testdata/cowrie-v3.1.2-exec"
 	files, err := filepath.Glob(sample + "-tty/*")
@@ -419,25 +450,29 @@ func TestTTYSeveralChannelsNotSent(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(cowrieLog)), "\n")
 	f.write(t, LogName, lines...)
 	f.start(t, f.config(f.sink))
-	waitFor(t, "events", func() bool { return eventCount(f.sink)() == len(lines) })
-	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
-	waitFor(t, "empty queue", func() bool { q, _ = loadTTYQueue(q.path); return q.len() == 0 })
+	waitFor(t, "uploads", func() bool { return len(f.sink.sentChannels()) == 2 })
 	if _, ttys := f.sink.snapshot(); len(ttys) != 0 {
-		t.Errorf("recordings sent for sessions with several channels: %v", ttys)
+		t.Errorf("single recordings sent for sessions with several channels: %v", ttys)
+	}
+	// Each file once: uname -a ran twice in the first session, its second
+	// run a duplicate; the second session's whoami is one of the first's.
+	sent := f.sink.sentChannels()
+	if len(sent["7dfe84911c9f"]) != 2 || len(sent["246b6f85171f"]) != 2 {
+		t.Errorf("files sent: %d and %d", len(sent["7dfe84911c9f"]), len(sent["246b6f85171f"]))
 	}
 }
 
-// One channel whose file is a duplicate holds another run's output: not sent.
-func TestTTYDuplicateNotSent(t *testing.T) {
+// One channel whose file is a duplicate holds another run's times: sent
+// for the API to move it to its channel's.
+func TestTTYDuplicateSent(t *testing.T) {
 	f := newFixture(t)
 	tty := writeTTY(t, f, "output")
 	dup := `{"eventid":"cowrie.log.closed","session":"s1","timestamp":"2026-10-14T09:59:00.000000Z","ttylog":"var/lib/cowrie/tty/` + tty + `","duplicate":true}`
 	f.write(t, LogName, dup, sessionClosedEvent("s1"))
 	f.start(t, f.config(f.sink))
-	q, _ := loadTTYQueue(filepath.Join(f.stateDir, "tty-queue.json"))
-	waitFor(t, "empty queue", func() bool { q, _ = loadTTYQueue(q.path); return eventCount(f.sink)() == 2 && q.len() == 0 })
-	if _, ttys := f.sink.snapshot(); len(ttys) != 0 {
-		t.Errorf("duplicate sent: %v", ttys)
+	waitFor(t, "upload", func() bool { return len(f.sink.sentChannels()["s1"]) > 0 })
+	if sent := f.sink.sentChannels(); len(sent["s1"]) != 1 || sent["s1"][0] != "output" {
+		t.Errorf("duplicate sent as %v", sent)
 	}
 }
 
@@ -474,7 +509,7 @@ func TestTTYQueueOfOlderVersion(t *testing.T) {
 }
 
 // The attacker chooses how many channels a session opens: the queue keeps
-// a bounded number: it only needs to know there is more than one.
+// as many as the API takes in one upload.
 func TestTTYChannelsBounded(t *testing.T) {
 	q, err := loadTTYQueue(filepath.Join(t.TempDir(), "q.json"))
 	if err != nil {

@@ -4,6 +4,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/devleesch001/cauri/pkg/protocol"
 )
 
 // sessionWait is how long a session's recordings wait for its
@@ -11,9 +13,9 @@ import (
 // anyway: Cowrie may stop before writing it.
 const sessionWait = time.Hour
 
-// maxChannels bounds the channels kept per session: only whether there is
-// more than one matters, and the attacker chooses how many it opens.
-const maxChannels = 2
+// maxChannels bounds the channels kept per session, as the API bounds the
+// files of one upload: the attacker chooses how many it opens.
+const maxChannels = protocol.MaxTTYChannels
 
 // ttyChannel is the recording of one SSH channel of a session, as its
 // cowrie.log.closed tells it.
@@ -27,7 +29,7 @@ type ttyChannel struct {
 }
 
 // ttyJob is the recording of a session waiting to be uploaded: its
-// channels, of which one alone is sent.
+// channels, whose files the API merges.
 type ttyJob struct {
 	Session  string       `json:"session"`
 	Channels []ttyChannel `json:"channels,omitempty"`
