@@ -498,6 +498,8 @@ type TermSize struct {
 type Recording struct {
 	Session string // Cowrie session identifier
 	SHA256  string // digest of the stored file, see ttystore
+	Sensor  string
+	User    string // the first account that logged in, empty if none
 	// Sizes are the terminal sizes reported by the client, in time order.
 	Sizes []TermSize
 	// Commands are the commands typed, in time order: the replay chapters.
@@ -518,9 +520,15 @@ func GetRecording(ctx context.Context, db bun.IDB, id int64) (*Recording, error)
 		return nil, ErrNoRecording
 	}
 
-	rec := &Recording{Session: s.CowrieSession, SHA256: *s.TTYSHA256}
+	rec := &Recording{Session: s.CowrieSession, SHA256: *s.TTYSHA256, Sensor: s.Sensor}
 	if err := db.NewSelect().Model(&rec.Commands).Where("session_id = ?", id).
 		Order("ts", "id").Scan(ctx); err != nil {
+		return nil, err
+	}
+	err = db.NewSelect().Model((*LoginAttempt)(nil)).Column("username").
+		Where("session_id = ?", id).Where("success = ?", true).
+		Order("ts", "id").Limit(1).Scan(ctx, &rec.User)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 	// Terminal sizes are in the event's data, which outlives the raw line.

@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -595,5 +596,30 @@ func TestChaptersTotalOutput(t *testing.T) {
 	}
 	if total > MaxTotalOutput || truncated < n/2 {
 		t.Errorf("total output %d bytes, %d of %d chapters truncated", total, truncated, n)
+	}
+}
+
+// An exec channel has no shell: its command, recorded whole, is shown
+// with a faint prompt before its output, as if typed.
+func TestConvertExecCommand(t *testing.T) {
+	data := file(
+		rec(OpOpen, 0, 0, ""),
+		rec(OpWrite, DirInteract, time.Millisecond, "uname -a\n"),
+		rec(OpWrite, DirOutput, 2*time.Millisecond, "Linux svr04\n"),
+	)
+	_, events, err := convert(t, data, Options{Prompt: "root@hp-01:~# "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []event{
+		{time.Millisecond, "o", "\x1b[2mroot@hp-01:~# \x1b[22muname -a\r\n"},
+		{2 * time.Millisecond, "o", "Linux svr04\r\n"},
+	}
+	if !slices.Equal(events, want) {
+		t.Errorf("events = %+v", events)
+	}
+	// Without a prompt, the command alone.
+	if _, events, _ = convert(t, data, Options{}); len(events) == 0 || events[0].data != "uname -a\r\n" {
+		t.Errorf("without prompt: %+v", events)
 	}
 }

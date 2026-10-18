@@ -28,7 +28,7 @@ const (
 
 // castVersion changes when the conversion of a same file changes, so that
 // clients do not keep an old replay (it is part of the ETag).
-const castVersion = "v3.3"
+const castVersion = "v3.4"
 
 // simulationRequested reads the simulated parameter: the client asks for the
 // replay built from the commands even where a recording exists.
@@ -182,6 +182,7 @@ func (s *server) getCast(w http.ResponseWriter, r *http.Request) {
 	out := &countingWriter{w: w}
 	err = ttylog.Convert(f, asciicast.NewV3(out), ttylog.Options{
 		Sizes: sizes, IdleTimeLimit: idle, Commands: commands(rec),
+		Prompt: simulatedPrompt(rec.User, rec.Sensor),
 	})
 	switch {
 	case err != nil && out.n == 0:

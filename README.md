@@ -173,6 +173,9 @@ request and never modified.
   `sudo` or `passwd`.
 - The terminal size comes from the client's `cowrie.client.size` events,
   80×24 if none; later changes become `"r"` events.
+- An exec channel (`ssh host command`, what most bots do) has no shell,
+  so no prompt and no echo: its command, which Cowrie records whole, is
+  shown before its output, after a faint prompt (`root@hp-01:~# `).
 - Each command typed (`cowrie.command.input`) becomes an `"m"` marker,
   which players show as chapters on the progress bar. Cowrie logs a
   command within a millisecond of its Enter key in the recording.

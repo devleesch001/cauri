@@ -28,6 +28,11 @@ type Options struct {
 	// Commands typed during the session, in time order, from Cowrie's
 	// cowrie.command.input events: each becomes a marker (a chapter).
 	Commands []Command
+	// Prompt is shown, faint, before the command of an exec channel: such
+	// a channel has no shell, so no prompt and no echo, and the terminal
+	// would show its output alone. Cowrie records the command whole
+	// (DirInteract); it is shown as if typed at a shell.
+	Prompt string
 }
 
 // Command is a command typed in the session, at the time Cowrie ran it.
@@ -79,7 +84,7 @@ func Convert(r io.Reader, enc asciicast.Encoder, opts Options) error {
 		return err
 	}
 
-	c := converter{enc: enc, start: start, sizes: sizes, commands: opts.Commands}
+	c := converter{enc: enc, start: start, sizes: sizes, commands: opts.Commands, prompt: opts.Prompt}
 	rec := first
 	for {
 		if err := c.record(rec); err != nil {
@@ -120,6 +125,7 @@ type converter struct {
 	last       time.Duration
 	sizes      []TermSize
 	commands   []Command
+	prompt     string
 	out, input utf8Buffer
 }
 
@@ -140,8 +146,19 @@ func (c *converter) record(rec Record) error {
 		return c.emit(at, asciicast.Output, onlcr(c.out.decode(rec.Data)))
 	case DirInput:
 		return c.emit(at, asciicast.Input, c.input.decode(rec.Data))
+	case DirInteract:
+		cmd := strings.TrimRight(strings.ToValidUTF8(string(rec.Data), string(utf8.RuneError)), "\r\n")
+		return c.emit(at, asciicast.Output, faint(c.prompt)+onlcr(cmd)+"\r\n")
 	}
 	return nil
+}
+
+// faint dims text added by cauri, which the terminal did not show.
+func faint(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "\x1b[2m" + s + "\x1b[22m"
 }
 
 func (c *converter) resizesUntil(t time.Time) error {

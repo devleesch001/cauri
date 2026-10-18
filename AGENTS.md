@@ -129,7 +129,9 @@ modified once stored, kept in a volume, named by the SHA-256 of the file
 are converted to asciicast at read time (`/api/sessions/{id}/cast`,
 `internal/ttylog` → `internal/asciicast`), never at ingestion. Replays
 keep the real timing and include keystrokes (`"i"`) and a marker (`"m"`)
-per command; `idle_time_limit` is only a header hint. Chapters (each
+per command; an exec channel's command (`ttylog.DirInteract`), which no
+shell echoed, is shown before its output after a faint prompt (the
+simulated replay's); `idle_time_limit` is only a header hint. Chapters (each
 command and its plain-text output, `/api/sessions/{id}/chapters`) come
 from the same recording, with bounded cost and output. So does the
 human/bot verdict (`/api/sessions/{id}/verdict`, `internal/verdict`): it

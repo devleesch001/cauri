@@ -96,6 +96,12 @@ func TestTTYChannels(t *testing.T) {
 		if got.Chapters[2].Time < got.Chapters[1].Time {
 			t.Errorf("duplicate not at its channel's time: %+v", got.Chapters)
 		}
+		// Exec channels have no shell: the replay shows each command with
+		// a prompt before its output.
+		_, cast := getRaw(t, e, "/api/sessions/"+sid(t, e, "hp-01", "7dfe84911c9f")+"/cast", nil)
+		if n := strings.Count(cast, `@hp-01:~# \u001b[22muname -a\r\n`); n != 2 || !strings.Contains(cast, `whoami\r\n`) {
+			t.Errorf("%d uname -a commands in the cast:\n%s", n, cast)
+		}
 
 		// The same files again, in another order: the same recording.
 		again, err := e.client.SendTTYChannels(ctx, "hp-01", "7dfe84911c9f", ttyFiles(whoami, uname, uname))
