@@ -131,7 +131,10 @@ are converted to asciicast at read time (`/api/sessions/{id}/cast`,
 keep the real timing and include keystrokes (`"i"`) and a marker (`"m"`)
 per command; an exec channel's command (`ttylog.DirInteract`), which no
 shell echoed, is shown before its output after a faint prompt (the
-simulated replay's); `idle_time_limit` is only a header hint. Chapters (each
+simulated replay's), which comes back after it and serves the next
+command; the one exception to the real timing (the user's choice): an
+exec command less than 200 ms after the previous one is moved to 200 ms,
+everything after it with it (`ttylog.execGap`); `idle_time_limit` is only a header hint. Chapters (each
 command and its plain-text output, `/api/sessions/{id}/chapters`) come
 from the same recording, with bounded cost and output. So does the
 human/bot verdict (`/api/sessions/{id}/verdict`, `internal/verdict`): it

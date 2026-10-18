@@ -28,12 +28,19 @@ type Options struct {
 	// Commands typed during the session, in time order, from Cowrie's
 	// cowrie.command.input events: each becomes a marker (a chapter).
 	Commands []Command
-	// Prompt is shown, faint, before the command of an exec channel: such
-	// a channel has no shell, so no prompt and no echo, and the terminal
-	// would show its output alone. Cowrie records the command whole
-	// (DirInteract); it is shown as if typed at a shell.
+	// Prompt is shown, faint, before the command of an exec channel and
+	// after its output: such a channel has no shell, so no prompt and no
+	// echo, and the terminal would show its output alone. Cowrie records
+	// the command whole (DirInteract); it is shown as if typed at a shell,
+	// a prompt left by the previous one serving the next.
 	Prompt string
 }
+
+// execGap is the least time between two exec commands in a replay: bots
+// run dozens of them within milliseconds, which would show at once. A
+// command sooner than that after the previous one, and all that follows,
+// is moved later.
+const execGap = 200 * time.Millisecond
 
 // Command is a command typed in the session, at the time Cowrie ran it.
 type Command struct {
@@ -84,7 +91,7 @@ func Convert(r io.Reader, enc asciicast.Encoder, opts Options) error {
 		return err
 	}
 
-	c := converter{enc: enc, start: start, sizes: sizes, commands: opts.Commands, prompt: opts.Prompt}
+	c := converter{enc: enc, start: start, sizes: sizes, commands: opts.Commands, prompt: opts.Prompt, lineStart: true}
 	rec := first
 	for {
 		if err := c.record(rec); err != nil {
@@ -127,30 +134,82 @@ type converter struct {
 	commands   []Command
 	prompt     string
 	out, input utf8Buffer
+
+	// shift delays everything from an exec command on, see execGap.
+	shift time.Duration
+	// lastExec is when the last exec command was shown, if execSeen.
+	lastExec time.Duration
+	execSeen bool
+	inExec   bool // in an exec channel, until its close
+	// lineStart: the output so far ends a line. promptShown: it ends with
+	// the prompt shown after an exec command, which the next one reuses.
+	lineStart, promptShown bool
 }
 
+// at is when a time of the recording falls in the replay.
+func (c *converter) at(t time.Time) time.Duration { return max(t.Sub(c.start), 0) + c.shift }
+
 func (c *converter) record(rec Record) error {
-	at := max(rec.Time.Sub(c.start), 0)
-	c.last = max(c.last, at)
 	if err := c.resizesUntil(rec.Time); err != nil {
 		return err
 	}
 	if err := c.markersUntil(rec.Time); err != nil {
 		return err
 	}
-	if rec.Op != OpWrite {
+	at := c.at(rec.Time)
+	if rec.Op == OpWrite && rec.Dir == DirInteract && c.execSeen && at-c.lastExec < execGap {
+		c.shift += execGap - (at - c.lastExec)
+		at = c.at(rec.Time)
+	}
+	c.last = max(c.last, at)
+	switch {
+	case rec.Op == OpClose && c.inExec:
+		// The shell would show its prompt again: on a line of its own.
+		c.inExec = false
+		if c.prompt == "" {
+			return nil
+		}
+		data := faint(c.prompt)
+		if !c.lineStart {
+			data = "\r\n" + data
+		}
+		if err := c.output(at, data); err != nil {
+			return err
+		}
+		c.promptShown = true
+		return nil
+	case rec.Op != OpWrite:
 		return nil
 	}
 	switch rec.Dir {
 	case DirOutput:
-		return c.emit(at, asciicast.Output, onlcr(c.out.decode(rec.Data)))
+		return c.output(at, onlcr(c.out.decode(rec.Data)))
 	case DirInput:
+		c.promptShown = false
 		return c.emit(at, asciicast.Input, c.input.decode(rec.Data))
 	case DirInteract:
 		cmd := strings.TrimRight(strings.ToValidUTF8(string(rec.Data), string(utf8.RuneError)), "\r\n")
-		return c.emit(at, asciicast.Output, faint(c.prompt)+onlcr(cmd)+"\r\n")
+		data := onlcr(cmd) + "\r\n"
+		if !c.promptShown {
+			data = faint(c.prompt) + data
+			if !c.lineStart {
+				data = "\r\n" + data
+			}
+		}
+		c.inExec, c.execSeen, c.lastExec = true, true, at
+		return c.output(at, data)
 	}
 	return nil
+}
+
+// output writes terminal output and remembers how it ends.
+func (c *converter) output(at time.Duration, data string) error {
+	if data == "" {
+		return nil
+	}
+	c.lineStart = strings.HasSuffix(data, "\n")
+	c.promptShown = false
+	return c.emit(at, asciicast.Output, data)
 }
 
 // faint dims text added by cauri, which the terminal did not show.
@@ -166,7 +225,7 @@ func (c *converter) resizesUntil(t time.Time) error {
 		s := c.sizes[0]
 		c.sizes = c.sizes[1:]
 		if err := c.enc.WriteEvent(asciicast.Event{
-			Time: max(s.Time.Sub(c.start), 0), Code: asciicast.Resize, Data: asciicast.ResizeData(s.Cols, s.Rows),
+			Time: c.at(s.Time), Code: asciicast.Resize, Data: asciicast.ResizeData(s.Cols, s.Rows),
 		}); err != nil {
 			return err
 		}
@@ -190,7 +249,7 @@ func (c *converter) marker(cmd Command) error {
 		label = string(r[:maxMarkerLabel]) + "…"
 	}
 	return c.enc.WriteEvent(asciicast.Event{
-		Time: max(cmd.Time.Sub(c.start), 0), Code: asciicast.Marker, Data: label,
+		Time: max(c.at(cmd.Time), c.last), Code: asciicast.Marker, Data: label,
 	})
 }
 
@@ -198,7 +257,7 @@ func (c *converter) marker(cmd Command) error {
 // markers of commands logged after the last record (such as "exit"), and
 // flushes the encoder. Sizes reported after the end are dropped.
 func (c *converter) finish() error {
-	if err := c.emit(c.last, asciicast.Output, onlcr(c.out.flush())); err != nil {
+	if err := c.output(c.last, onlcr(c.out.flush())); err != nil {
 		return err
 	}
 	if err := c.emit(c.last, asciicast.Input, c.input.flush()); err != nil {

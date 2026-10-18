@@ -623,3 +623,41 @@ func TestConvertExecCommand(t *testing.T) {
 		t.Errorf("without prompt: %+v", events)
 	}
 }
+
+// Bots run exec commands back to back: the prompt shown after one serves
+// the next, and the next comes execGap later at least, all that follows
+// with it.
+func TestConvertExecSequence(t *testing.T) {
+	data := file(
+		rec(OpOpen, 0, 0, ""),
+		rec(OpWrite, DirInteract, 0, "id"),
+		rec(OpWrite, DirOutput, time.Millisecond, "uid=0(root)"),
+		rec(OpClose, 0, 2*time.Millisecond, ""),
+		rec(OpOpen, 0, 3*time.Millisecond, ""),
+		rec(OpWrite, DirInteract, 3*time.Millisecond, "whoami"),
+		rec(OpWrite, DirOutput, 4*time.Millisecond, "root\n"),
+		rec(OpClose, 0, 5*time.Millisecond, ""),
+		// Long after: not moved further.
+		rec(OpWrite, DirInteract, time.Second, "uname"),
+	)
+	cmds := []Command{{Time: t0.Add(3*time.Millisecond + 500*time.Microsecond), Input: "whoami"}}
+	_, events, err := convert(t, data, Options{Prompt: "# ", Commands: cmds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := "\x1b[2m# \x1b[22m"
+	gap := execGap - 3*time.Millisecond
+	want := []event{
+		{0, "o", p + "id\r\n"},
+		{time.Millisecond, "o", "uid=0(root)"},
+		{2 * time.Millisecond, "o", "\r\n" + p},
+		{3*time.Millisecond + gap, "o", "whoami\r\n"},
+		{3*time.Millisecond + 500*time.Microsecond + gap, "m", "whoami"},
+		{4*time.Millisecond + gap, "o", "root\r\n"},
+		{5*time.Millisecond + gap, "o", p},
+		{time.Second + gap, "o", "uname\r\n"},
+	}
+	if !slices.Equal(events, want) {
+		t.Errorf("events =\n%+v\nwant\n%+v", events, want)
+	}
+}

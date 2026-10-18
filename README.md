@@ -175,7 +175,10 @@ request and never modified.
   80×24 if none; later changes become `"r"` events.
 - An exec channel (`ssh host command`, what most bots do) has no shell,
   so no prompt and no echo: its command, which Cowrie records whole, is
-  shown before its output, after a faint prompt (`root@hp-01:~# `).
+  shown before its output, after a faint prompt (`root@hp-01:~# `),
+  which comes back after the output and serves the next command. Bots run
+  dozens of them within milliseconds: an exec command less than 200 ms
+  after the previous one is moved to 200 ms, and everything after it.
 - Each command typed (`cowrie.command.input`) becomes an `"m"` marker,
   which players show as chapters on the progress bar. Cowrie logs a
   command within a millisecond of its Enter key in the recording.

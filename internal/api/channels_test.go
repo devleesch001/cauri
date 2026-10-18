@@ -96,11 +96,12 @@ func TestTTYChannels(t *testing.T) {
 		if got.Chapters[2].Time < got.Chapters[1].Time {
 			t.Errorf("duplicate not at its channel's time: %+v", got.Chapters)
 		}
-		// Exec channels have no shell: the replay shows each command with
-		// a prompt before its output.
+		// Exec channels have no shell: the replay shows each command after
+		// a prompt, which comes back after its output.
 		_, cast := getRaw(t, e, "/api/sessions/"+sid(t, e, "hp-01", "7dfe84911c9f")+"/cast", nil)
-		if n := strings.Count(cast, `@hp-01:~# \u001b[22muname -a\r\n`); n != 2 || !strings.Contains(cast, `whoami\r\n`) {
-			t.Errorf("%d uname -a commands in the cast:\n%s", n, cast)
+		commands, prompts := strings.Count(cast, `"uname -a\r\n"`)+strings.Count(cast, `"whoami\r\n"`), strings.Count(cast, `@hp-01:~# \u001b[22m`)
+		if commands != 2 || prompts != 4 || !strings.Contains(cast, `@hp-01:~# \u001b[22muname -a\r\n`) {
+			t.Errorf("%d commands alone, %d prompts in the cast:\n%s", commands, prompts, cast)
 		}
 
 		// The same files again, in another order: the same recording.

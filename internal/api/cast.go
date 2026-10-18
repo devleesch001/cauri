@@ -28,7 +28,7 @@ const (
 
 // castVersion changes when the conversion of a same file changes, so that
 // clients do not keep an old replay (it is part of the ETag).
-const castVersion = "v3.4"
+const castVersion = "v3.5"
 
 // simulationRequested reads the simulated parameter: the client asks for the
 // replay built from the commands even where a recording exists.
