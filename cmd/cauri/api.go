@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/devleesch001/cauri/internal/envflag"
 	"github.com/devleesch001/cauri/internal/geoip"
 	"github.com/devleesch001/cauri/internal/ingest"
+	"github.com/devleesch001/cauri/internal/ingestor"
 	"github.com/devleesch001/cauri/internal/jobs"
 	"github.com/devleesch001/cauri/internal/store"
 	"github.com/devleesch001/cauri/internal/ttystore"
@@ -31,16 +33,52 @@ import (
 
 func init() {
 	register(command{"api", "run the API (with --ui, also serve the web UI)", runAPI})
+	register(command{"all-in-one", "run the API and the web UI, reading Cowrie's directories itself (no ingestor)", runAllInOne})
 }
 
-func runAPI(ctx context.Context, args []string) error {
-	fs := envflag.New("api")
+func runAPI(ctx context.Context, args []string) error { return runServer(ctx, "api", args) }
+
+func runAllInOne(ctx context.Context, args []string) error { return runServer(ctx, "all-in-one", args) }
+
+// localIngestor are the options of the all-in-one mode's ingestor: the
+// ingestor's own, but those reaching the API.
+type localIngestor struct {
+	sensor, logDir, ttyDir, stateDir, start *string
+	batchSize                               *int
+	flush, poll                             *time.Duration
+}
+
+func localIngestorFlags(fs *flag.FlagSet) localIngestor {
+	return localIngestor{
+		sensor:    fs.String("sensor-id", "", "identifier of this sensor, added to every event (required)"),
+		logDir:    fs.String("cowrie-log-dir", "", "Cowrie var/log/cowrie directory, holding cowrie.json, only read (required)"),
+		ttyDir:    fs.String("cowrie-tty-dir", "", "Cowrie var/lib/cowrie/tty directory, only read (required)"),
+		stateDir:  fs.String("state-dir", "data/ingestor", "writable directory for the read position and pending recordings"),
+		batchSize: fs.Int("batch-size", 500, "events per batch at most"),
+		flush:     fs.Duration("flush-interval", time.Second, "delay before storing an incomplete batch"),
+		poll:      fs.Duration("poll-interval", 500*time.Millisecond, "delay between checks for new lines"),
+		start:     fs.String("start", "beginning", "without saved position: beginning (read existing logs) or end"),
+	}
+}
+
+// runServer runs the API: alone (api), or, in the all-in-one mode, with
+// the web UI and an ingestor reading Cowrie's directories in the same
+// process, calling the ingestion service directly.
+func runServer(ctx context.Context, name string, args []string) error {
+	allInOne := name == "all-in-one"
+	fs := envflag.New(name)
 	var db dbFlags
 	db.register(fs)
 	listen := fs.String("listen", ":8080", "HTTP listen address")
 	ttyDir := fs.String("tty-dir", "data/tty", "directory storing raw TTY recordings")
 	maxTTY := fs.Int64("max-tty-size", ingest.DefaultMaxTTYSize, "largest TTY recording accepted, in bytes")
-	withUI := fs.Bool("ui", false, "also serve the web UI, for a single container")
+	withUI := new(true)
+	var local localIngestor
+	if allInOne {
+		local = localIngestorFlags(fs)
+	} else {
+		withUI = fs.Bool("ui", false, "also serve the web UI, for a single container")
+	}
 	var geo geoFlags
 	geo.register(fs)
 	retention := defaultRetention
@@ -53,6 +91,14 @@ func runAPI(ctx context.Context, args []string) error {
 		return err
 	}
 	geo.defaults()
+	if allInOne {
+		switch {
+		case *local.sensor == "", *local.logDir == "", *local.ttyDir == "":
+			return errors.New("--sensor-id, --cowrie-log-dir and --cowrie-tty-dir are required")
+		case *local.start != "beginning" && *local.start != "end":
+			return fmt.Errorf("--start: want beginning or end, got %q", *local.start)
+		}
+	}
 
 	log, err := newLogger(*logLevel)
 	if err != nil {
@@ -194,8 +240,38 @@ func runAPI(ctx context.Context, args []string) error {
 		WriteTimeout:      time.Minute,
 		IdleTimeout:       2 * time.Minute,
 	}
-	log.Info("starting api", "version", version.Get().String(), "db", db.driver, "ui", *withUI)
-	return serve(ctx, srv, log)
+	if !allInOne {
+		log.Info("starting api", "version", version.Get().String(), "db", db.driver, "ui", *withUI)
+		return serve(ctx, srv, log)
+	}
+
+	// The ingestor stops the server when it fails, and the other way round.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ingested := make(chan error, 1)
+	go func() {
+		defer cancel()
+		ingested <- ingestor.Run(ctx, ingestor.Config{
+			SensorID:      *local.sensor,
+			LogDir:        *local.logDir,
+			TTYDir:        *local.ttyDir,
+			StateDir:      *local.stateDir,
+			Sink:          ingestor.NewLocalSink(svc),
+			BatchSize:     *local.batchSize,
+			FlushInterval: *local.flush,
+			PollInterval:  *local.poll,
+			FromStart:     *local.start == "beginning",
+			Logger:        log,
+		})
+	}()
+	log.Info("starting all-in-one", "version", version.Get().String(), "db", db.driver, "sensor", *local.sensor,
+		"cowrie_log_dir", *local.logDir, "cowrie_tty_dir", *local.ttyDir)
+	err = serve(ctx, srv, log)
+	cancel()
+	if ierr := <-ingested; ierr != nil && !errors.Is(ierr, context.Canceled) {
+		return fmt.Errorf("ingestor: %w", ierr)
+	}
+	return err
 }
 
 // maskSecrets hides what the administration page must not show: the
