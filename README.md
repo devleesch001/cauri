@@ -54,7 +54,8 @@ of the events
 into tables, storage of recordings and the merge of a session's channels
 (each file placed as its channel's `cowrie.log.closed` tells, a
 duplicate moved to its own channel's start). The HTTP handlers only translate
-requests; a future all-in-one build will call the same service directly.
+requests; in the all-in-one mode, the ingestor calls the same service
+directly, in the API's process.
 
 **Delivery is at least once.** The ingestor saves its read position only
 after the API acknowledged a batch. While the API is unreachable it stops
@@ -488,6 +489,15 @@ Every option is a flag and an environment variable: `--db-dsn` is
 `cauri token` uses `CAURI_DB_DRIVER` and `CAURI_DB_DSN` too; `cauri
 download` the four `CAURI_GEOIP_*` variables.
 
+### `cauri all-in-one`
+
+The API's variables above (but `CAURI_UI`: the UI is always served), and
+the ingestor's that concern the honeypot: `CAURI_SENSOR_ID`,
+`CAURI_COWRIE_LOG_DIR`, `CAURI_COWRIE_TTY_DIR` (all three required),
+`CAURI_STATE_DIR`, `CAURI_START`, `CAURI_BATCH_SIZE`,
+`CAURI_FLUSH_INTERVAL` and `CAURI_POLL_INTERVAL`, with the same defaults.
+No API URL and no token: the ingestor runs in the process.
+
 ### `cauri ingestor`
 
 | Variable               | Default                                   | Meaning                                                                                                   |
@@ -617,6 +627,7 @@ domain:
 - mode 1: `/api` and everything below it to the `api` container, every
   other path to the `ui` container;
 - mode 2: the whole domain to the `api` container (`api --ui`);
+- mode 3: the whole domain to the `cauri` container (`all-in-one`);
 - ingestors on other hosts must reach `/api/ingest`;
 - TTY uploads can weigh several megabytes (up to `CAURI_MAX_TTY_SIZE`):
   raise the body size limit of proxies that have a small one, such as
@@ -670,6 +681,21 @@ docker compose -f compose.api-ui.yml up -d ingestor
 The token file is mounted as a Compose secret. Outside of Swarm, Compose
 mounts it with the permissions of the host file: make it readable by uid
 65532 (for example `chmod 0444`, in a directory only you can list).
+
+### Mode 3: all-in-one
+
+```sh
+cd deploy
+docker compose -f compose.all-in-one.yml up -d
+```
+
+One container, `cauri all-in-one`: the API and the UI, reading Cowrie's
+directories itself, mounted read-only (`COWRIE_VAR_DIR`). It follows
+`cowrie.json` and its rotations as the ingestor does, its position in
+`/data/ingestor`, and copies the recordings to its own volume: nothing in
+Cowrie's directories is moved or changed. No token is needed. It suits a
+single honeypot on the same host; for several sensors, or a sensor on
+another host, use mode 1 or 2.
 
 ### Remote sensors
 
@@ -816,9 +842,6 @@ jobs use the `Dockerfile`, which also builds the UI.
 ## Next steps the code is ready for
 
 - **UI authentication**: a `ReadAuth` middleware.
-- **All-in-one binary** (build tag `allinone`): the ingestor writes to a
-  `Sink` interface; an in-process implementation calling
-  `ingest.Service` replaces HTTPS.
 - Message broker: not designed in yet, nothing prevents it.
 
 ## License

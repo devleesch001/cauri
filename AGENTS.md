@@ -24,8 +24,11 @@ harder.
 Do not break these without the user's explicit agreement.
 
 **One binary, one image.** Roles are subcommands of `cmd/cauri`: `api`,
-`api --ui`, `ui`, `ingestor`, `token`, `purge`, `db-copy`, `download`, `version`. A future all-in-one
-binary is a build tag (`allinone`), not a fork.
+`api --ui`, `ui`, `ingestor`, `all-in-one`, `token`, `purge`, `db-copy`,
+`download`, `version`. `all-in-one` is the API with the UI running the
+ingestor in its process (`ingestor.NewLocalSink`, calling
+`ingest.Service`): a mode of the same binary, not a build tag (the user's
+choice, replacing the `allinone` tag first planned).
 
 **The ingestor only decides which recordings to send.** It sends each
 `cowrie.json` line unparsed, plus the sensor id and an event id
@@ -40,9 +43,10 @@ Cowrie events, the merge included, happens in the API.
 
 **One ingestion service.** Validation, deduplication, projection into
 tables and recording storage live in `internal/ingest.Service`. HTTP
-handlers only translate requests and map errors; the future all-in-one
+handlers only translate requests and map errors; the all-in-one
 mode calls the service directly. The ingestor writes to the `Sink`
-interface (`internal/ingestor/sink.go`); HTTPS is its only implementation.
+interface (`internal/ingestor/sink.go`): HTTPS (`NewHTTPSink`) or the
+service in-process (`NewLocalSink`), both treating errors alike.
 
 **Public protocol in `pkg/`.** `pkg/protocol` (routes, payloads, ids,
 digests) and `pkg/client` are the contract third-party tools may use.
@@ -204,7 +208,7 @@ mandatory.
 | `internal/ingestor/` | Ingestor loop, TTY queue (a session's channels, sent at its end), `Sink`; `tail/` follows the log files |
 | `internal/webui/` | Serves the UI embedded from `internal/webui/dist` |
 | `ui/` | Vue app; builds into `../internal/webui/dist`; `ui/go.mod` keeps `node_modules` out of the Go module |
-| `deploy/` | Compose examples (mode 1: api/ui/ingestor; mode 2: api --ui/ingestor), `.env.example` |
+| `deploy/` | Compose examples (mode 1: api/ui/ingestor; mode 2: api --ui/ingestor; mode 3: all-in-one), `.env.example` |
 | `.github/workflows/ci.yml`, `.forgejo/workflows/ci.yml` | CI: tests, lint, UI build, image (ghcr.io / Forgejo registry), release on `v*` tags |
 | `.goreleaser.yaml`, `Dockerfile.goreleaser` | Releases on GitHub or Forgejo (one config: the token chooses the forge), binaries, deb/rpm/Arch packages, multi-arch image |
 

@@ -1,0 +1,54 @@
+# Mode 3: one container, "all-in-one": the API and the UI, reading Cowrie's
+# directories itself, mounted read-only. No ingestor, no token. Traefik
+# sends the whole domain to it.
+#
+#   docker compose -f compose.all-in-one.yml --env-file .env up -d
+#
+# See ../README.md for protecting the UI, which has no authentication of
+# its own yet.
+
+name: cauri
+
+services:
+  cauri:
+    image: ${CAURI_IMAGE:?set CAURI_IMAGE}
+    command: ["all-in-one"]
+    restart: unless-stopped
+    environment:
+      CAURI_DB_DRIVER: ${CAURI_DB_DRIVER:-sqlite}
+      CAURI_DB_DSN: ${CAURI_DB_DSN:-/data/cauri.db}
+      # Optional GeoIP database, in the cauri-data volume (README: GeoIP).
+      # Unset: the default file; set empty: off.
+      CAURI_GEOIP_DB: ${CAURI_GEOIP_DB-/data/geoip.mmdb}
+      CAURI_GEOIP_ASN_DB: ${CAURI_GEOIP_ASN_DB-/data/asn.mmdb}
+      CAURI_GEOIP_DB_URL: ${CAURI_GEOIP_DB_URL:-}
+      CAURI_GEOIP_ASN_DB_URL: ${CAURI_GEOIP_ASN_DB_URL:-}
+      # Administration page password; empty: generated, see the log.
+      CAURI_ADMIN_PASSWORD: ${CAURI_ADMIN_PASSWORD:-}
+      CAURI_TRUSTED_PROXIES: ${CAURI_TRUSTED_PROXIES:-}
+      # The honeypot read: its events carry this sensor name.
+      CAURI_SENSOR_ID: ${CAURI_SENSOR_ID:?set CAURI_SENSOR_ID}
+      CAURI_COWRIE_LOG_DIR: /cowrie/var/log/cowrie
+      CAURI_COWRIE_TTY_DIR: /cowrie/var/lib/cowrie/tty
+    volumes:
+      # Database, recordings and read position (/data/ingestor).
+      - cauri-data:/data
+      - ${COWRIE_VAR_DIR:?set COWRIE_VAR_DIR}:/cowrie/var:ro
+    networks: [default, traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}
+      # UI and read API: put your protection here.
+      traefik.http.routers.cauri.rule: Host(`${CAURI_DOMAIN:?set CAURI_DOMAIN}`)
+      traefik.http.routers.cauri.entrypoints: ${TRAEFIK_ENTRYPOINT:?set TRAEFIK_ENTRYPOINT}
+      traefik.http.routers.cauri.tls.certresolver: ${TRAEFIK_CERTRESOLVER:?set TRAEFIK_CERTRESOLVER}
+      traefik.http.routers.cauri.service: cauri
+      traefik.http.services.cauri.loadbalancer.server.port: "8080"
+
+volumes:
+  cauri-data:
+
+networks:
+  traefik:
+    name: ${TRAEFIK_NETWORK}
+    external: true
