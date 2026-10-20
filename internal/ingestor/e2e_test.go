@@ -214,3 +214,61 @@ func TestEndToEndExecChannels(t *testing.T) {
 		}
 	}
 }
+
+// The all-in-one mode: the ingestor calls the ingestion service in-process,
+// with no HTTP and no token; Cowrie's files are only read.
+func TestEndToEndLocal(t *testing.T) {
+	ctx := context.Background()
+	db := storetest.SQLite(t)
+	tty, _ := ttystore.New(t.TempDir())
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	root := t.TempDir()
+	logDir, ttyDir, stateDir := filepath.Join(root, "log"), filepath.Join(root, "tty"), filepath.Join(root, "state")
+	_ = os.MkdirAll(logDir, 0o755)
+	_ = os.MkdirAll(ttyDir, 0o755)
+	sample := "../ingest/testdata/cowrie-v3.1.2-exec"
+	files, _ := filepath.Glob(sample + "-tty/*")
+	for _, p := range files {
+		data, _ := os.ReadFile(p)
+		_ = os.WriteFile(filepath.Join(ttyDir, filepath.Base(p)), data, 0o644)
+	}
+	data, err := os.ReadFile(sample + ".json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(logDir, ingestor.LogName), data, 0o644)
+
+	rctx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- ingestor.Run(rctx, ingestor.Config{
+			SensorID: "hp-01", LogDir: logDir, TTYDir: ttyDir, StateDir: stateDir,
+			Sink: ingestor.NewLocalSink(ingest.New(db, tty, 0)), FlushInterval: 10 * time.Millisecond,
+			PollInterval: 5 * time.Millisecond, FromStart: true,
+			MinBackoff: 5 * time.Millisecond, Logger: quiet,
+		})
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		rows, _, err := store.ListSessions(ctx, db, store.SessionFilter{})
+		if err == nil && len(rows) == 2 && rows[0].TTYAvailable && rows[1].TTYAvailable && rows[0].Commands+rows[1].Commands == 5 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sessions not ingested: %+v, %v", rows, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	// Cowrie's recordings are where they were, untouched.
+	for _, p := range files {
+		want, _ := os.ReadFile(p)
+		if got, err := os.ReadFile(filepath.Join(ttyDir, filepath.Base(p))); err != nil || string(got) != string(want) {
+			t.Errorf("%s changed: %v", filepath.Base(p), err)
+		}
+	}
+}

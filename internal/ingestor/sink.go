@@ -15,9 +15,9 @@ import (
 // is sent again (conflict, digest mismatch...). Other errors are retried.
 var ErrPermanent = errors.New("permanent error")
 
-// Sink receives what the ingestor reads. HTTPS (NewHTTPSink) is the only
-// implementation today; an all-in-one build can call the ingestion service
-// in-process instead.
+// Sink receives what the ingestor reads: the API over HTTPS
+// (NewHTTPSink), or the ingestion service in-process in the all-in-one
+// mode (NewLocalSink).
 type Sink interface {
 	SendEvents(ctx context.Context, b protocol.EventBatch) (protocol.EventBatchResult, error)
 	SendTTY(ctx context.Context, m protocol.TTYMeta, body io.Reader) (protocol.TTYResult, error)
