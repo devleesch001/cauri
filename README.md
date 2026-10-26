@@ -364,6 +364,20 @@ with their HASSH, host key algorithms, addresses, sessions, logins and
 times, filtered by HASSH, verdict, period and logins. Both sort by
 sessions, logins or last seen, key exchanges also by addresses.
 
+**Smart grouping.** An attacker often uses dozens of addresses of one
+block, rented from one network, with one tool: listed by address, it
+looks like as many small attackers. The **Smart grouping** switch of the
+list by address groups the addresses of one block (a **/26** by default,
+from /16 to /32; a **/64** for IPv6) that also share, each switchable,
+the **network** (ASN), the **SSH client** (`SSH-2.0-Go`…) and the **key
+exchange**: a /24 alone would mix tenants of a block that have nothing in
+common. A group sums its addresses (sessions, logins, first and last
+seen) and unfolds to list them, the busiest first; a single address stays
+a row of its own. It is computed on read: on 200,000 sessions from 25,000
+addresses, 1.5 s against 0.9 s for the list alone. The settings are in
+the URL (`group=true`, `group_cidr4`, `group_cidr6`, `group_asn`,
+`group_client`, `group_kex`), also those of `GET /api/attackers/ip`.
+
 A profile (`/attackers/ip/{ip}`, `/attackers/kex/{id}`) gathers
 everything from one identity: who it is (where an address comes from;
 the algorithm lists of a key exchange), the identities it is linked to

@@ -350,6 +350,31 @@ export interface Attacker {
   no_interaction: number
 }
 
+/**
+ * Addresses grouped by the smart grouping (GET /api/attackers/ip?group=true):
+ * one block, sharing the chosen network, SSH client and key exchange. A
+ * single address is a group of its own, its block the address.
+ */
+export interface AttackerGroup {
+  block: string
+  ips: number
+  sessions: number
+  logged_in: number
+  logins: number
+  first_seen: string
+  last_seen: string
+  country: string | null
+  asn: number | null
+  as_org: string | null
+  client: string | null
+  hassh: string | null
+  humans: number
+  bots: number
+  uncertain: number
+  no_interaction: number
+  members: Attacker[] // the busiest first, at most 200
+}
+
 /** One attacker, with what tells it apart (GET /api/attackers/ip/{ip}). */
 export interface AttackerDetail extends Attacker {
   sensors: string[]

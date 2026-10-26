@@ -12,7 +12,7 @@ import Button from 'openvue/button'
 import Chip from 'openvue/chip'
 import Popover from 'openvue/popover'
 import { api } from '@/api/client'
-import type { Attacker, CountryCount, KexAttacker } from '@/api/types'
+import type { Attacker, AttackerGroup, CountryCount, KexAttacker } from '@/api/types'
 import CountryFlag from '@/components/CountryFlag.vue'
 import DayRange from '@/components/DayRange.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
@@ -85,6 +85,37 @@ const loggedIn = computed({
   get: () => q('logged_in') === 'true',
   set: (v: boolean) => void patchQuery({ logged_in: v ? 'true' : undefined }),
 })
+// Smart grouping of the addresses: on or off, and its criteria, each in
+// the URL only when it differs from the API's default.
+const grouping = computed({
+  get: () => q('group') === 'true',
+  set: (v: boolean) => void patchQuery({ group: v ? 'true' : undefined }),
+})
+const prefix4 = computed({
+  get: () => Number(q('group_cidr4') || 26),
+  set: (v: number) => void patchQuery({ group_cidr4: v === 26 ? undefined : String(v) }),
+})
+const prefix6 = computed({
+  get: () => Number(q('group_cidr6') || 64),
+  set: (v: number) => void patchQuery({ group_cidr6: v === 64 ? undefined : String(v) }),
+})
+const prefix4Options = Array.from({ length: 17 }, (_, i) => ({ label: `/${16 + i}`, value: 16 + i }))
+const prefix6Options = [32, 40, 48, 56, 64, 72, 80, 96, 112, 128].map((n) => ({ label: `/${n}`, value: n }))
+// A criterion on by default, switched off in the URL.
+function criterion(key: string) {
+  return computed({
+    get: () => q(key) !== 'false',
+    set: (v: boolean) => void patchQuery({ [key]: v ? undefined : 'false' }),
+  })
+}
+const sameASN = criterion('group_asn')
+const sameClient = criterion('group_client')
+const sameKex = criterion('group_kex')
+const groupParams = computed(() => ({
+  group_cidr4: q('group_cidr4'), group_cidr6: q('group_cidr6'),
+  group_asn: q('group_asn'), group_client: q('group_client'), group_kex: q('group_kex'),
+}))
+const grouped = computed(() => props.kind === 'ip' && grouping.value)
 const from = computed({ get: () => q('from'), set: (v: string) => void patchQuery({ from: v }) })
 const to = computed({ get: () => q('to'), set: (v: string) => void patchQuery({ to: v }) })
 const { rows, page, params: pageParams, onPage } = useTablePage(50)
@@ -92,6 +123,8 @@ const filtered = computed(() => Object.keys(route.query).some((k) => !notFilters
 const { params: sortParams, kept, field: sortField, direction, onSort } = useTableSort('sessions')
 
 const items = ref<Attacker[]>([])
+const groupItems = ref<AttackerGroup[]>([])
+const expanded = ref<Record<string, boolean>>({})
 const kexItems = ref<KexAttacker[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -110,6 +143,14 @@ watch(
         const res = await api.kexAttackers({ ...common, hassh: q('hassh') })
         kexItems.value = res.items
         total.value = res.total
+      } else if (grouped.value) {
+        const res = await api.attackerGroups({
+          ...common, country: q('country'), asn: q('asn'), ip: q('ip'), ...groupParams.value,
+        })
+        groupItems.value = res.items
+        expanded.value = {}
+        total.value = res.total
+        void measureNetworks()
       } else {
         const res = await api.attackers({ ...common, country: q('country'), asn: q('asn'), ip: q('ip') })
         items.value = res.items
@@ -141,19 +182,39 @@ async function measureNetworks() {
   cutNetworks.value = cut
 }
 
-function open(e: DataTableRowClickEvent<Attacker | KexAttacker>) {
+// The filters an attacker's profile keeps.
+const profileQuery = computed(() => {
   const query: Record<string, string> = {}
   for (const k of ['sensor', 'from', 'to', 'verdict']) {
     if (q(k)) query[k] = q(k)
   }
-  if ('ip' in e.data) {
+  return query
+})
+function open(e: DataTableRowClickEvent<Attacker | KexAttacker | AttackerGroup>) {
+  const query = profileQuery.value
+  if ('block' in e.data) {
+    // The chevron toggles the row itself: counted twice, it would not open.
+    if ((e.originalEvent.target as Element | null)?.closest('.p-datatable-row-toggle-button')) return
+    // A group shows its addresses; a single address opens its profile.
+    const g = e.data
+    const only = g.ips === 1 ? g.members[0] : undefined
+    if (only) {
+      void router.push({ name: 'attacker', params: { ip: only.ip }, query })
+    } else {
+      expanded.value = { ...expanded.value, [g.block]: !expanded.value[g.block] }
+    }
+  } else if ('ip' in e.data) {
     void router.push({ name: 'attacker', params: { ip: e.data.ip }, query })
   } else {
     void router.push({ name: 'kex-attacker', params: { id: String(e.data.id) }, query })
   }
 }
 // The verdict most of its sessions got.
-function mostly(a: Attacker | KexAttacker) {
+// A single address has nothing to unfold.
+function rowClass(row: Attacker | KexAttacker | AttackerGroup) {
+  return 'block' in row && row.ips === 1 ? 'single' : undefined
+}
+function mostly(a: Attacker | KexAttacker | AttackerGroup) {
   const counts: [string, number][] = [
     ['human', a.humans], ['bot', a.bots], ['uncertain', a.uncertain], ['no_interaction', a.no_interaction],
   ]
@@ -187,7 +248,7 @@ function clearFilters() {
   >
     <div class="page-head">
       <h1>{{ t('attackers.title') }}</h1>
-      <span class="muted">{{ t(kind === 'kex' ? 'attackers.countKex' : 'attackers.count', { n: total.toLocaleString() }, total) }}</span>
+      <span class="muted">{{ t(kind === 'kex' ? 'attackers.countKex' : grouped ? 'attackers.countGroups' : 'attackers.count', { n: total.toLocaleString() }, total) }}</span>
     </div>
     <SelectButton
       v-model="kind"
@@ -287,12 +348,59 @@ function clearFilters() {
           @click="clearFilters"
         />
       </div>
+      <div
+        v-if="kind === 'ip'"
+        class="filters grouping"
+        role="group"
+        :aria-label="t('attackers.grouping.title')"
+      >
+        <label
+          v-tooltip.top="t('attackers.grouping.hint')"
+          class="toggle"
+        >
+          <ToggleSwitch v-model="grouping" />
+          {{ t('attackers.grouping.title') }}
+        </label>
+        <template v-if="grouping">
+          <Select
+            v-model="prefix4"
+            v-tooltip.top="t('attackers.grouping.block4')"
+            class="data"
+            :options="prefix4Options"
+            option-label="label"
+            option-value="value"
+            :aria-label="t('attackers.grouping.block4')"
+          />
+          <Select
+            v-model="prefix6"
+            v-tooltip.top="t('attackers.grouping.block6')"
+            class="data"
+            :options="prefix6Options"
+            option-label="label"
+            option-value="value"
+            :aria-label="t('attackers.grouping.block6')"
+          />
+          <label class="toggle">
+            <ToggleSwitch v-model="sameASN" />
+            {{ t('attackers.grouping.asn') }}
+          </label>
+          <label class="toggle">
+            <ToggleSwitch v-model="sameClient" />
+            {{ t('attackers.grouping.client') }}
+          </label>
+          <label class="toggle">
+            <ToggleSwitch v-model="sameKex" />
+            {{ t('attackers.grouping.kex') }}
+          </label>
+        </template>
+      </div>
     </div>
 
     <ErrorNotice :error="error" />
 
     <DataTable
-      :value="kind === 'kex' ? kexItems : items"
+      v-model:expanded-rows="expanded"
+      :value="kind === 'kex' ? kexItems : grouped ? groupItems : items"
       :loading="loading"
       lazy
       paginator
@@ -302,7 +410,8 @@ function clearFilters() {
       :total-records="total"
       :sort-field="sortField"
       :sort-order="direction"
-      :data-key="kind === 'kex' ? 'id' : 'ip'"
+      :data-key="kind === 'kex' ? 'id' : grouped ? 'block' : 'ip'"
+      :row-class="rowClass"
       size="small"
       striped-rows
       scrollable
@@ -351,6 +460,71 @@ function clearFilters() {
         >
           <template #body="{ data }">
             {{ data.sources.toLocaleString() }}
+          </template>
+        </Column>
+      </template>
+      <template v-else-if="grouped">
+        <!-- The table's own chevrons, from @openvue/icons. -->
+        <Column
+          expander
+          :header-style="{ width: '3rem' }"
+        />
+        <Column
+          :header="t('attackers.columns.address')"
+          body-class="nowrap"
+        >
+          <template #body="{ data }">
+            <RouterLink
+              v-if="data.ips === 1"
+              :to="{ name: 'attacker', params: { ip: data.members[0].ip }, query: profileQuery }"
+              class="data"
+              @click.stop
+            >
+              {{ data.block }}
+            </RouterLink>
+            <span v-else>
+              <span class="data">{{ data.block }}</span>
+              <span class="muted ips">{{ t('attackers.grouping.addresses', { n: data.ips.toLocaleString() }, data.ips) }}</span>
+            </span>
+          </template>
+        </Column>
+        <Column :header="t('sessions.columns.country')">
+          <template #body="{ data }">
+            <CountryFlag
+              v-if="data.country"
+              :code="data.country"
+            />
+            <span
+              v-else
+              class="muted"
+            >—</span>
+          </template>
+        </Column>
+        <Column :header="t('attackers.columns.network')">
+          <template #body="{ data }">
+            <span
+              v-if="data.asn"
+              v-tooltip.top="cutNetworks.has(data.block) ? `AS${data.asn} ${data.as_org ?? ''}` : null"
+              class="network"
+              :data-ip="data.block"
+            >AS{{ data.asn }} <span class="muted">{{ data.as_org }}</span></span>
+            <span
+              v-else
+              class="muted"
+            >—</span>
+          </template>
+        </Column>
+        <Column :header="t('attackers.columns.client')">
+          <template #body="{ data }">
+            <span
+              v-if="data.client"
+              v-tooltip.top="data.hassh ? `HASSH ${data.hassh}` : null"
+              class="data client"
+            >{{ data.client }}</span>
+            <span
+              v-else
+              class="muted"
+            >—</span>
           </template>
         </Column>
       </template>
@@ -459,6 +633,34 @@ function clearFilters() {
           >—</span>
         </template>
       </Column>
+      <template
+        v-if="grouped"
+        #expansion="{ data }"
+      >
+        <ul
+          class="members"
+          :aria-label="t('attackers.grouping.members', { block: data.block })"
+        >
+          <li
+            v-for="m in data.members"
+            :key="m.ip"
+          >
+            <RouterLink
+              :to="{ name: 'attacker', params: { ip: m.ip }, query: profileQuery }"
+              class="data"
+            >
+              {{ m.ip }}
+            </RouterLink>
+            <span class="muted">{{ t('attackers.columns.sessions') }} {{ m.sessions.toLocaleString() }}</span>
+          </li>
+          <li
+            v-if="data.ips > data.members.length"
+            class="muted"
+          >
+            {{ t('attackers.grouping.more', { n: (data.ips - data.members.length).toLocaleString() }) }}
+          </li>
+        </ul>
+      </template>
     </DataTable>
     <Popover
       ref="listsOverlay"
@@ -490,6 +692,40 @@ function clearFilters() {
 
 .kinds {
   margin-bottom: var(--space-3);
+}
+
+.ips {
+  margin-left: var(--space-2);
+}
+
+:deep(.single .p-datatable-row-toggle-button) {
+  visibility: hidden;
+}
+
+/* SSH clients are short, but some tools announce long banners. */
+.client {
+  display: inline-block;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* A group's addresses, in columns as wide as an IPv4 address and its count. */
+.members {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+}
+
+.members li {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
 }
 
 /* Host key algorithms are long: cut, whole on hover. */
