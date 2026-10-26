@@ -5,6 +5,7 @@
 export default {
   nav: {
     sections: 'Sections',
+    menu: 'Menu',
     repository: 'Source code on GitHub',
     overview: 'Overview',
     statistics: 'Statistics',
