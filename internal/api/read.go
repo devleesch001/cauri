@@ -312,12 +312,56 @@ func (s *server) listAttackers(w http.ResponseWriter, r *http.Request) {
 		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
 		return
 	}
+	if g := q.grouping(); q.err != nil {
+		render.Render(w, r, errorOf(http.StatusBadRequest, q.err.Error()))
+		return
+	} else if g != nil {
+		rows, total, err := store.GroupAttackers(r.Context(), s.DB, f, *g)
+		if err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+		render.JSON(w, r, newList(rows, total, f.Page))
+		return
+	}
 	rows, total, err := store.ListAttackers(r.Context(), s.DB, f)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	render.JSON(w, r, newList(rows, total, f.Page))
+}
+
+// grouping reads the smart grouping of the attackers by address: group,
+// then group_cidr4, group_cidr6, group_asn, group_client and group_kex,
+// each defaulting to store.DefaultGrouping. Nil without group=true.
+func (q *query) grouping() *store.Grouping {
+	if on := q.bool("group"); on == nil || !*on {
+		return nil
+	}
+	g := store.DefaultGrouping
+	prefix := func(name string, lowest, highest int, v *int) {
+		if q.v.Get(name) == "" {
+			return
+		}
+		n := q.int(name)
+		if n < lowest || n > highest {
+			q.fail(name, fmt.Sprintf("a prefix length from %d to %d", lowest, highest))
+			return
+		}
+		*v = n
+	}
+	prefix("group_cidr4", store.MinPrefix4, 32, &g.Prefix4)
+	prefix("group_cidr6", store.MinPrefix6, 128, &g.Prefix6)
+	for _, c := range []struct {
+		name string
+		v    *bool
+	}{{"group_asn", &g.ASN}, {"group_client", &g.Client}, {"group_kex", &g.Kex}} {
+		if b := q.bool(c.name); b != nil {
+			*c.v = *b
+		}
+	}
+	return &g
 }
 
 // getAttacker describes the attacker of an address, from its sessions the

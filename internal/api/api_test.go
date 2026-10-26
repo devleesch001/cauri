@@ -1123,3 +1123,50 @@ func TestKexAttackers(t *testing.T) {
 		get(t, e, "/api/sessions?kex=abc", http.StatusBadRequest, nil)
 	})
 }
+
+// The smart grouping of attackers by address, and its parameters.
+func TestAttackersGrouping(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, nil)
+		ctx := context.Background()
+		b := protocol.EventBatch{SensorID: "hp-01"}
+		for i, ip := range []string{"203.0.113.9", "203.0.113.10", "203.0.113.200", "2001:db8::1", "2001:db8::2"} {
+			l := fmt.Sprintf(`{"eventid":"cowrie.session.connect","session":"s%d","src_ip":%q,"timestamp":"2026-10-14T10:00:0%dZ"}`, i, ip, i)
+			b.Events = append(b.Events, protocol.Event{ID: protocol.EventID("hp-01", []byte(l)), Raw: []byte(l)})
+		}
+		if _, err := e.client.SendEvents(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+		var list struct {
+			Items []store.AttackerGroup `json:"items"`
+			Total int                   `json:"total"`
+		}
+		blocks := func() []string {
+			var out []string
+			for _, g := range list.Items {
+				out = append(out, fmt.Sprintf("%s:%d", g.Block, g.IPs))
+			}
+			slices.Sort(out)
+			return out
+		}
+		get(t, e, "/api/attackers/ip?group=true", http.StatusOK, &list)
+		if got := blocks(); !slices.Equal(got, []string{"2001:db8::/64:2", "203.0.113.0/26:2", "203.0.113.200:1"}) || list.Total != 3 {
+			t.Errorf("default grouping = %v, total %d", got, list.Total)
+		}
+		get(t, e, "/api/attackers/ip?group=true&group_cidr4=24&group_cidr6=128", http.StatusOK, &list)
+		if got := blocks(); !slices.Equal(got, []string{"2001:db8::1:1", "2001:db8::2:1", "203.0.113.0/24:3"}) {
+			t.Errorf("/24 and /128 = %v", got)
+		}
+		for _, bad := range []string{"group=true&group_cidr4=8", "group=true&group_cidr4=33", "group=true&group_cidr6=16", "group=true&group_asn=maybe", "group=yes"} {
+			get(t, e, "/api/attackers/ip?"+bad, http.StatusBadRequest, nil)
+		}
+		// Without group, the list of addresses as before.
+		var plain struct {
+			Items []store.Attacker `json:"items"`
+		}
+		get(t, e, "/api/attackers/ip?group=false", http.StatusOK, &plain)
+		if len(plain.Items) != 5 {
+			t.Errorf("not grouped = %+v", plain)
+		}
+	})
+}

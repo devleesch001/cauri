@@ -66,6 +66,15 @@ func selectAttackers(db bun.IDB, f StatsFilter) *bun.SelectQuery {
 // ListAttackers returns a page of attackers and how many f selects.
 func ListAttackers(ctx context.Context, db bun.IDB, f AttackerFilter) ([]Attacker, int, error) {
 	rows := []Attacker{}
+	total, err := f.Page.apply(attackerSort.order(f.query(db), f.Sort)).ScanAndCount(ctx, &rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, int(total), countLogins(ctx, db, f.StatsFilter, rows)
+}
+
+// query selects the attackers of the filter, without order or page.
+func (f AttackerFilter) query(db bun.IDB) *bun.SelectQuery {
 	q := selectAttackers(db, f.StatsFilter)
 	if f.Country != "" {
 		q = q.Where("s.geo_country = ?", f.Country)
@@ -80,11 +89,7 @@ func ListAttackers(ctx context.Context, db bun.IDB, f AttackerFilter) ([]Attacke
 			q = q.Having("SUM(CASE WHEN s.login_success THEN 1 ELSE 0 END) = 0")
 		}
 	}
-	total, err := f.Page.apply(attackerSort.order(q, f.Sort)).ScanAndCount(ctx, &rows)
-	if err != nil {
-		return nil, 0, err
-	}
-	return rows, int(total), countLogins(ctx, db, f.StatsFilter, rows)
+	return q
 }
 
 // countLogins sets the login attempts of attackers, in the sessions f
