@@ -53,14 +53,32 @@ func summarize1(ctx context.Context, db bun.IDB, f StatsFilter) (*Summary, error
 	if err := f.apply(q).Scan(ctx, sum); err != nil {
 		return nil, err
 	}
-	q = db.NewSelect().Model((*LoginAttempt)(nil)).
+	q = f.attempts(db).
 		ColumnExpr("COUNT(*) AS logins").
-		ColumnExpr("SUM(CASE WHEN la.success THEN 1 ELSE 0 END) AS accepted").
-		Join("JOIN sessions AS s ON s.id = la.session_id")
-	if err := f.apply(q).Scan(ctx, sum); err != nil {
+		ColumnExpr("SUM(CASE WHEN la.success THEN 1 ELSE 0 END) AS accepted")
+	if err := q.Scan(ctx, sum); err != nil {
 		return nil, err
 	}
 	return sum, nil
+}
+
+// attempts selects the login attempts of the sessions f selects. A filter
+// on the period alone needs no session: an attempt's own time stands for
+// its session's start, which it follows by the length of the session at
+// most, and the join would cost a lookup per session, most of the time of
+// the credential statistics.
+func (f StatsFilter) attempts(db bun.IDB) *bun.SelectQuery {
+	q := db.NewSelect().Model((*LoginAttempt)(nil))
+	if f.Sensor == "" && f.Verdict == "" && f.SrcIP == "" && f.Kex == 0 && f.Login == "" {
+		if f.From != nil {
+			q = q.Where("la.ts >= ?", Micro(*f.From))
+		}
+		if f.To != nil {
+			q = q.Where("la.ts < ?", Micro(*f.To))
+		}
+		return q
+	}
+	return f.apply(q.Join("JOIN sessions AS s ON s.id = la.session_id"))
 }
 
 // HourCount is the number of sessions started in an hour of a weekday.
@@ -153,10 +171,7 @@ const (
 
 // GetCredentials returns what was tried to log in.
 func GetCredentials(ctx context.Context, db bun.IDB, f StatsFilter) (*Credentials, error) {
-	attempts := func() *bun.SelectQuery {
-		q := db.NewSelect().Model((*LoginAttempt)(nil)).Join("JOIN sessions AS s ON s.id = la.session_id")
-		return f.apply(q)
-	}
+	attempts := func() *bun.SelectQuery { return f.attempts(db) }
 	c := &Credentials{}
 	err := attempts().
 		ColumnExpr("COUNT(*) AS attempts").

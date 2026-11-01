@@ -392,6 +392,9 @@ indexes too.
 | `ix_login_attempts_session_id` | Logins of a session; credentials in the list |
 | `ix_login_attempts_ts` | Failed logins list, latest first |
 | `ix_login_attempts_username_session_id` | Username filter, without the quadratic plan |
+| `ix_login_attempts_password` | Credential statistics: top passwords, password lengths |
+| `ix_login_attempts_username_password_success` | Credential statistics: top pairs, read whole from the index |
+| `ix_login_attempts_success_username_password` | Credential statistics: the accepted pairs |
 | `ix_commands_session_id` | Commands of a session |
 | `ix_transfers_session_id` | Transfers of a session |
 | `ix_transfers_sha256` | Payloads by digest, sessions that transferred a file (migration 00003) |
