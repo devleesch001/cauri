@@ -94,7 +94,7 @@ func New(c Config) http.Handler {
 	s := &server{Config: c}
 	cached := func(next http.Handler) http.Handler { return next }
 	if c.StatsCacheTTL > 0 {
-		s.cache = newStatsCache(c.StatsCacheTTL, c.Logger)
+		s.cache = newStatsCache(c.StatsCacheTTL)
 		cached = s.cache.middleware
 	}
 

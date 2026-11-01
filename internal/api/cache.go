@@ -3,8 +3,8 @@ package api
 import (
 	"bytes"
 	"context"
-	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -26,7 +26,6 @@ type statsCache struct {
 	ttl, idle time.Duration
 	maxBytes  int
 	root      http.Handler // the whole API, which background computations go through
-	log       *slog.Logger
 	now       func() time.Time
 
 	mu      sync.Mutex
@@ -54,10 +53,10 @@ const (
 	refreshTimeout = 5 * time.Minute
 )
 
-func newStatsCache(ttl time.Duration, log *slog.Logger) *statsCache {
+func newStatsCache(ttl time.Duration) *statsCache {
 	return &statsCache{
 		ttl: ttl, idle: defaultStatsCacheIdle, maxBytes: defaultStatsCacheBytes,
-		log: log, now: time.Now, entries: map[string]*cacheEntry{},
+		now: time.Now, entries: map[string]*cacheEntry{},
 	}
 }
 
@@ -114,7 +113,9 @@ func (c *statsCache) middleware(next http.Handler) http.Handler {
 			if !e.refreshing {
 				e.refreshing = true
 				// Taken now: the request is done with once answered.
-				go c.refresh(key, r.URL.String(), r.Header.Clone(), r.RemoteAddr)
+				u := *r.URL
+				go c.refresh(key, &u, r.Header.Clone(), r.RemoteAddr) //nolint:gosec // G118: the refresh outlives the request, whose context chi's would reuse
+
 			}
 		}
 		header, body := e.header, e.body
@@ -139,22 +140,21 @@ func (c *statsCache) compute(key string, next http.Handler, r *http.Request) {
 
 // refresh computes an answer again, through the whole API as a new request
 // would: the one that found it stale is answered and gone.
-func (c *statsCache) refresh(key, url string, header http.Header, remoteAddr string) {
+// It is served in the process, never sent: built as the server builds a
+// request it received.
+func (c *statsCache) refresh(key string, u *url.URL, header http.Header, remoteAddr string) {
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), cacheRefresh{}, true), refreshTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err == nil {
-		req.Header = header
-		req.RemoteAddr = remoteAddr
-		c.root.ServeHTTP(discard{}, req)
-	}
+	req := (&http.Request{
+		Method: http.MethodGet, URL: u, RequestURI: u.RequestURI(), Host: u.Host,
+		Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
+		Header: header, Body: http.NoBody, RemoteAddr: remoteAddr,
+	}).WithContext(ctx)
+	c.root.ServeHTTP(discard{}, req)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e := c.entries[key]; e != nil {
 		e.refreshing = false
-	}
-	if err != nil {
-		c.log.Warn("statistics cache: cannot refresh", "key", key, "err", err)
 	}
 }
 

@@ -2,8 +2,6 @@ package api
 
 import (
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -47,7 +45,7 @@ func (c *clock) add(d time.Duration) {
 
 func newTestCache(h http.Handler) (*statsCache, http.Handler, *clock) {
 	clk := &clock{t: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
-	c := newStatsCache(time.Minute, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c := newStatsCache(time.Minute)
 	c.now = clk.now
 	handler := c.middleware(h)
 	c.root = handler
