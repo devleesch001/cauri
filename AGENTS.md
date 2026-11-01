@@ -241,6 +241,14 @@ race tests (SQLite; also PostgreSQL if the change touches SQL),
 changes lint, typecheck and build. For visible UI changes, look at the
 result in a browser.
 
+`golangci-lint run ./...` is never skipped (the user's rule, after a
+release whose lint failed in the CI): if it is not installed, install the
+version the CI runs (`golangci-lint-action` takes the latest; its log
+names it), `go install
+github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v<version>`, and
+run it before every commit of Go code, also with `GOOS=linux` on another
+system. A check that could not run is said so, never left out.
+
 ## Conventions
 
 **Go.** Version 1.27.2 everywhere: the `go` directive of `go.mod` (read by
