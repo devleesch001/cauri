@@ -123,9 +123,15 @@ func (s *server) purgeSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.startTask(w, r, taskPurgeSessions, r.URL.Query(), true, func(ctx context.Context, progress func(jobs.Progress)) (any, error) {
-		return p.SessionsProgress(ctx, f, true, func(c store.PurgeCounts) {
+		res, err := p.SessionsProgress(ctx, f, true, func(c store.PurgeCounts) {
 			progress(jobs.Progress{Done: c.Sessions, Total: total.Sessions})
 		})
+		// The statistics kept would still count the sessions deleted,
+		// even a purge stopped halfway.
+		if s.cache != nil {
+			s.cache.clear()
+		}
+		return res, err
 	})
 }
 

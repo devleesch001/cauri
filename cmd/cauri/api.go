@@ -86,6 +86,7 @@ func runServer(ctx context.Context, name string, args []string) error {
 	adminPassword := fs.String("admin-password", "", "password of the administration pages; a random one is generated and logged at each start if neither it nor --admin-password-file is set")
 	adminPasswordFile := fs.String("admin-password-file", "", "file holding the password of the administration pages, such as a container secret")
 	trustedProxies := fs.String("trusted-proxies", "", "comma-separated addresses or CIDR ranges of reverse proxies whose X-Forwarded-For names the client, to limit password guesses per client; empty ignores the header")
+	statsCacheTTL := fs.Duration("stats-cache-ttl", time.Minute, "how long the statistics and the lists of attackers are served from the cache before being computed again, in the background; 0 turns the cache off")
 	logLevel := fs.String("log-level", "info", "log level: debug, info, warn or error")
 	if err := envflag.Parse(fs, args); err != nil {
 		return err
@@ -140,7 +141,8 @@ func runServer(ctx context.Context, name string, args []string) error {
 		Options:        maskSecrets(envflag.Describe(fs)),
 		// One image runs every role: its environment holds the
 		// ingestor's variables too (CAURI_STATE_DIR).
-		UnknownEnv: envflag.Unknown(fs, ingestorFlagSet()),
+		UnknownEnv:    envflag.Unknown(fs, ingestorFlagSet()),
+		StatsCacheTTL: max(*statsCacheTTL, 0),
 	}
 	if geo.db != "" {
 		loc, err := geoip.Open(geo.db, log)

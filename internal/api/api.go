@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -73,6 +74,10 @@ type Config struct {
 	UnknownEnv []string
 	// Downloads are the databases the administration downloads on request.
 	Downloads []Download
+	// StatsCacheTTL is how long an answer of the statistics and the lists
+	// of attackers stays fresh in the cache (see statsCache); zero turns
+	// the cache off.
+	StatsCacheTTL time.Duration
 }
 
 // New returns the HTTP handler of the API.
@@ -87,6 +92,11 @@ func New(c Config) http.Handler {
 		c.Jobs = jobs.New(context.Background())
 	}
 	s := &server{Config: c}
+	cached := func(next http.Handler) http.Handler { return next }
+	if c.StatsCacheTTL > 0 {
+		s.cache = newStatsCache(c.StatsCacheTTL, c.Logger)
+		cached = s.cache.middleware
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, s.logRequests)
@@ -107,20 +117,22 @@ func New(c Config) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(c.ReadAuth)
 			r.Get("/sensors", s.listSensors)
-			r.Get("/countries", s.listCountries)
-			r.Get("/cities", s.listCities)
-			r.Get("/stats/summary", s.getSummary)
-			r.Get("/stats/activity", s.getActivity)
-			r.Get("/stats/credentials", s.getCredentials)
-			r.Get("/stats/payloads", s.getPayloads)
-			r.Get("/stats/origins", s.getOrigins)
-			r.Get("/stats/commands", s.getCommands)
+			// Aggregates over every session, slow on a large database:
+			// served from the cache, computed again in the background.
+			r.With(cached).Get("/countries", s.listCountries)
+			r.With(cached).Get("/cities", s.listCities)
+			r.With(cached).Get("/stats/summary", s.getSummary)
+			r.With(cached).Get("/stats/activity", s.getActivity)
+			r.With(cached).Get("/stats/credentials", s.getCredentials)
+			r.With(cached).Get("/stats/payloads", s.getPayloads)
+			r.With(cached).Get("/stats/origins", s.getOrigins)
+			r.With(cached).Get("/stats/commands", s.getCommands)
 			r.Get("/about", s.getAbout)
 			// An attacker by one of its identities: its address or its
 			// key exchange.
-			r.Get("/attackers/ip", s.listAttackers)
+			r.With(cached).Get("/attackers/ip", s.listAttackers)
 			r.Get("/attackers/ip/{ip}", s.getAttacker)
-			r.Get("/attackers/kex", s.listKex)
+			r.With(cached).Get("/attackers/kex", s.listKex)
 			r.Get("/attackers/kex/{id}", s.getKex)
 			r.Get("/sessions", s.listSessions)
 			r.Get("/sessions.csv", s.exportSessions)
@@ -170,11 +182,15 @@ func New(c Config) http.Handler {
 	if c.UI != nil {
 		r.Handle("/*", c.UI)
 	}
+	if s.cache != nil {
+		s.cache.root = r
+	}
 	return r
 }
 
 type server struct {
 	Config
+	cache *statsCache // nil without one
 }
 
 // clientIP resolves who sent a request (middleware.GetClientIP): the

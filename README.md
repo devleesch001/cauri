@@ -346,6 +346,17 @@ API serves them under `/api/stats/` (`summary`, `activity`,
 `/api/cities`, with the parameters `sensor`, `from`, `to`, `verdict` and
 `login` (`success` or `failed`).
 
+On a large database these aggregates take seconds, so the API keeps
+them, with the lists of attackers, in a cache in memory, by query: a
+page is slow only the first time it is asked for (after a start, or
+for a new combination of filters). For `CAURI_STATS_CACHE_TTL` (a
+minute by default) an answer is served as it is; after that, it is
+still served at once, and computed again in the background, once, for
+the next request. The numbers are thus late by a minute or two at most;
+the `X-Cauri-Cache` (`miss`, `hit`, `stale`) and `Age` headers tell
+which. Answers unused for half an hour are dropped, and the cache holds
+64 MiB at most; a purge of sessions clears it. `0` turns it off.
+
 The session list, the failed logins and the attackers sort by a column:
 a click on its header, `sort` and `order` (`asc` or `desc`, the default)
 in the API.
@@ -497,6 +508,7 @@ Every option is a flag and an environment variable: `--db-dsn` is
 | `CAURI_ADMIN_PASSWORD` | (generated) | Password of the administration page, see [Administration](#administration) |
 | `CAURI_ADMIN_PASSWORD_FILE` | (none) | File holding that password, such as a container secret; set only one of the two |
 | `CAURI_TRUSTED_PROXIES` | (none) | Comma-separated addresses or CIDR ranges of the reverse proxies whose `X-Forwarded-For` names the client, see [Administration](#administration) |
+| `CAURI_STATS_CACHE_TTL` | `1m` | How long statistics and lists of attackers are served from the cache before being computed again in the background; `0`: no cache. See [Statistics](#statistics) |
 | `CAURI_UI`           | `false`                                   | `true`: same as `api --ui`                                                   |
 | `CAURI_LOG_LEVEL`    | `info`                                    | `debug`, `info`, `warn`, `error` (also `cauri ui`)                           |
 

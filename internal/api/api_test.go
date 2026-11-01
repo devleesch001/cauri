@@ -1170,3 +1170,29 @@ func TestAttackersGrouping(t *testing.T) {
 		}
 	})
 }
+
+// The statistics and the lists of attackers are served from the cache, when
+// it is on; the rest is not.
+func TestStatsCacheRoutes(t *testing.T) {
+	storetest.Run(t, func(t *testing.T, db *bun.DB) {
+		e := setup(t, db, func(c *api.Config) { c.StatsCacheTTL = time.Minute })
+		if _, err := e.client.SendEvents(context.Background(), events("hp-01")); err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{
+			"/api/stats/summary", "/api/stats/credentials?sensor=hp-01", "/api/countries", "/api/cities",
+			"/api/stats/origins", "/api/attackers/ip?group=true", "/api/attackers/kex",
+		} {
+			first, body := getRaw(t, e, path, nil)
+			again, cached := getRaw(t, e, path, nil)
+			if first.header.Get("X-Cauri-Cache") != "miss" || again.header.Get("X-Cauri-Cache") != "hit" || body != cached || again.code != http.StatusOK {
+				t.Errorf("%s: %s then %s (%d)", path, first.header.Get("X-Cauri-Cache"), again.header.Get("X-Cauri-Cache"), again.code)
+			}
+		}
+		for _, path := range []string{"/api/sessions", "/api/attackers/ip/203.0.113.9", "/api/sensors"} {
+			if r, _ := getRaw(t, e, path, nil); r.header.Get("X-Cauri-Cache") != "" {
+				t.Errorf("%s cached", path)
+			}
+		}
+	})
+}
