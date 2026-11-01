@@ -1,32 +1,19 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import type { Credentials } from '@/api/types'
 import BarList from '@/components/BarList.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import KpiCard from '@/components/KpiCard.vue'
+import LoadingBar from '@/components/LoadingBar.vue'
 import StatsFilters from '@/components/StatsFilters.vue'
-import { useStatsFilters } from '@/stats'
+import { useStatsFilters, useStatsLoad } from '@/stats'
 
 // What attackers try to log in with, and what let them in.
 const { t } = useI18n()
-const { params, link } = useStatsFilters()
-
-const cred = ref<Credentials | null>(null)
-const error = ref<string | null>(null)
-watch(
-  params,
-  async (p) => {
-    try {
-      cred.value = await api.credentials(p)
-      error.value = null
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-    }
-  },
-  { immediate: true },
-)
+const { link } = useStatsFilters()
+const { data: cred, loading, error } = useStatsLoad<Credentials>((p) => api.credentials(p))
 const accepted = computed(() => {
   const c = cred.value
   return c && c.attempts ? Math.round((1000 * c.accepted) / c.attempts) / 10 : 0
@@ -44,9 +31,15 @@ const shown = (v: string) => (v === '' ? t('session.logins.emptyPassword') : v)
       <h1>{{ t('credentials.title') }}</h1>
     </div>
     <StatsFilters />
+    <LoadingBar :active="loading" />
     <ErrorNotice :error="error" />
 
-    <template v-if="cred">
+    <div
+      v-if="cred"
+      class="results"
+      :class="{ stale: loading }"
+      :aria-busy="loading"
+    >
       <div class="kpis">
         <KpiCard
           :label="t('credentials.attempts')"
@@ -148,7 +141,7 @@ const shown = (v: string) => (v === '' ? t('session.logins.emptyPassword') : v)
           </div>
         </section>
       </div>
-    </template>
+    </div>
   </div>
 </template>
 

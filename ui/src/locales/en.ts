@@ -65,6 +65,7 @@ export default {
     acceptedShare: '{n} % accepted',
     change: '{n} % vs. previous period',
     previousPeriod: '{n} in the previous period of the same length',
+    loading: 'Computing the numbers for these filters',
   },
   activity: {
     title: 'Activity',

@@ -217,6 +217,12 @@ a {
   align-items: stretch;
 }
 
+/* Numbers of former filters, shown while the new ones are computed. */
+.stale {
+  opacity: 0.55;
+  transition: opacity 0.2s;
+}
+
 .page-head {
   display: flex;
   flex-wrap: wrap;

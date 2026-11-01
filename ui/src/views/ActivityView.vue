@@ -1,30 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import type { Activity } from '@/api/types'
 import ErrorNotice from '@/components/ErrorNotice.vue'
+import LoadingBar from '@/components/LoadingBar.vue'
 import StatsFilters from '@/components/StatsFilters.vue'
-import { useStatsFilters } from '@/stats'
+import { useStatsLoad } from '@/stats'
 
 // When attacks happen, in UTC: the hours of the week, then the days.
 const { t } = useI18n()
-const { params } = useStatsFilters()
-
-const activity = ref<Activity | null>(null)
-const error = ref<string | null>(null)
-watch(
-  params,
-  async (p) => {
-    try {
-      activity.value = await api.activity(p)
-      error.value = null
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-    }
-  },
-  { immediate: true },
-)
+const { data: activity, loading, error } = useStatsLoad<Activity>((p) => api.activity(p))
 
 // 2026-10-11 was a Sunday, weekday 0 as in the API.
 const dayName = new Intl.DateTimeFormat('en', { weekday: 'short', timeZone: 'UTC' }) // the language of the UI
@@ -55,9 +41,14 @@ const mostDay = computed(() => Math.max(1, ...days.value.map((d) => d.sessions))
       <span class="muted">{{ t('activity.utc') }}</span>
     </div>
     <StatsFilters />
+    <LoadingBar :active="loading" />
     <ErrorNotice :error="error" />
 
-    <div class="layout">
+    <div
+      class="layout"
+      :class="{ stale: loading }"
+      :aria-busy="loading"
+    >
       <section class="card">
         <h2>{{ t('activity.week') }}</h2>
         <div

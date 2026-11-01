@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import ToggleSwitch from 'openvue/toggleswitch'
@@ -10,15 +10,16 @@ import CountryFlag from '@/components/CountryFlag.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
 import FloatingPanel from '@/components/FloatingPanel.vue'
 import KpiPanel from '@/components/KpiPanel.vue'
+import LoadingBar from '@/components/LoadingBar.vue'
 import LiveFeed from '@/components/LiveFeed.vue'
 import StatsFilters from '@/components/StatsFilters.vue'
 import WorldMap from '@/components/WorldMap.vue'
 import { patchQuery } from '@/router'
-import { useStatsFilters } from '@/stats'
+import { useStatsFilters, useStatsLoad } from '@/stats'
 
 const { t } = useI18n()
 const router = useRouter()
-const { params, link, q } = useStatsFilters()
+const { link, q } = useStatsFilters()
 
 // Cities are shown unless hidden: the choice is kept in the URL too.
 const showCities = computed({
@@ -32,29 +33,13 @@ const loginSuccess = computed({
   set: (v: boolean) => void patchQuery({ login: v ? 'success' : undefined }),
 })
 
-const summary = ref<Summary | null>(null)
-const countries = ref<CountryCount[]>([])
-const cities = ref<CityCount[]>([])
-const origins = ref<Origins | null>(null)
-const loading = ref(false)
-const error = ref<string | null>(null)
-watch(
-  params,
-  async (p) => {
-    loading.value = true
-    try {
-      ;[summary.value, countries.value, cities.value, origins.value] = await Promise.all([
-        api.summary(p), api.countries(p), api.cities(p), api.origins(p),
-      ])
-      error.value = null
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-    } finally {
-      loading.value = false
-    }
-  },
-  { immediate: true },
+const { data, loading, error } = useStatsLoad<[Summary, CountryCount[], CityCount[], Origins]>((p) =>
+  Promise.all([api.summary(p), api.countries(p), api.cities(p), api.origins(p)]),
 )
+const summary = computed(() => data.value?.[0] ?? null)
+const countries = computed(() => data.value?.[1] ?? [])
+const cities = computed(() => data.value?.[2] ?? [])
+const origins = computed(() => data.value?.[3] ?? null)
 const located = computed(() => countries.value.reduce((n, c) => n + c.sessions, 0))
 // The overview shows the first few of each ranking, so that its cards
 // stay of a size and none scrolls: the pages of each statistic list more.
@@ -90,6 +75,11 @@ function open(country: string, city?: string) {
       {{ t('overview.title') }}
     </h1>
 
+    <LoadingBar
+      class="loading"
+      :active="loading"
+    />
+
     <WorldMap
       class="map"
       :countries="countries"
@@ -102,6 +92,7 @@ function open(country: string, city?: string) {
     <KpiPanel
       v-if="summary"
       class="corner"
+      :class="{ stale: loading }"
       :summary="summary"
       :accepted="accepted"
       :located="located"
@@ -109,7 +100,7 @@ function open(country: string, city?: string) {
 
     <div
       class="docks"
-      :class="{ wide: opened }"
+      :class="{ wide: opened, stale: loading }"
     >
       <FloatingPanel
         v-if="top.length"
@@ -243,6 +234,15 @@ function open(country: string, city?: string) {
   height: 100%;
   min-height: 34rem;
   overflow: hidden;
+}
+
+/* Over the map, along the top of the page. */
+.loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
 }
 
 .corner {

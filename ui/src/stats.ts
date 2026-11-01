@@ -1,4 +1,4 @@
-import { computed } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { dayRange } from '@/dates'
 import { queryValue } from '@/router'
@@ -28,4 +28,41 @@ export function useStatsFilters() {
     return { name, params, query: { ...query, ...exactly(extra) } }
   }
   return { params, link, q }
+}
+
+/** The parameters of the /api/stats calls, as useStatsFilters gives them. */
+export type StatsParams = ReturnType<typeof useStatsFilters>['params']['value']
+
+/**
+ * Loads what the statistics filters select, and again on each change of
+ * them. Filters changed quickly send several requests: only the answer to
+ * the latest is kept, whatever the order they come back in. loading tells
+ * that one is on its way, the former answer still shown.
+ */
+export function useStatsLoad<T>(load: (p: StatsParams) => Promise<T>) {
+  const { params } = useStatsFilters()
+  const data = ref<T | null>(null) as Ref<T | null>
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+  let latest = 0
+  watch(
+    params,
+    async (p) => {
+      const n = ++latest
+      loading.value = true
+      try {
+        const v = await load(p)
+        if (n !== latest) return
+        data.value = v
+        error.value = null
+      } catch (e) {
+        if (n !== latest) return
+        error.value = e instanceof Error ? e.message : String(e)
+      } finally {
+        if (n === latest) loading.value = false
+      }
+    },
+    { immediate: true },
+  )
+  return { data, loading, error }
 }

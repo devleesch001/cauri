@@ -1,32 +1,18 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import type { Commands } from '@/api/types'
 import BarList from '@/components/BarList.vue'
 import ErrorNotice from '@/components/ErrorNotice.vue'
+import LoadingBar from '@/components/LoadingBar.vue'
 import KpiCard from '@/components/KpiCard.vue'
 import StatsFilters from '@/components/StatsFilters.vue'
-import { useStatsFilters } from '@/stats'
+import { useStatsFilters, useStatsLoad } from '@/stats'
 
 // What attackers run once in, and with which clients.
 const { t } = useI18n()
-const { params, link } = useStatsFilters()
-
-const commands = ref<Commands | null>(null)
-const error = ref<string | null>(null)
-watch(
-  params,
-  async (p) => {
-    try {
-      commands.value = await api.commands(p)
-      error.value = null
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-    }
-  },
-  { immediate: true },
-)
+const { link } = useStatsFilters()
+const { data: commands, loading, error } = useStatsLoad<Commands>((p) => api.commands(p))
 </script>
 
 <template>
@@ -35,9 +21,14 @@ watch(
       <h1>{{ t('commands.title') }}</h1>
     </div>
     <StatsFilters />
+    <LoadingBar :active="loading" />
     <ErrorNotice :error="error" />
 
-    <template v-if="commands">
+    <div
+      v-if="commands"
+      :class="{ stale: loading }"
+      :aria-busy="loading"
+    >
       <div class="kpis">
         <KpiCard
           :label="t('commands.total')"
@@ -104,7 +95,7 @@ watch(
           </BarList>
         </section>
       </div>
-    </template>
+    </div>
   </div>
 </template>
 
